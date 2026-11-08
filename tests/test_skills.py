@@ -5,7 +5,7 @@ from helpers import REPO
 
 SKILLS = REPO / "skills"
 FORBIDDEN = ["Agent(", "Task(", "AskUserQuestion", "EnterPlanMode", "ExitPlanMode", "TodoWrite"]
-TWELVE = {"sstack", "setup", "work", "swarm", "review", "unslop", "babysit", "how", "why",
+SKILLS_SET = {"sstack", "setup", "work", "grill", "swarm", "review", "unslop", "babysit", "how", "why",
           "diagram", "code-graph", "reflect"}
 
 
@@ -72,5 +72,5 @@ class SkillLint(unittest.TestCase):
                 path = target.split("#")[0]
                 self.assertTrue((f.parent / path).exists(), f"{f}: broken link {target}")
 
-    def test_twelve_skills(self):
-        self.assertEqual({f.parent.name for f in skill_files()}, TWELVE)
+    def test_skill_set(self):
+        self.assertEqual({f.parent.name for f in skill_files()}, SKILLS_SET)
