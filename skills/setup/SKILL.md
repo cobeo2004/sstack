@@ -32,7 +32,11 @@ repo** (empty or near-empty). Re-runnable; see the last section.
 4. **Find the "prove it works" commands** (lint, typecheck, test, build) from
    manifests and CI. Run each once, read the output, and propose the list for
    `[project].verify`. Ask the user to confirm before writing it. Note any that
-   need a service running first (database, emulator).
+   need a service running first (database, emulator). Then fill
+   `[project.test]` for each surface the app has (code, browser, mobile; see
+   [work/testing.md](../work/testing.md)): the framework and where its tests
+   live, and the run / serve / build commands. Leave out a surface the app
+   doesn't have. Don't add a framework unasked.
 5. **Build the code graph** if `code-review-graph` is installed: see `code-graph`
    (`code-review-graph build`). If it isn't installed, say so and set
    `graph = false`; don't install it unasked.

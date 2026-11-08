@@ -38,7 +38,8 @@ over memory.
    - **THE PATTERN / CAUSE / DIFF** — the pattern to follow, the root cause (bug),
      or the diff in behaviour wanted.
    - **THE PLAN SHAPE** — the ordered changes, roughly.
-   - **THE TEST STRATEGY** — what proves it works, which commands, which surface.
+   - **THE TEST STRATEGY** — what proves it works: each check's surface (code,
+     browser, mobile), how it's written and run, per [testing.md](testing.md).
    - **RISKS** — what could break, what's shared.
    - **WHAT I COULD NOT VERIFY** — say it plainly.
 
@@ -50,7 +51,9 @@ over memory.
    and the check that proves that step. One step = one verifiable unit.
 2. Write the **answer key** (`answer-key.md`) before any implementation, so
    correctness is defined by something the implementer can't change:
-   - the success commands (each exits 0 only when the outcome is right);
+   - the success checks, each tagged `code:`, `browser:` or `mobile:` and written
+     per [testing.md](testing.md): a command that exits 0 only when the outcome is
+     right, or a scripted browser/device check with its expected states;
    - the expected end state (files, behaviour the commands observe);
    - protected paths: the tests/fixtures that define correctness. Copy each into
      `protected/` and record its `sha256` (`shasum -a 256 <file>`) and the base
@@ -74,7 +77,9 @@ in chat where there is none. Nothing gets implemented before it.
 ## Phase 3 — Test / fix with review → gate
 
 1. Restore protected files from `protected/` and confirm their hashes, then run
-   every answer-key command and read the output. A changed protected file is
+   every answer-key check on its surface per [testing.md](testing.md) and read the
+   output. For changes a user can see, save before/after media per testing.md
+   (`<run>/media/`). A changed protected file is
    reported, never accepted silently.
 2. Failures → back to Phase 2 with the failing commands and output added to the
    brief. **Loop guard** (`rules.loop_guard`, default 2): the same failure twice →
@@ -89,8 +94,10 @@ agreed out of lane by the user. Report commands + results, findings + outcome.
 
 1. `unslop` the diff and the PR text. Use the repo's PR template if it has one.
 2. Rebase/merge the base branch and re-run the answer key on the result.
-3. **Gate 4:** the user's explicit yes before commit, push or PR. Then push, open
-   the PR, and hand off to `babysit`.
+3. **Gate 4:** the user's explicit yes before commit, push or PR, and before
+   publishing media. Then push, open the PR, publish the before/after media
+   (`<sstack>/bin/sstack-pr-media <pr> <run>/media/*`, then post its table with
+   `gh pr comment`), and hand off to `babysit`.
 
 ## Always
 

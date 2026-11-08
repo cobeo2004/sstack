@@ -1,0 +1,114 @@
+#!/usr/bin/env python3
+"""Publish before/after screenshots and recordings for a PR to a separate media branch
+(never the PR's own branch), then print a markdown Before | After table to post on the PR.
+
+  sstack-pr-media <pr> <file>... [--repo owner/name] [--branch sstack-media] [--dry-run]
+
+Name files before-<step>.<ext> / after-<step>.<ext>; matching steps share a row.
+Videos get an inline GIF copy when ffmpeg is installed (GitHub won't play repo videos inline)."""
+import argparse
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+IMAGES = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
+VIDEOS = {".mp4", ".mov", ".webm"}
+
+
+def git(*args, cwd=None, check=True):
+    return subprocess.run(["git", *args], cwd=cwd, check=check, capture_output=True, text=True)
+
+
+def repo_slug() -> str:
+    url = git("remote", "get-url", "origin").stdout.strip()
+    m = re.search(r"github\.com[:/]([^/]+/[^/]+?)(?:\.git)?/?$", url)
+    if not m:
+        sys.exit(f"sstack-pr-media: can't read owner/repo from origin {url!r}; pass --repo owner/name")
+    return m.group(1)
+
+
+def gif_of(video: Path) -> Path | None:
+    if not shutil.which("ffmpeg"):
+        return None
+    out = video.with_suffix(".gif")
+    r = subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(video),
+                        "-vf", "fps=10,scale=720:-1:flags=lanczos", str(out)])
+    return out if r.returncode == 0 else None
+
+
+def table(base: str, names: list[str]) -> str:
+    link = lambda n: f"{base}{n}?raw=true"
+    rows: dict[str, dict[str, str]] = {}
+    videos, other = [], []
+    for n in names:
+        ext = Path(n).suffix.lower()
+        m = re.match(r"(before|after)-(.+)\.\w+$", n)
+        if ext in VIDEOS:
+            videos.append(f"[{n}]({link(n)})")
+        elif m and ext in IMAGES:
+            rows.setdefault(m.group(2), {})[m.group(1)] = f"![{m.group(1)}]({link(n)})"
+        else:
+            other.append(f"[{n}]({link(n)})")
+    out = ["### Before / after", ""]
+    if rows:
+        out += ["| | Before | After |", "|---|---|---|"]
+        out += [f"| {k} | {v.get('before', '—')} | {v.get('after', '—')} |" for k, v in rows.items()]
+    if videos:
+        out += ["", "Recordings: " + " · ".join(videos)]
+    if other:
+        out += ["", "Other: " + " · ".join(other)]
+    return "\n".join(out) + "\n"
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(prog="sstack-pr-media")
+    ap.add_argument("pr")
+    ap.add_argument("files", nargs="+", type=Path)
+    ap.add_argument("--repo")
+    ap.add_argument("--branch", default="sstack-media")
+    ap.add_argument("--dry-run", action="store_true")
+    a = ap.parse_args()
+    missing = [str(f) for f in a.files if not f.is_file()]
+    if missing:
+        sys.exit(f"sstack-pr-media: no such file: {', '.join(missing)}")
+    files = list(a.files)
+    for f in a.files:
+        if f.suffix.lower() in VIDEOS and (g := gif_of(f)):
+            files.append(g)
+    names = sorted(dict.fromkeys(f.name for f in files))
+    dest = f"pr-{a.pr}"
+    base = f"https://github.com/{a.repo or repo_slug()}/blob/{a.branch}/{dest}/"
+    if a.dry_run:
+        print(f"would push {len(names)} files to origin/{a.branch}:{dest}/\n")
+        print(table(base, names))
+        return 0
+    tmp = Path(tempfile.mkdtemp(prefix="sstack-media-"))
+    try:
+        if git("ls-remote", "--heads", "origin", a.branch).stdout.strip():
+            git("fetch", "-q", "origin", a.branch)
+            git("worktree", "add", "-q", "--detach", str(tmp), "FETCH_HEAD")
+        else:  # first publish: an orphan branch that shares no history with the code
+            git("worktree", "add", "-q", "--detach", str(tmp), "HEAD")
+            git("checkout", "-q", "--orphan", a.branch, cwd=tmp)
+            git("rm", "-rfq", ".", cwd=tmp, check=False)
+            git("clean", "-fdxq", cwd=tmp)
+        (tmp / dest).mkdir(parents=True, exist_ok=True)
+        for f in files:
+            shutil.copy(f, tmp / dest / f.name)
+        git("add", dest, cwd=tmp)
+        git("commit", "-qm", f"media: {dest}", cwd=tmp)
+        git("push", "-q", "origin", f"HEAD:refs/heads/{a.branch}", cwd=tmp)
+    except subprocess.CalledProcessError as e:
+        sys.exit(f"sstack-pr-media: {' '.join(e.cmd[:3])} failed: {e.stderr.strip()}")
+    finally:
+        git("worktree", "remove", "--force", str(tmp), check=False)
+        shutil.rmtree(tmp, ignore_errors=True)
+    print(table(base, names))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

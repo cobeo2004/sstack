@@ -6,6 +6,8 @@
 | plan gate | `EnterPlanMode` to draft, `ExitPlanMode` for the user's approval |
 | todo list | `TaskCreate`/`TaskUpdate`, or `TodoWrite` where configured |
 | spawn a native subagent | `Agent(...)` — only for local roles; routed roles go through `<sstack>/bin/sstack-dispatch` |
+| drive a browser | the ADE's tools first ([ade.md](ade.md)); else an MCP browser tool or browser skill the session has (e.g. Playwright MCP); else headless Playwright from the shell |
+| drive a device | the ADE's tools first ([ade.md](ade.md)); else the repo's mobile runner (e.g. `maestro test`) from the shell |
 | end-of-session hook | `SessionEnd` hook in `~/.claude/settings.json` → `<sstack>/bin/sstack-reflect-hook` (the installer prints the snippet) |
 
 - Headless child: `claude -p --model <m>`; read-only roles use

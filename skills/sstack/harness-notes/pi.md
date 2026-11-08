@@ -6,6 +6,8 @@
 | plan gate | write the plan, then stop and wait for an explicit "yes" in chat |
 | todo list | a checklist at `.sstack/runs/<run-id>/todo.md` (uncommitted), playbook steps verbatim |
 | spawn a native subagent | not assumed; use `<sstack>/bin/sstack-dispatch` |
+| drive a browser | the ADE's tools first ([ade.md](ade.md)); else no built-in browser; the repo's e2e runner or headless Playwright from the shell, else a gap |
+| drive a device | the ADE's tools first ([ade.md](ade.md)); else the repo's mobile runner (e.g. `maestro test`) or the `agent-device` CLI from the shell, else a gap |
 | end-of-session hook | none assumed; run `reflect` by hand at the end of a task |
 
 - Headless child: `pi -p --no-session --model <provider/model> --thinking <level>`.

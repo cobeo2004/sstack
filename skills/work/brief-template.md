@@ -26,7 +26,9 @@ diff range or PR and the lenses to apply.>
 ## Rules
 - No commits, no pushes, no PR, no questions to the user. If blocked, say BLOCKED
   in the report with what you need.
-- Run the checks named above and include the real output.
+- Write and run tests per `<sstack>/skills/work/testing.md`: code tests first,
+  watched failing, then passing; browser/mobile checks on their surface, with a
+  screenshot under the run dir. Include the real output.
 - Don't edit tests listed as protected.
 
 ## Report (your final message)

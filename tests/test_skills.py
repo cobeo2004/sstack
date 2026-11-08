@@ -42,6 +42,20 @@ class SkillLint(unittest.TestCase):
         for f in (SKILLS / "sstack" / "principles").glob("*.md"):
             self.assertLessEqual(len(f.read_text().splitlines()), 30, f)
 
+    def test_testing_surfaces_wired(self):
+        t = (SKILLS / "work" / "testing.md").read_text()
+        for surface in ("## Code", "## Browser", "## Mobile"):
+            self.assertIn(surface, t)
+        for f in (SKILLS / "work" / "SKILL.md", SKILLS / "setup" / "SKILL.md"):
+            self.assertIn("testing.md", f.read_text(), f)
+        self.assertIn("harness-notes/ade.md", t)
+        ade = (SKILLS / "sstack" / "harness-notes" / "ade.md").read_text()
+        for app in ("## T3 Code", "## Orca", "## Conductor"):
+            self.assertIn(app, ade)
+        for f in (SKILLS / "sstack" / "harness-notes").glob("*.md"):
+            for verb in ("| drive a browser |", "| drive a device |"):
+                self.assertIn(verb, f.read_text(), f"{f}: {verb}")
+
     def test_no_claude_only_tools(self):
         for f in SKILLS.rglob("*.md"):
             if "harness-notes" in f.parts:

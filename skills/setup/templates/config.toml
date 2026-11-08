@@ -7,6 +7,24 @@ docs   = []          # links to deeper docs, e.g. [".docs/spec/functional-spec.m
 verify = []          # confirmed with the user, e.g. ["pnpm lint", "pnpm test"]
 graph  = true        # false if code-review-graph isn't installed
 
+# How each surface is tested (see skills/work/testing.md). Drop surfaces the app doesn't have.
+# {path} = the test file or name to run. UI changes always get a live self-check in the
+# ADE's browser/device too; run = "" just means there's no e2e runner to add specs to.
+[project.test.code]
+framework = ""       # e.g. "vitest, *.test.ts next to the module"
+run       = ""       # e.g. "pnpm vitest run {path}"
+
+[project.test.browser]
+framework = ""       # e.g. "playwright, e2e/*.spec.ts"
+serve     = ""       # e.g. "pnpm dev"
+url       = ""       # e.g. "http://localhost:3000"
+run       = ""       # e.g. "pnpm playwright test {path}"
+
+[project.test.mobile]
+framework = ""       # e.g. "maestro, .maestro/*.yaml"
+build     = ""       # e.g. "npx expo run:ios"
+run       = ""       # e.g. "maestro test {path}"
+
 # Repo-specific routing (optional). A [role.X] table replaces the global one whole.
 # [role.implement]
 # harness = "pi"

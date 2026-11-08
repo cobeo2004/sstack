@@ -163,6 +163,21 @@ Lessons live in `.sstack/lessons.md` (repo scope) and `~/.sstack/lessons.md` (gl
 > [!TIP]
 > For automatic reflection, set `[reflect] auto = true` and add the `SessionEnd` hook that `sstack-install` prints. At the end of each session, a background scout reads the transcript and records new lessons as pending, for you to accept.
 
+### Before/after media on PRs
+
+```sh
+bin/sstack-pr-media 142 .sstack/runs/<run-id>/media/* > media.md   # add --dry-run to preview
+gh pr comment 142 --body-file media.md
+```
+
+For any change a user can see, the agent captures `before-<step>.png` on the base commit and `after-<step>.png` on the change, plus a recording of the flow. It uses the ADE's capture tools for this. `sstack-pr-media` then:
+
+- pushes the files to a separate `sstack-media` branch, never the PR branch;
+- turns videos into inline GIFs when `ffmpeg` is installed;
+- prints a **Before | After** table to post on the PR.
+
+Publishing is a push, so the agent asks first.
+
 ### Dashboard
 
 ```sh
@@ -207,6 +222,8 @@ panel = [
 [rules]
 review_not_implementer = true   # drop any panel member identical to role.implement
 ```
+
+A repo's `[project.test]` table says how each surface is tested: **code** (unit and integration), **browser**, and **mobile**. For each one it records the framework, where tests live, and the run, serve or build commands. `setup` fills it in. [`skills/work/testing.md`](skills/work/testing.md) defines how the agent writes each kind of check, runs it, and proves it. For any change a user can see, the agent also does a live self-check. It drives the app in the ADE's built-in browser or device, and runs the code tests alongside. The ADE can be T3 Code (preview and device panels), Orca (`orca` browser and emulator commands) or Conductor (headless, since its in-app browser is only for you to watch). The per-ADE tools are listed in [`skills/sstack/harness-notes/ade.md`](skills/sstack/harness-notes/ade.md).
 
 A role with no config, or set to `harness = "local"`, runs in the current session. `[transport] mode` chooses how delegated roles run: `auto`, `thread`, `headless`, or `local`. With `auto`, sstack uses T3 Code threads when `T3CODE_THREAD_ID` is set and headless CLIs otherwise.
 
