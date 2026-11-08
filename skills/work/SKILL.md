@@ -16,7 +16,9 @@ list verbatim; skipped steps stay, marked `skip: <reason>`.
 Create a run directory first: `.sstack/runs/<run-id>/` with `run-id` =
 `<ticket-or-slug>-<YYYYmmdd-HHMM>`. Everything that must survive a compaction or a
 new session goes there: `recon.md`, `plan.md`, `answer-key.md`, `protected/`,
-briefs, reports, `progress.md` (one line per finished step).
+briefs, reports, `progress.md` (one line per finished step). If `grill` handed
+over a run directory, or `ls .sstack/runs/*/decisions.md` shows one for this task,
+use it instead: `decisions.md` is the ticket and everything else goes beside it.
 
 **Resume:** if the user says "continue" or a run dir for this task exists, read
 its `progress.md`, `plan.md` and latest reports, check `git status` / `git log`
@@ -25,15 +27,23 @@ over memory.
 
 ## Phase 0 — Recon → gate
 
-1. Sync with the base branch (fetch; note how far behind you are). Read the ticket
-   if there is one, the house rules (`AGENTS.md`/`CLAUDE.md`), `.sstack/product.md`,
-   and the docs it links that matter here.
-2. Clarify: one question at a time, only for things no command can answer. If
-   running something would answer it (behaviour, output, timing), run it or build
-   a throwaway prototype instead of asking.
-3. Fan out only for many-source questions: `swarm` with role `scout`. Use
+1. Check the checkout: `<sstack>/bin/sstack-worktree` (linked or primary, branch,
+   behind/ahead of base, dirty, gitignored files and dirs the primary has that this
+   tree lacks). Missing env files → `sstack-worktree copy` copies only what the
+   primary's `.worktreeinclude` lists; anything else missing goes in SYSTEM STATE,
+   never copied by hand. Missing dirs (`node_modules/`) → reinstall, don't copy.
+   Worktrees still share databases, ports and services: note any this task touches.
+2. Sync with the base branch (fetch; note how far behind you are). Read the ticket
+   if there is one (or `decisions.md` if `grill` produced this run), the house rules
+   (`AGENTS.md`/`CLAUDE.md`), `.sstack/product.md`, and the docs it links that
+   matter here.
+3. No falsifiable definition of done and no `decisions.md` → run `grill` first.
+   Otherwise clarify: one question at a time, only for things no command can
+   answer. If running something would answer it (behaviour, output, timing), run
+   it or build a throwaway prototype instead of asking.
+4. Fan out only for many-source questions: `swarm` with role `scout`. Use
    `code-graph` (`detect-changes` / impact) to find what the change reaches.
-4. Write `recon.md` with exactly these headings, then **stop and report it**:
+5. Write `recon.md` with exactly these headings, then **stop and report it**:
    - **SYSTEM STATE** — what exists today, with file paths.
    - **THE PATTERN / CAUSE / DIFF** — the pattern to follow, the root cause (bug),
      or the diff in behaviour wanted.

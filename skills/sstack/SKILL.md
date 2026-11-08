@@ -29,6 +29,9 @@ this file's resolved path (skills are symlinked; resolve the link, e.g.
 | Request | Go to |
 |---|---|
 | Make a repo agent-ready, new or existing ("set up", "onboard this repo") | `setup` |
+| Fuzzy idea, "brainstorm", "help me think this through" | `grill` (fuzzy opening), then `work` |
+| Stress-test a plan or design, "grill me" | `grill` |
+| "Prototype", "sketch it to decide" | `grill`; its prototype settles the question |
 | New or changed behaviour | `work` → playbook `feature` |
 | A defect to reproduce and fix ("bug", "broken", "regression") | `work` → `bug-fix` |
 | "Just find the cause", "diagnose only" | `work` → `bug-fix`, diagnose-only exit |

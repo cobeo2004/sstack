@@ -102,13 +102,14 @@ Explicit: every skill is also callable by name (`/sstack`, `/work`, `/review`,
 and superpowers disabled (`DISABLE_OMC=1`, superpowers plugin turned off for that
 session), so it shows sstack working alone. Nothing is uninstalled.
 
-## The skills (12)
+## The skills (13)
 
 | Skill | Purpose | Main sources |
 |---|---|---|
 | `sstack` | Entry router: classify the request, pick skill/playbook, copy its steps into a todo list verbatim (skipped steps stay, marked `skip: <reason>`). Holds the principles index, gate rules, verification gate, "delegate by volume" rule, harness notes. | pstack poteto-mode (cut hard), superpowers verification-before-completion, OMC verify check order |
 | `setup` | New or existing repo → agent-ready. See Setup. | new; pstack setup-pstack + create-verification-skill; orbyn clash check |
 | `work` | Gated phases for any task. See Work. | user's phased-work, pstack playbooks, orbyn answer key + loop guard, superpowers writing-plans granularity |
+| `grill` | Interview in frontier rounds (each question with a recommended answer) until every decision is settled; fuzzy ideas open with one open question. Writes `decisions.md`, which `work` Phase 0 reads as the ticket. | mattpocock/skills grilling, superpowers brainstorming opening |
 | `swarm` | Fan one question out to N children; each returns PASS/ISSUES/BLOCKED with evidence; missing evidence → respawn once, then record a gap. | pstack swarm |
 | `review` | Adversarial review of a diff or PR (`review`, `review <PR#>`). Findings must reproduce (orchestrator re-runs each) or are dropped; only added/changed lines; re-check each finding against current head; reviewers ideally a different model family. Reports, does not fix. | pstack interrogate + thermo-nuclear-review rules + orbyn pr-iteration |
 | `unslop` | Pre-PR cleanup of diff and PR/prose text. | pstack deslop + no-comments + unslop |

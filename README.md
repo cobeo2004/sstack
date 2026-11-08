@@ -6,7 +6,7 @@
 
 ![Python](https://img.shields.io/badge/python-%E2%89%A53.11-blue?logo=python&logoColor=white)
 ![Dependencies](https://img.shields.io/badge/dependencies-none-brightgreen)
-![Skills](https://img.shields.io/badge/skills-12-orange)
+![Skills](https://img.shields.io/badge/skills-13-orange)
 
 [Overview](#overview) • [Getting started](#getting-started) • [Agent prompts](#agent-prompts) • [Usage](#usage) • [Configuration](#configuration) • [Skills](#skills)
 
@@ -14,7 +14,7 @@
 
 ## Overview
 
-sstack is a set of 12 portable `SKILL.md` skills plus a small stdlib-Python toolkit. It takes an engineering task from "set up this repo" through recon, plan, implement, test, and PR, with a stop for your approval at each gate.
+sstack is a set of 13 portable `SKILL.md` skills plus a small stdlib-Python toolkit. It takes an engineering task from "set up this repo" through recon, plan, implement, test, and PR, with a stop for your approval at each gate.
 
 Any phase can be delegated to another harness and model. For example, implement runs on pi + DeepSeek while review runs on a codex + claude panel. A single TOML file controls the routing.
 
@@ -163,6 +163,15 @@ Lessons live in `.sstack/lessons.md` (repo scope) and `~/.sstack/lessons.md` (gl
 > [!TIP]
 > For automatic reflection, set `[reflect] auto = true` and add the `SessionEnd` hook that `sstack-install` prints. At the end of each session, a background scout reads the transcript and records new lessons as pending, for you to accept.
 
+### Worktree preflight
+
+```sh
+bin/sstack-worktree              # branch, behind/ahead of base, dirty, gitignored files missing vs the primary
+bin/sstack-worktree copy         # copy only what the primary's .worktreeinclude lists; never overwrites (--dry-run)
+```
+
+`work` runs it first in Phase 0. `.worktreeinclude` uses gitignore syntax (the same file Claude Code reads), e.g. `.env` and `.env.local`. Secrets are never copied unless you list them there.
+
 ### Before/after media on PRs
 
 ```sh
@@ -237,6 +246,7 @@ A role with no config, or set to `harness = "local"`, runs in the current sessio
 | `sstack` | The entry point: routing, gates, verification, delegation rules |
 | `setup` | Making a repo agent-ready (`product.md`, config, verify commands, graph) |
 | `work` | Features, bug fixes, refactors, perf, multi-phase work through gated phases |
+| `grill` | Brainstorming a fuzzy idea or stress-testing a plan, ending in `decisions.md` that `work` runs from |
 | `review` | Adversarial review of a diff or PR by a different model family |
 | `babysit` | Getting a PR to merge-ready: CI, conflicts, review comments |
 | `swarm` | Sending one question to many independent scouts, then combining their reports |
