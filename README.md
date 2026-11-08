@@ -8,7 +8,7 @@
 ![Dependencies](https://img.shields.io/badge/dependencies-none-brightgreen)
 ![Skills](https://img.shields.io/badge/skills-12-orange)
 
-[Overview](#overview) • [Getting started](#getting-started) • [Usage](#usage) • [Configuration](#configuration) • [Skills](#skills)
+[Overview](#overview) • [Getting started](#getting-started) • [Agent prompts](#agent-prompts) • [Usage](#usage) • [Configuration](#configuration) • [Skills](#skills)
 
 </div>
 
@@ -48,7 +48,7 @@ flowchart LR
 ### Install
 
 ```sh
-git clone <this repo> ~/Codes/sstack && cd ~/Codes/sstack
+git clone https://github.com/cobeo2004/sstack.git && cd sstack
 bin/sstack-install --dry-run   # show what would change
 bin/sstack-install             # link the skills and add the router line
 ```
@@ -70,6 +70,64 @@ In your agent, open the repo and say "set up this repo". The `setup` skill write
 - `.sstack/config.toml`: repo routing and verify commands;
 - the code graph;
 - one row in `AGENTS.md`.
+
+## Agent prompts
+
+Prefer to let your coding agent do the setup? Paste one of these into Claude Code, Codex, Cursor, pi or T3 Code. Each block has a copy button on GitHub.
+
+### Install the stack
+
+Run this once per machine, from any directory.
+
+```text
+Install sstack (https://github.com/cobeo2004/sstack) on this machine.
+
+1. Ask me where to clone it, then clone it there (or `git pull` if a clone is
+   already there). Below, <sstack> means that directory.
+2. Check that `python3 --version` is 3.11 or later. Stop and tell me if it isn't.
+3. Run `<sstack>/bin/sstack-install --dry-run` and show me the full output.
+   Wait for my yes before running `<sstack>/bin/sstack-install` for real.
+   Never edit ~/.claude/skills, ~/.codex/skills or similar dirs by hand.
+4. Open ~/.sstack/config.toml and list each harness that a role uses (pi, codex,
+   claude, cursor-agent). Run `<cli> --version` for each and tell me which are
+   missing. Don't install anything.
+5. Show which harness and model each role resolves to:
+   `<sstack>/bin/sstack-dispatch <role> --brief /dev/null --report /dev/null --dry-run`
+   for each of scout, investigate, plan, implement and review. A role that
+   prints `local` (exit 3) isn't an error: it runs in your own session.
+6. Print the SessionEnd hook snippet the installer showed, and ask me whether I
+   want automatic reflect turned on.
+```
+
+> [!NOTE]
+> Restart your agent after installing so it picks up the new skills.
+
+### Set up a project
+
+Run this inside the repo, new or existing.
+
+```text
+Use the sstack skill to set up this repo for sstack (route: setup).
+
+- Existing code: read AGENTS.md / CLAUDE.md, the README and docs first, then
+  write .sstack/product.md and .sstack/config.toml from the setup templates.
+- Empty or brand-new repo: ask me what the app is, who it's for and the stack
+  before writing anything.
+- Find the real lint / typecheck / test / build commands and run each one once.
+  Put the ones that pass in [project].verify. Show me any that fail.
+- Build the code graph if code-review-graph is installed. Otherwise say it was skipped.
+- Add the sstack row to AGENTS.md and register the repo for the dashboard.
+- Before you write anything, show me the files you'll create or change.
+  Don't commit.
+- Finish with the setup report: files written, verify results, graph status,
+  and anything you couldn't infer.
+```
+
+Then give it a first task to check the whole flow end to end:
+
+```text
+/work <a small ticket or bug in this repo>
+```
 
 ## Usage
 
