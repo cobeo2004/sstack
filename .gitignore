@@ -1,0 +1,5 @@
+__pycache__/
+.sstack/runs/
+*.local.toml
+.superpowers/
+.omc/

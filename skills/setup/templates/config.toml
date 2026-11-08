@@ -1,0 +1,14 @@
+# .sstack/config.toml — per-repo sstack config. Commit it or not; the repo decides.
+# Personal overrides go in .sstack/config.local.toml (git-ignored).
+
+[project]
+brief  = ".sstack/product.md"
+docs   = []          # links to deeper docs, e.g. [".docs/spec/functional-spec.md", ".docs/architecture/"]
+verify = []          # confirmed with the user, e.g. ["pnpm lint", "pnpm test"]
+graph  = true        # false if code-review-graph isn't installed
+
+# Repo-specific routing (optional). A [role.X] table replaces the global one whole.
+# [role.implement]
+# harness = "pi"
+# model   = "opencode-go/deepseek-v4.1-flash"
+# effort  = "high"

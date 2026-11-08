@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>sstack</title>
+<style>
+:root{--bg:#f7f7f5;--card:#fff;--fg:#1c1c1a;--muted:#6b6b66;--border:#e3e2dd;--soft:#efeee9;
+ --primary:#2b5cd6;--on-primary:#fff;--warn:#9a5b00;--warn-bg:#fdf1dc;--bad:#b42318;--bad-bg:#fde7e5;--ok:#1d7a3e;--info:#5b51c9;
+ --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;--mono:ui-monospace,SFMono-Regular,Menlo,monospace;--r:8px}
+@media (prefers-color-scheme:dark){:root{--bg:#141413;--card:#1c1c1b;--fg:#ecebe6;--muted:#9c9b95;--border:#2f2e2b;--soft:#262624;
+ --primary:#6f93f0;--on-primary:#0d1430;--warn:#f0b35a;--warn-bg:#3a2a12;--bad:#f2867c;--bad-bg:#3d1916;--ok:#6fcf8f;--info:#a99ff5}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:13px/1.45 var(--sans)}
+.top{display:flex;align-items:center;gap:8px;padding:10px 16px;border-bottom:1px solid var(--border);background:var(--card);flex-wrap:wrap}
+.logo{font:700 14px var(--mono);margin-right:6px}
+.pill{border:1px solid var(--border);border-radius:999px;padding:2px 10px;font:inherit;font-size:12px;color:var(--muted);background:none;cursor:pointer}
+.pill.on{background:var(--primary);color:var(--on-primary);border-color:transparent}
+.grow{flex:1}
+.row{display:flex;min-height:calc(100vh - 46px)}
+.side{width:160px;flex:none;border-right:1px solid var(--border);padding:8px 0;background:var(--card)}
+.side button{display:flex;justify-content:space-between;width:100%;text-align:left;padding:8px 16px;border:0;background:none;color:var(--muted);font:inherit;cursor:pointer}
+.side button.on{color:var(--fg);background:var(--soft);font-weight:600}
+.n{font-size:11px;background:var(--warn-bg);color:var(--warn);border-radius:999px;padding:0 7px}
+.main{flex:1;padding:20px;min-width:0;max-width:1100px}
+.page{display:none}.page.on{display:block}
+h3{margin:0 0 4px;font-size:16px}
+.sub{color:var(--muted);margin:0 0 14px}
+table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--border);border-radius:var(--r)}
+td,th{text-align:left;padding:8px;border-bottom:1px solid var(--border);vertical-align:top}
+th{color:var(--muted);font-weight:500;font-size:12px}
+tr:last-child td{border-bottom:0}
+.tag{font:11px var(--mono);padding:1px 6px;border-radius:4px;background:var(--soft);white-space:nowrap}
+.warn{background:var(--warn-bg);color:var(--warn)}.bad{background:var(--bad-bg);color:var(--bad)}.ok{color:var(--ok)}
+.btn{border:1px solid var(--border);border-radius:6px;padding:3px 10px;font:inherit;font-size:12px;background:var(--card);color:var(--fg);cursor:pointer;white-space:nowrap}
+.btn.p{background:var(--primary);color:var(--on-primary);border-color:transparent}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:12px}
+.card{border:1px solid var(--border);border-radius:var(--r);padding:12px;background:var(--card)}
+.big{font-size:22px;font-weight:700;margin-top:2px}
+.k{color:var(--muted)}.mono{font:12px var(--mono)}
+select,input{background:var(--bg);color:var(--fg);border:1px solid var(--border);border-radius:6px;font:12px var(--mono);padding:3px 5px;max-width:100%}
+input{width:100%}
+.layer{font:11px var(--mono);color:var(--info)}
+.flow{display:flex;flex-direction:column;gap:6px}
+.ph{display:flex;align-items:center;gap:10px;border:1px solid var(--border);border-radius:var(--r);padding:9px 12px;background:var(--card);flex-wrap:wrap}
+.ph b{width:110px;flex:none}
+.gate{font-size:12px;color:var(--warn);margin-left:auto}
+.arrow{color:var(--muted);padding-left:48px;line-height:1}
+.toast{margin-top:10px;min-height:18px}
+.empty{padding:24px;text-align:center;color:var(--muted);border:1px dashed var(--border);border-radius:var(--r)}
+pre{white-space:pre-wrap;word-break:break-word;font:12px var(--mono);background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:12px;max-height:60vh;overflow:auto}
+a{color:var(--primary);cursor:pointer}
+@media (max-width:640px){.row{flex-direction:column}.side{width:auto;display:flex;overflow-x:auto;border-right:0;border-bottom:1px solid var(--border)}
+ .side button{width:auto;white-space:nowrap}.main{padding:16px}.grid{grid-template-columns:minmax(0,1fr)}table{display:block;overflow-x:auto}}
+</style></head><body>
+<div class="top"><span class="logo">sstack</span><span id="repos"></span><span class="grow"></span><span class="pill" id="transport">transport: …</span></div>
+<div class="row">
+ <nav class="side" id="nav">
+  <button data-p="overview" class="on">Overview</button>
+  <button data-p="lessons">Lessons <span class="n" id="lc" hidden></span></button>
+  <button data-p="graph">Code graph</button>
+  <button data-p="roles">Roles &amp; models</button>
+  <button data-p="workflows">Workflows</button>
+  <button data-p="runs">Runs</button>
+ </nav>
+ <main class="main">
+  <section class="page on" id="overview"></section>
+  <section class="page" id="lessons"></section>
+  <section class="page" id="graph"></section>
+  <section class="page" id="roles"></section>
+  <section class="page" id="workflows"></section>
+  <section class="page" id="runs"></section>
+ </main>
+</div>
+<script>
+const T = new URLSearchParams(location.search).get('t') || '';
+let repo = localStorage.getItem('sstack.repo') || 'global';
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const name = p => p === 'global' ? 'global' : p.split('/').pop();
+const route = m => m ? `${esc(m.harness)} · ${esc(m.model || 'default')}${m.effort ? ` (${esc(m.effort)})` : ''}` : 'local (this session)';
+const empty = msg => `<div class="empty">${msg}</div>`;
+async function api(path, body) {
+  const sep = path.includes('?') ? '&' : '?';
+  const r = await fetch(`${path}${sep}t=${encodeURIComponent(T)}`, body ? {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)} : {});
+  const j = await r.json().catch(() => ({error: r.statusText}));
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+const q = () => `repo=${encodeURIComponent(repo)}`;
+
+async function repos() {
+  const {repos} = await api('/api/repos');
+  if (repo !== 'global' && !repos.includes(repo)) repo = repos[0] || 'global';
+  $('repos').innerHTML = [...repos, 'global'].map(r => `<button class="pill ${r === repo ? 'on' : ''}" data-r="${esc(r)}" title="${esc(r)}">${esc(name(r))}</button>`).join(' ');
+}
+$('repos').onclick = e => { const b = e.target.closest('button'); if (!b) return; repo = b.dataset.r; try { localStorage.setItem('sstack.repo', repo) } catch {} ; load(); };
+
+const pages = {
+  async overview() {
+    const o = await api(`/api/overview?${q()}`);
+    $('transport').textContent = `transport: ${o.transport}`;
+    const lr = o.last_run;
+    return `<h3>${esc(name(repo))}</h3><p class="sub">${o.product ? esc(o.product) + ' <span class="mono">.sstack/product.md</span>' : repo === 'global' ? 'Global view: ~/.sstack' : 'No product brief yet — the <span class="mono">setup</span> skill writes <span class="mono">.sstack/product.md</span>.'}</p>
+     <div class="grid">
+      <div class="card"><div class="k">Lessons to review</div><div class="big">${o.lessons_pending}</div></div>
+      <div class="card"><div class="k">Runs this week</div><div class="big">${o.runs_week}</div></div>
+      <div class="card"><div class="k">Implement</div><div class="mono" style="margin-top:6px">${route(o.implement)}</div></div>
+      <div class="card"><div class="k">Graph</div><div class="mono" style="margin-top:6px">${o.graph_updated ? 'updated ' + esc(o.graph_updated) : 'not built'}</div></div>
+     </div>
+     <div class="card"><b>Last run</b> ${lr ? `<span class="k">${esc(lr.task)} · ${esc(lr.ts)}</span><div class="mono" style="margin-top:6px">${esc(lr.role)} → ${esc(lr.harness)} · ${esc(lr.model)} · ${esc(lr.transport)} · ${result(lr)}</div>` : '<span class="k">none yet — runs appear after <span class="mono">sstack-dispatch</span> runs here</span>'}</div>`;
+  },
+  async lessons() {
+    const {lessons} = await api(`/api/lessons?${q()}`);
+    const pending = lessons.filter(l => l.status === 'pending').length;
+    $('lc').hidden = !pending; $('lc').textContent = pending;
+    if (!lessons.length) return `<h3>Lessons</h3>${empty('No lessons yet — the <span class="mono">reflect</span> skill records them from your corrections and the agent\'s dead ends.')}`;
+    const st = l => l.status === 'pending' ? `<span class="tag warn">needs review${+l.seen >= 2 ? ' · edit proposed' : ''}</span>` : l.status === 'encoded' ? `<span class="tag ok">encoded → ${esc(l.encoded || '?')}</span>` : '<span class="tag">accepted</span>';
+    return `<h3>Lessons</h3><p class="sub">Captured from your corrections and the agent's dead ends. Pending lessons aren't used until you accept them.</p>
+     <table id="lt"><tr><th>Lesson</th><th>Scope</th><th>Seen</th><th>Status</th><th></th></tr>
+     ${lessons.map(l => `<tr data-id="${esc(l.id)}" data-scope="${esc(l.scope)}"><td>${esc(l.text)}${l.evidence ? `<div class="k mono">${esc(l.evidence)}</div>` : ''}</td><td><span class="tag">${esc(l.scope)}</span></td><td>${esc(l.seen)}×</td><td>${st(l)}</td>
+      <td>${l.status === 'pending' ? '<button class="btn p" data-a="accept">Accept</button> ' : ''}${l.status !== 'encoded' ? '<button class="btn" data-a="forget">Forget</button>' : ''}</td></tr>`).join('')}</table>`;
+  },
+  async graph() {
+    const g = await api(`/api/graph?${q()}`);
+    if (repo === 'global') return `<h3>Code graph</h3>${empty('Pick a repo — the graph is per repo.')}`;
+    if (!g.available) return `<h3>Code graph</h3>${empty('<span class="mono">code-review-graph</span> is not installed. The <span class="mono">code-graph</span> skill explains how to set it up.')}`;
+    return `<h3>Code graph</h3><p class="sub">From <span class="mono">code-review-graph</span>. Open the interactive view with <span class="mono">code-review-graph visualize</span>.</p>
+     <pre>${esc(g.status || 'no output')}</pre><button class="btn p" id="rebuild">${g.built ? 'Rebuild' : 'Build'}</button><div class="toast" id="gtoast"></div>`;
+  },
+  async roles() {
+    const c = await api(`/api/config?${q()}`);
+    const layers = c.layers.map(l => l.name);
+    const hs = ['local', ...c.harnesses];
+    const row = r => {
+      const m = r.members[0] || {};
+      if (r.panel) return `<tr><td>${r.role}</td><td colspan="3" class="mono">panel: ${r.members.map(route).join(' + ') || 'none'}<div class="k">edit panels in the TOML file</div></td><td class="layer">${esc(r.source || '—')}</td><td></td></tr>`;
+      return `<tr data-role="${r.role}"><td>${r.role}${r.error ? `<div class="bad tag">${esc(r.error)}</div>` : ''}</td>
+       <td><select name="harness">${hs.map(h => `<option ${h === (m.harness || 'local') ? 'selected' : ''}>${esc(h)}</option>`).join('')}</select></td>
+       <td><input name="model" value="${esc(m.model || '')}" placeholder="default"></td>
+       <td><input name="effort" value="${esc(m.effort || '')}" placeholder="—" style="width:70px"></td>
+       <td class="layer">${esc(r.source || '—')}</td><td><button class="btn p" data-save>Save</button></td></tr>`;
+    };
+    return `<h3>Roles &amp; models</h3><p class="sub">Merged view. "From" is the file each role comes from: ${layers.join(' → ')}.</p>
+     <table><tr><th>Role</th><th>Harness</th><th>Model</th><th>Effort</th><th>From</th><th></th></tr>${c.roles.map(row).join('')}</table>
+     <p class="k" style="margin-top:10px">Save to: <select id="tgt">${c.layers.slice().reverse().map(l => `<option value="${l.name}" title="${esc(l.path)}">${l.name}${l.name === 'local' ? ' (only me)' : l.name === 'repo' ? ' (shared)' : ''}</option>`).join('')}</select></p>
+     <div class="toast" id="toast"></div>`;
+  },
+  async workflows() {
+    const w = await api(`/api/workflows?${q()}`);
+    const ph = w.phases.map(p => `<div class="ph"><b>${p.n} · ${esc(p.name)}</b><span class="mono">${p.role ? esc(p.role) + ' → ' : ''}${Array.isArray(p.route) ? p.route.map(route).join(' + ') : 'local (this session)'}</span>${p.gate ? `<span class="gate">⏸ ${esc(p.gate)}</span>` : ''}</div>`).join('<div class="arrow">↓</div>');
+    const tags = a => a.map(n => `<span class="tag">${esc(n)}</span>`).join(' ') || '<span class="k">none</span>';
+    return `<h3>Workflows</h3><p class="sub"><span class="mono">work</span>: which role runs each phase, and where it stops for you.</p><div class="flow">${ph}</div>
+     <p class="k" style="margin-top:12px">Playbooks: ${tags(w.playbooks)}</p><p class="k">Repo overrides (<span class="mono">.sstack/playbooks/</span>): ${tags(w.repo_playbooks)}</p>`;
+  },
+  async runs() {
+    const {runs} = await api(`/api/runs?${q()}`);
+    if (!runs.length) return `<h3>Runs</h3>${empty('No runs yet — runs appear after <span class="mono">sstack-dispatch</span> runs here.')}`;
+    return `<h3>Runs</h3><p class="sub">Every dispatch, newest first, from <span class="mono">.sstack/runs/index.jsonl</span>. Click a result for the report.</p>
+     <table><tr><th>When</th><th>Task</th><th>Role → agent</th><th>Via</th><th>Result</th></tr>
+     ${runs.map((r, i) => `<tr><td class="mono">${esc(r.ts)}</td><td>${esc(r.task)}</td><td class="mono">${esc(r.role)} → ${esc(r.harness)} · ${esc(r.model)}</td><td>${esc(r.transport)}</td><td><a data-n="${i}">${result(r)}</a>${r.secs != null ? ` · ${Math.round(r.secs)}s` : ''}</td></tr>`).join('')}</table><div id="report"></div>`;
+  },
+};
+const result = r => r.exit === 0 ? '<span class="ok">exit 0</span>' : r.exit === 2 ? '<span class="tag bad">timeout</span>' : `<span class="tag bad">exit ${esc(r.exit)}</span>`;
+
+let current = 'overview';
+async function show(p) {
+  current = p;
+  $('nav').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.p === p));
+  document.querySelectorAll('.page').forEach(s => s.classList.toggle('on', s.id === p));
+  try { $(p).innerHTML = await pages[p]() } catch (e) { $(p).innerHTML = empty('Could not load: ' + esc(e.message)) }
+}
+async function load() { try { await repos() } catch (e) { $('repos').textContent = e.message } pages.lessons().catch(() => {}); show(current) }
+$('nav').onclick = e => { const b = e.target.closest('button'); if (b) show(b.dataset.p) };
+
+document.querySelector('.main').addEventListener('click', async e => {
+  const b = e.target.closest('button,a'); if (!b) return;
+  try {
+    if (b.dataset.a) {
+      const tr = b.closest('tr');
+      await api(`/api/lessons/${b.dataset.a}`, {repo, scope: tr.dataset.scope, id: tr.dataset.id});
+      show('lessons');
+    } else if ('save' in b.dataset) {
+      const tr = b.closest('tr'), v = n => tr.querySelector(`[name=${n}]`).value.trim();
+      const r = await api('/api/roles', {repo, layer: $('tgt').value, role: tr.dataset.role, harness: v('harness'), model: v('model'), effort: v('effort')});
+      await show('roles'); $('toast').innerHTML = `<span class="ok">Saved ${esc(tr.dataset.role)} to ${esc(r.path)}</span>`;
+    } else if (b.id === 'rebuild') {
+      b.disabled = true; $('gtoast').textContent = 'Running…';
+      const r = await api('/api/graph/rebuild', {repo});
+      $('gtoast').innerHTML = r.ok ? '<span class="ok">Done</span>' : `<span class="bad tag">${esc(r.error || 'failed')}</span>`;
+      if (r.output) $('gtoast').innerHTML += `<pre>${esc(r.output)}</pre>`;
+    } else if (b.dataset.n) {
+      const r = await api(`/api/report?${q()}&n=${b.dataset.n}`);
+      $('report').innerHTML = `<p class="mono" style="margin-top:14px">${esc(r.path)}</p><pre>${esc(r.text ?? 'report file not found')}</pre>`;
+    }
+  } catch (err) { const t = $('toast') || $('gtoast'); if (t) t.innerHTML = `<span class="bad tag">${esc(err.message)}</span>`; else alert(err.message) }
+});
+load();
+</script>
+</body></html>

@@ -1,0 +1,85 @@
+#!/usr/bin/env python3
+"""Symlink sstack skills into existing skill dirs (clashes → .bak), add the marked
+line to global agent instructions, install the example config. --dry-run, --uninstall."""
+import argparse
+import shutil
+import time
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parent.parent
+MARK = "For engineering tasks, start with the sstack skill. <!-- sstack -->"
+SKILL_DIRS = [".claude/skills", ".agents/skills", ".codex/skills", ".cursor/skills", ".pi/agent/skills"]
+INSTRUCTION_FILES = [".claude/CLAUDE.md", ".codex/AGENTS.md", ".pi/agent/AGENTS.md"]
+HOOK = """Optional automatic reflect (also set [reflect] auto = true in ~/.sstack/config.toml).
+Add to ~/.claude/settings.json under "hooks":
+  "SessionEnd": [{"hooks": [{"type": "command", "command": "%s"}]}]""" % (REPO / "bin" / "sstack-reflect-hook")
+
+
+def ours(p: Path) -> bool:
+    return p.is_symlink() and p.resolve().is_relative_to(REPO.resolve())
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(prog="sstack-install")
+    ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--uninstall", action="store_true")
+    a = ap.parse_args()
+    home = Path.home()
+    dry = a.dry_run
+    say = (lambda m: print(f"would {m}")) if dry else print
+    skills = sorted(p for p in (REPO / "skills").iterdir() if (p / "SKILL.md").is_file())
+    targets = [home / d for d in SKILL_DIRS if (home / d).is_dir()]
+
+    for t in targets:
+        if a.uninstall:
+            for p in sorted(t.iterdir()):
+                if ours(p):
+                    say(f"remove {p}")
+                    dry or p.unlink()
+                elif ".bak" in p.name:
+                    print(f"backup left in place: {p}")
+            continue
+        for s in skills:
+            dest = t / s.name
+            if ours(dest):
+                continue
+            if dest.exists() or dest.is_symlink():
+                bak = t / f"{s.name}.bak"
+                if bak.exists() or bak.is_symlink():
+                    bak = t / f"{s.name}.bak-{time.strftime('%Y%m%d%H%M%S')}"
+                say(f"back up {dest} -> {bak.name}")
+                dry or dest.rename(bak)
+            say(f"link {dest} -> {s}")
+            dry or dest.symlink_to(s)
+
+    for rel in INSTRUCTION_FILES:
+        f = home / rel
+        if not f.is_file():
+            continue
+        text = f.read_text()
+        if a.uninstall:
+            if MARK in text:
+                say(f"remove sstack line from {f}")
+                kept = [l for l in text.split("\n") if l != MARK]
+                new = "\n".join(kept)
+                while new.endswith("\n\n"):
+                    new = new[:-1]
+                dry or f.write_text(new)
+        elif MARK not in text:
+            say(f"add sstack line to {f}")
+            sep = "" if text.endswith("\n\n") or not text else ("\n" if text.endswith("\n") else "\n\n")
+            dry or f.write_text(f"{text}{sep}{MARK}\n")
+
+    if not a.uninstall:
+        cfg = home / ".sstack" / "config.toml"
+        if not cfg.exists():
+            say(f"copy config.example.toml -> {cfg}")
+            if not dry:
+                cfg.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy(REPO / "config.example.toml", cfg)
+        print(HOOK)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
