@@ -54,6 +54,18 @@ class WorktreeTests(TempEnv):
         self.assertEqual((self.wt / ".env").read_text(), "LOCAL\n")
         self.assertIn("copyable: none", self.run_in(self.wt).stdout)
 
+    def test_copy_refuses_symlinked_parent(self):
+        self.write(self.root, "config/.env", "S=1\n")
+        with open(self.root / ".worktreeinclude", "a") as f:
+            f.write("config/.env\n")
+        outside = self.root.parent / "outside"
+        outside.mkdir()
+        (self.wt / "config").symlink_to(outside)
+        r = self.run_in(self.wt, "copy")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("config/.env (destination parent config is a symlink)", r.stdout)
+        self.assertFalse((outside / ".env").exists())
+
     def test_copy_refuses_in_primary(self):
         r = self.run_in(self.root, "copy")
         self.assertNotEqual(r.returncode, 0)

@@ -92,6 +92,11 @@ def copy(root: Path, dry: bool) -> list[str]:
         if os.path.lexists(dest):
             lines.append(f"exists  {rel}")
             continue
+        # A symlinked ancestor would carry the copy (secrets) outside this worktree.
+        link = next((p for p in Path(rel).parents if p != Path(".") and (root / p).is_symlink()), None)
+        if link:
+            lines.append(f"skipped  {rel} (destination parent {link} is a symlink)")
+            continue
         lines.append(f"{'would copy' if dry else 'copied'}  {rel}")
         if not dry:
             dest.parent.mkdir(parents=True, exist_ok=True)
