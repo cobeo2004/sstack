@@ -1,0 +1,9 @@
+#!/bin/sh
+# Like Conductor without CONDUCTOR_API_KEY: no key → action none with a note (headless).
+case "$1" in
+  detect) exit 0 ;;
+  delegate) cat >/dev/null
+    if [ -z "$FAKE_API_KEY" ]; then echo '{"action": "none", "note": "FAKE_API_KEY not set; running headless"}'
+    else echo '{"action": "run", "argv": ["sh", "-c", "cat >/dev/null; echo REPORT keyed"]}'; fi ;;
+  *) exit 1 ;;
+esac

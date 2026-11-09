@@ -1,0 +1,3 @@
+# Legacy home config beside a split repo layer: still refused (hard cut, no leniency).
+[role.implement]
+harness = "pi"

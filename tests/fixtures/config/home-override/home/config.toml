@@ -1,0 +1,5 @@
+[dispatch]
+timeout_min = 10
+
+[rules]
+max_parallel = 2

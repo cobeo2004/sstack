@@ -1,0 +1,10 @@
+#!/bin/sh
+# Never finishes: wait always exits 10, so dispatch times out, calls cancel, exits 2.
+S="${SSTACK_HOOK_STATE:?}"
+case "$1" in
+  detect) exit 0 ;;
+  delegate) cat >/dev/null; echo '{"action": "async", "id": "job-1"}' ;;
+  wait) cat >/dev/null; exit 10 ;;
+  cancel) cat >/dev/null; touch "$S/cancelled" ;;
+  *) exit 1 ;;
+esac

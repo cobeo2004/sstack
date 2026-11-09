@@ -1,0 +1,10 @@
+{
+  "role": "implement",
+  "members": [
+    "pi/opencode-go/deepseek-v4.1-flash"
+  ],
+  "report_base": ".sstack/runs/20261109-1210-implement/r",
+  "panel_report": null,
+  "started_at": 1794226209.8,
+  "readonly": false
+}

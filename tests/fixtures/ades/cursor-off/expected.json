@@ -1,0 +1,4 @@
+{"order": [["conductor","defaults"],["cursor","defaults"],["orca","defaults"],["t3","defaults"]],
+ "checks": [{"env": {}, "ade": "auto", "active": null, "why": "cursor has auto = false"},
+            {"env": {}, "ade": "cursor", "active": "cursor", "why": "ade = cursor"},
+            {"env": {"SSTACK_ADE": "cursor"}, "ade": "auto", "active": "cursor", "why": "SSTACK_ADE=cursor"}]}

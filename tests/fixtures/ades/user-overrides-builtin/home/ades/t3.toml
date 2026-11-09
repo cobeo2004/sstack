@@ -1,0 +1,8 @@
+# Replaces the built-in t3 adapter whole (detects on a different variable).
+auto = true
+
+[detect]
+env = ["MY_T3"]
+
+[delegate]
+kind = "none"

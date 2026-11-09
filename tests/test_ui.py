@@ -40,7 +40,7 @@ class RoleTableTests(TempEnv):
 class ServerTests(TempEnv):
     def setUp(self):
         super().setUp()
-        self.glob_cfg((REPO / "config.example.toml").read_text())
+        self.example()
         (self.home / ".sstack/repos.txt").write_text(f"{self.root}\n/nonexistent/repo\n")
         self.token = "tok"
         self.srv = U.make_server(0, self.token)
@@ -100,13 +100,14 @@ class ServerTests(TempEnv):
         self.assertEqual(cm.exception.code, 403)
 
     def test_bad_role_save_leaves_file(self):
-        text = '[role]\nimplement = { harness = "pi" }\n'
-        p = self.local_cfg(text)
+        text = '[rules\n'  # a broken sibling file: the save must not stick
+        p = self.write(self.root, ".sstack/local/config.toml", text)
         with self.assertRaises(urllib.error.HTTPError) as cm:
             self.post("/api/roles", {"repo": str(self.root), "layer": "local", "role": "implement",
                                      "harness": "codex", "model": "m"})
         self.assertEqual(cm.exception.code, 400)
         self.assertEqual(p.read_text(), text)
+        self.assertFalse((self.root / ".sstack/local/roles/implement.toml").exists())
 
     def test_runs_newest_first(self):
         self.write(self.root, ".sstack/runs/index.jsonl",

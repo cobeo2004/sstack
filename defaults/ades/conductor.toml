@@ -1,0 +1,21 @@
+# Conductor. Delegation via CLI/API (beta, needs CONDUCTOR_API_KEY): conductor.hook (B2).
+auto = true
+
+[detect]
+env = ["CONDUCTOR_SESSION_ID"]
+
+[delegate]
+kind = "hook"
+readonly = "instructed"
+
+[browser]
+kind = "none"
+summary = ""
+
+[device]
+kind = "none"
+summary = ""
+
+[capture]
+kind = "none"
+summary = ""

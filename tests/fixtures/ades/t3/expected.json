@@ -1,0 +1,5 @@
+{"order": [["conductor","defaults"],["cursor","defaults"],["orca","defaults"],["t3","defaults"]],
+ "checks": [{"env": {"T3CODE_THREAD_ID": "x"}, "ade": "auto", "active": "t3", "why": "env T3CODE_THREAD_ID"},
+            {"env": {"T3CODE_THREAD_ID": "x", "SSTACK_ADE": "none"}, "ade": "auto", "active": null, "why": "SSTACK_ADE=none"},
+            {"env": {"T3CODE_THREAD_ID": "x"}, "ade": "none", "active": null, "why": "ade = none"},
+            {"env": {}, "ade": "auto", "active": null, "why": "no adapter detected"}]}

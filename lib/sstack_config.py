@@ -1,12 +1,22 @@
-"""Load the three sstack config layers and resolve a role to harness members."""
+"""Load the layered, split sstack config (docs/spec/config.md) and resolve a role to members.
+
+Layers, lowest first: <sstack>/defaults → home ($SSTACK_HOME or ~/.sstack) → repo .sstack →
+.sstack/local. In each: config.toml (merged key by key), project.toml (repo layers only, replaced
+whole), harnesses/ roles/ tiers/ ades/ (one file per thing, replaced whole)."""
+import os
 import subprocess
 import tomllib
 from pathlib import Path
 
 from sstack_worktree import primary_of
 
+DEFAULTS = Path(__file__).resolve().parent.parent / "defaults"
 READONLY_ROLES = {"scout", "investigate", "plan", "review"}
 WHOLE = {"role", "harness", "tier"}  # tables whose children are replaced whole
+KINDS = {"harnesses": "harness", "roles": "role", "tiers": "tier"}  # dir → load() table
+LAYOUT = ("config.toml", "project.toml", "harnesses", "roles", "tiers", "ades")
+LEGACY_TABLES = {"harness", "role", "tier", "project", "transport"}
+MIGRATE = "run `sstack-config migrate` to split it into the new layout (docs/spec/config.md)"
 
 
 class ConfigError(Exception):
@@ -31,24 +41,40 @@ def _primary(root: Path) -> Path:
 
 def repo_file(root: Path, name: str) -> Path:
     """This checkout's `.sstack/<name>`, else the primary checkout's, else this checkout's.
-    A linked worktree usually excludes `.sstack/` from git, so its config and lessons live
-    in the primary one. Runs stay per-checkout (they name this checkout's paths)."""
+    Used for lessons. Runs stay per-checkout (they name this checkout's paths)."""
     own = root / ".sstack" / name
     if own.exists():
         return own
     primary = _primary(root)
-    # ponytail: the fallback is per `.sstack/` directory, not per file, so a worktree that
-    # wants no repo config at all cannot say so with an empty `.sstack/`.
     if primary == root or not (primary / ".sstack").is_dir():
         return own
     return primary / ".sstack" / name
 
 
-def layer_paths(root: Path | None) -> list[tuple[str, Path]]:
-    out = [("global", Path.home() / ".sstack" / "config.toml")]
+def _has_config(d: Path) -> bool:
+    return any((d / n).exists() for n in LAYOUT + ("config.local.toml",))
+
+
+def _repo_dir(root: Path, rel: str) -> Path:
+    """This checkout's `<rel>` dir if it holds any config, else the primary checkout's.
+    A linked worktree usually excludes `.sstack/` from git, so its config lives in the primary.
+    ponytail: the fallback is per layer directory, so a worktree can't opt out with an empty dir."""
+    own = root / rel
+    if _has_config(own):
+        return own
+    primary = _primary(root) / rel
+    return primary if primary != own and _has_config(primary) else own
+
+
+def home_dir() -> Path:
+    return Path(os.environ.get("SSTACK_HOME") or Path.home() / ".sstack")
+
+
+def layers(root: Path | None) -> list[tuple[str, Path]]:
+    """[(name, dir)] lowest first: defaults, home, then repo and local when in a git repo."""
+    out = [("defaults", DEFAULTS), ("home", home_dir())]
     if root is not None:
-        out += [("repo", repo_file(root, "config.toml")),
-                ("local", repo_file(root, "config.local.toml"))]
+        out += [("repo", _repo_dir(root, ".sstack")), ("local", _repo_dir(root, ".sstack/local"))]
     return out
 
 
@@ -70,26 +96,91 @@ def _read(path: Path) -> dict:
         raise ConfigError(f"{path}: {e}") from None
 
 
-def _layers(root):
-    return [(name, _read(p)) for name, p in layer_paths(root) if p.is_file()]
+def _is_legacy(p: Path) -> bool:
+    if p.name == "config.local.toml":
+        return p.is_file()
+    try:
+        return p.is_file() and bool(LEGACY_TABLES & tomllib.loads(p.read_text()).keys())
+    except tomllib.TOMLDecodeError:
+        return False
+
+
+def legacy(root: Path | None, _ls: list | None = None) -> list[Path]:
+    """Old single-file configs: a config.toml holding [harness|role|tier|project|transport]
+    tables, or any `config.local.toml`. Deduped (home == repo when $HOME is the git repo)."""
+    out = []
+    for name, d in (_ls or layers(root))[1:]:
+        cands = [d / "config.toml"] + ([d / "config.local.toml"] if name == "repo" else [])
+        out += [p for p in cands if _is_legacy(p) and p.resolve() not in {q.resolve() for q in out}]
+    return out
+
+
+def _layer_data(name: str, d: Path) -> dict:
+    data = _read(d / "config.toml") if (d / "config.toml").is_file() else {}
+    if name in ("repo", "local") and (d / "project.toml").is_file():
+        data["project"] = _read(d / "project.toml")
+    for kind, table in KINDS.items():
+        for p in sorted((d / kind).glob("*.toml")):
+            data.setdefault(table, {})[p.stem] = _read(p)
+    return data
+
+
+def _layer_datas(root):
+    ls = layers(root)
+    if old := legacy(root, ls):  # hard cut: any legacy file, even beside split files
+        raise ConfigError(f"legacy sstack config {', '.join(map(str, old))}: {MIGRATE}")
+    return [(name, _layer_data(name, d)) for name, d in ls]
 
 
 def load(root: Path | None) -> dict:
+    """Effective config: {harness: {name: {...}}, role: {...}, tier: {...}, project: {...},
+    plus config.toml keys (ade, dispatch, rules, reflect, routing)}. ADEs: see ades()."""
     cfg: dict = {}
-    for _, data in _layers(root):
+    for _, data in _layer_datas(root):
         cfg = merge(cfg, data)
     return cfg
 
 
-def source_layer(root: Path | None, dotted: str) -> str | None:
+def source(root: Path | None, kind: str, name: str | None, _ls: list | None = None) -> tuple[str, Path] | None:
+    """(layer, path) of the file that wins for one thing: kind = config | project | harnesses |
+    roles | tiers | ades (name = the file stem, dots allowed; ades also takes "t3.md" / "t3.hook").
+    Only names listed in the kind's dir match, so a name can't climb out of it."""
     found = None
-    for name, data in _layers(root):
-        node = data
-        for part in dotted.split("."):
-            node = node.get(part) if isinstance(node, dict) else None
-        if node is not None:
-            found = name
+    for layer, d in _ls or layers(root):
+        if kind == "project" and layer not in ("repo", "local"):
+            continue
+        if kind in ("config", "project"):
+            p = d / f"{kind}.toml"
+        else:
+            have = {e.name for e in (d / kind).iterdir()} if (d / kind).is_dir() else set()
+            p = next((d / kind / n for n in (f"{name}.toml", name) if n in have), None)
+        if p is not None and p.is_file():
+            found = (layer, p)
     return found
+
+
+def ades(root: Path | None) -> list[dict]:
+    """Adapters in detection order: user layers nearest first (local, repo, home), then defaults;
+    alphabetical within a layer; a user file replaces the built-in of the same name whole.
+    hook_path / note_path resolve per file (nearest layer that has one)."""
+    ls = layers(root)
+    out, seen = [], set()
+    for layer, d in [*reversed(ls[1:]), ls[0]]:
+        for p in sorted((d / "ades").glob("*.toml")):
+            if p.stem in seen:
+                continue
+            seen.add(p.stem)
+            toml = _read(p)
+            hook, note = (source(root, "ades", f"{p.stem}.{x}", ls) for x in ("hook", "md"))
+            out.append({"name": p.stem, "layer": layer, "toml": toml,
+                        "hook_path": hook[1] if hook else None, "note_path": note[1] if note else None,
+                        "auto": toml.get("auto", True)})
+    return out
+
+
+# ponytail: removed in B4 — sstack_ui still lists per-layer config.toml paths.
+def layer_paths(root: Path | None) -> list[tuple[str, Path]]:
+    return [(n, d / "config.toml") for n, d in layers(root)[1:]]
 
 
 def _member(cfg: dict, m: dict) -> dict | None:
@@ -97,13 +188,13 @@ def _member(cfg: dict, m: dict) -> dict | None:
     if not h or h == "local":
         return None
     if h not in cfg.get("harness", {}):
-        raise ConfigError(f"unknown harness {h!r} (define [harness.{h}])")
+        raise ConfigError(f"unknown harness {h!r} (add harnesses/{h}.toml)")
     return {"harness": h, "model": m.get("model"), "effort": m.get("effort")}
 
 
 def resolve(cfg: dict, role: str) -> list[dict] | None:
     """None = run locally in this session; else a list of members."""
-    if cfg.get("transport", {}).get("mode") == "local":
+    if cfg.get("dispatch", {}).get("via") == "local":
         return None
     spec = cfg.get("role", {}).get(role)
     if not spec:

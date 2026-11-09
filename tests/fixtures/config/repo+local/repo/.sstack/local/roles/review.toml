@@ -1,0 +1,3 @@
+harness = "fake"
+model = "my-reviewer"
+effort = "low"

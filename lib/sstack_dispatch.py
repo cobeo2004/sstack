@@ -13,7 +13,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import sstack_route as R
-from sstack_config import READONLY_ROLES, ConfigError, git_root, load, resolve
+from sstack_config import READONLY_ROLES, ConfigError, ades, git_root, load, resolve
 
 PH = re.compile(r"\{(\w+)\}")
 # The option id a T3/provider child takes effort as (recon, 2026-11-09: they differ per provider).
@@ -35,32 +35,39 @@ def fill(template: list[str], values: dict[str, str | None]) -> list[str]:
 
 
 def _t3_cli(t3: dict, env: Mapping[str, str]) -> str:
-    raw = t3.get("cli", "$T3CODE_CLI_PATH")
+    raw = t3.get("path", "$T3CODE_CLI_PATH")
     cli = re.sub(r"\$(\w+)", lambda m: env.get(m.group(1), ""), raw)
     return cli or str(Path.home() / ".t3" / "bin" / "t3")
 
 
-def plan_member(cfg: dict, role: str, member: dict, env: Mapping[str, str], title: str) -> dict:
-    tr = cfg.get("transport", {})
-    mode = tr.get("mode", "auto")
-    t3 = tr.get("t3", {})
+def t3_adapter(root: Path | None) -> dict:
+    """The t3 ADE file (docs/spec/ade.md). ponytail: only its [cli] thread start is wired here;
+    B2 replaces this with the generic ADE layer (exit-4 payloads)."""
+    return next((a["toml"] for a in ades(root) if a["name"] == "t3"), {})
+
+
+def plan_member(cfg: dict, role: str, member: dict, env: Mapping[str, str], title: str,
+                t3: dict | None = None) -> dict:
+    t3 = t3 or {}
+    mode = {"ade-cli": "thread", "auto": "auto"}.get(cfg.get("dispatch", {}).get("via", "auto"), "headless")
+    cli, provider = t3.get("cli", {}), t3.get("providers", {}).get(member["harness"])
     h = cfg["harness"][member["harness"]]
     readonly = role in READONLY_ROLES
-    in_t3 = bool(t3.get("detect")) and t3["detect"] in env
+    in_t3 = any(v in env for v in t3.get("detect", {}).get("env", []))
     notes: list[str] = []
     values = {"model": member["model"], "effort": member["effort"], "title": title}
 
-    want_thread = mode in ("auto", "thread") and in_t3 and "t3_provider" in h and "cmd" in t3
-    if mode == "thread" and not (in_t3 and "t3_provider" in h and "cmd" in t3):
-        raise ConfigError(f"transport.mode = thread but T3 is unavailable for harness {member['harness']!r}")
+    want_thread = mode in ("auto", "thread") and in_t3 and provider and "cmd" in cli
+    if mode == "thread" and not (in_t3 and provider and "cmd" in cli):
+        raise ConfigError(f"dispatch.via = ade-cli but T3 is unavailable for harness {member['harness']!r}")
     if want_thread and readonly:
         notes.append("read-only role: headless (T3 threads can't enforce read-only)")
         want_thread = False
     if want_thread:
         if member["effort"]:
             notes.append("effort dropped in T3 thread")
-        values.update(cli=_t3_cli(t3, env), provider=h["t3_provider"], effort=None)
-        return {"transport": "thread", "argv": fill(t3["cmd"], values), "notes": notes}
+        values.update(cli=_t3_cli(cli, env), provider=provider, effort=None)
+        return {"transport": "thread", "argv": fill(cli["cmd"], values), "notes": notes}
     key = "headless_readonly" if readonly else "headless"
     if key not in h:
         raise ConfigError(f"role {role!r} is read-only but harness {member['harness']!r} has no headless_readonly")
@@ -113,12 +120,12 @@ def report_path(base: Path, member: dict, n_members: int) -> Path:
     return base.with_name(f"{base.stem}.{member['harness']}-{slug}{base.suffix}")
 
 
-def route_json(cfg: dict, role: str, route: str, members: list[dict] | None) -> str:
+def route_json(cfg: dict, role: str, route: str, members: list[dict] | None, t3: dict) -> str:
     """The route as an orchestrator (T3 delegate_task) needs it: who runs it, and effort under
     the provider's own option id."""
     out = []
     for m in members or []:
-        provider = cfg["harness"][m["harness"]].get("t3_provider", m["harness"])
+        provider = t3.get("providers", {}).get(m["harness"], m["harness"])
         opt = EFFORT_OPTION.get(provider)
         out.append({"harness": m["harness"], "provider": provider, "model": m["model"],
                     "effort": m["effort"], "options": {opt: m["effort"]} if opt and m["effort"] else {}})
@@ -167,7 +174,8 @@ def main(argv: list[str] | None = None) -> int:
             detected, lines = R.changed(root, a.base)
             files = files if a.files is not None else detected
         member, route, notes = R.pick(cfg, a.role, a.hint, files)
-        if a.role == "review" and cfg.get("transport", {}).get("mode") != "local":
+        t3 = t3_adapter(git_root(cwd))
+        if a.role == "review" and cfg.get("dispatch", {}).get("via") != "local":
             members, route = _review_members(cfg, a, member, files, lines, rules)
         elif route == "panel":
             if a.role not in READONLY_ROLES:
@@ -177,12 +185,12 @@ def main(argv: list[str] | None = None) -> int:
         else:
             members = [member] if member else None
         if a.route:  # before plan_member: --route runs nothing, and needs no headless command
-            print(route_json(cfg, a.role, route, members))
+            print(route_json(cfg, a.role, route, members, t3))
             return 0 if members else 3
         if not members:
             print("local")
             return 3
-        plans = [plan_member(cfg, a.role, m, os.environ, title) for m in members]
+        plans = [plan_member(cfg, a.role, m, os.environ, title, t3) for m in members]
     except ConfigError as e:
         print(f"sstack-dispatch: {e}", file=sys.stderr)
         return 1
@@ -199,7 +207,7 @@ def main(argv: list[str] | None = None) -> int:
 
     brief = Path(a.brief).read_text()
     base = Path(a.report).resolve()
-    timeout_s = float(cfg.get("transport", {}).get("timeout_min", 30)) * 60
+    timeout_s = float(cfg.get("dispatch", {}).get("timeout_min", 30)) * 60
     readonly = a.role in READONLY_ROLES
 
     def run(m, pl, rp, text, how):
@@ -211,7 +219,7 @@ def main(argv: list[str] | None = None) -> int:
             # the wrong tree, so run headless here instead. mode = "thread" set explicitly is honoured:
             # plan_member raises and the original failure stands.
             try:
-                pl2 = plan_member(cfg, a.role, m, {}, title)
+                pl2 = plan_member(cfg, a.role, m, {}, title, t3)
             except ConfigError:
                 return code
             print(f"sstack-dispatch: T3 can't resolve {root} as a project; "
@@ -258,7 +266,7 @@ def main(argv: list[str] | None = None) -> int:
                 f"{failed}. The working tree may hold its partial edits: read `git diff` first and keep "
                 f"only what is right.\n")
         try:
-            pl2 = plan_member(cfg, a.role, m2, os.environ, title)
+            pl2 = plan_member(cfg, a.role, m2, os.environ, title, t3)
         except ConfigError as e:
             print(f"sstack-dispatch: {e}", file=sys.stderr)
             return code

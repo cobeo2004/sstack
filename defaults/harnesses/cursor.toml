@@ -1,0 +1,2 @@
+headless = ["cursor-agent", "-p", "--force", "--model", "{model}"]
+headless_readonly = ["cursor-agent", "-p", "--trust", "--mode", "plan", "--model", "{model}"]

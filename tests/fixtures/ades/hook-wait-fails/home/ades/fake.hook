@@ -1,0 +1,8 @@
+#!/bin/sh
+# wait exits 3 (neither 0 nor 10): the child failed; dispatch exits 1 without collecting.
+case "$1" in
+  detect) exit 0 ;;
+  delegate) cat >/dev/null; echo '{"action": "async", "id": "job-1"}' ;;
+  wait) cat >/dev/null; exit 3 ;;
+  *) exit 1 ;;
+esac

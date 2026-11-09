@@ -1,0 +1,9 @@
+# An old single-file global config: load() must refuse it and name the migrate command.
+[harness.pi]
+headless = ["pi", "-p"]
+
+[transport]
+mode = "auto"
+
+[role.implement]
+harness = "pi"

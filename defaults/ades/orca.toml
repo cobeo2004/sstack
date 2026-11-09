@@ -1,0 +1,21 @@
+# Orca. Delegation is async (task-create → worker-start, check --wait, collect): orca.hook (B2).
+auto = true
+
+[detect]
+env = ["ORCA_AGENT_SESSION_ID"]
+
+[delegate]
+kind = "hook"
+readonly = "instructed"
+
+[browser]
+kind = "command"
+summary = "orca goto/snapshot/click/fill/screenshot (see orca.md)"
+
+[device]
+kind = "command"
+summary = "orca emulator (iOS; see orca.md)"
+
+[capture]
+kind = "command"
+summary = "orca screenshot (see orca.md)"

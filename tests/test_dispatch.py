@@ -29,9 +29,6 @@ class DispatchBase(TempEnv):
     def report(self):
         return self.root / "out" / "r.md"
 
-    def example(self):
-        self.glob_cfg((REPO / "config.example.toml").read_text())
-
 
 class DispatchTests(DispatchBase):
     def test_fill_drops_unset_flag(self):
@@ -92,7 +89,7 @@ class DispatchTests(DispatchBase):
         self.assertEqual(self.run_main("implement", "--brief", self.brief(), "--report", str(self.report()))[0], 1)
 
     def test_timeout_kills_process_group(self):
-        self.glob_cfg(FAKE + '[transport]\ntimeout_min=0.05\n[role.implement]\nharness="fake"\nmodel="sleep"\n')
+        self.glob_cfg(FAKE + '[dispatch]\ntimeout_min=0.05\n[role.implement]\nharness="fake"\nmodel="sleep"\n')
         t = time.monotonic()
         code, _, _ = self.run_main("implement", "--brief", self.brief(), "--report", str(self.report()))
         self.assertEqual(code, 2)
@@ -144,8 +141,9 @@ class ThreadFallbackTests(DispatchBase):
     def cfg(self, t3_err):
         t3 = self.root.parent / "t3"
         t3.write_text(f"#!/bin/sh\necho \"{t3_err}\" >&2\nexit 1\n"); t3.chmod(0o755)
-        self.glob_cfg(FAKE + 't3_provider = "fake"\n[role.implement]\nharness = "fake"\nmodel = "echo"\n'
-                      f'[transport.t3]\ndetect = "T3CODE_THREAD_ID"\ncmd = ["{t3}", "-"]\n')
+        self.glob_cfg(FAKE + '[role.implement]\nharness = "fake"\nmodel = "echo"\n')
+        self.write(self.home, ".sstack/ades/t3.toml", '[detect]\nenv = ["T3CODE_THREAD_ID"]\n'
+                   f'[delegate]\nkind = "none"\n[providers]\nfake = "fake"\n[cli]\ncmd = ["{t3}", "-"]\n')
 
     def test_unresolvable_t3_project_falls_back_to_headless(self):
         # a linked worktree isn't a T3 project: `t3 thread start ... .` refuses it

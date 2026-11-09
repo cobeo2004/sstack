@@ -1,0 +1,10 @@
+harness = "pi"
+model = "opencode-go/deepseek-v4.1-flash"
+effort = "high"
+
+# Optional overrides, checked before the built-in kinds: --hint <name>, or `paths` match.
+# [hint.ui]
+# when = "our web app"          # shown by `sstack-dispatch routes`
+# paths = ["web/*"]
+# harness = "claude"
+# model = "opus"                 # or: tier = "strong"
