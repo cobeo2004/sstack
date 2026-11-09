@@ -1,6 +1,6 @@
 ---
 name: swarm
-description: Fan one question out to N independent children (role scout, or another role) through sstack-dispatch, then aggregate their PASS/ISSUES/BLOCKED reports into one result. Use for coverage sweeps ("check every service for X"), races (same brief, several models), or recon that needs many sources. Not for edits to a shared working tree.
+description: Fan one question out to N independent children (role scout, or another role) through dispatch, then aggregate their PASS/ISSUES/BLOCKED reports into one result. Use for coverage sweeps ("check every service for X"), races (same brief, several models), or recon that needs many sources. Not for edits to a shared working tree.
 ---
 
 # swarm
@@ -31,37 +31,23 @@ Open a todo list with four items: Frame, Fan out, Aggregate, Report.
 
 For each slice, write a standalone brief from `<sstack>/skills/work/brief-template.md` (goal,
 the exact slice, how to verify, the report contract) to
-`.sstack/runs/<run-id>/scout-<n>.brief.md`, then start all children together:
+`.sstack/runs/<run-id>/scout-<n>.brief.md`. Dispatch `scout` for every slice and
+start all of them before collecting any report, following
+[sstack § Delegation](../sstack/SKILL.md#delegation).
 
-```sh
-RUN=<run-id>; TASK="<short task name>"; pids=()
-for n in 1 2 3; do
-  <sstack>/bin/sstack-dispatch scout --brief .sstack/runs/$RUN/scout-$n.brief.md \
-    --report .sstack/runs/$RUN/scout-$n.report.md --title "$TASK scout $n" &
-  pids+=($!)
-done
-for i in "${!pids[@]}"; do wait "${pids[$i]}"; echo "scout-$((i+1)) exit=$?"; done
-```
-
-Inside T3 Code with the T3 tools loaded, don't run the loop: take the route
-once (`<sstack>/bin/sstack-dispatch scout --route`) and start one `delegate_task`
-per slice per member, with `interactionMode: "plan"` (read-only), as in
-`<sstack>/skills/sstack/harness-notes/ade.md` § Delegate a role. Write each
-child's summary to its own report yourself: `scout-<n>.report.md` for a
-single member, `scout-<n>.report.<harness>-<model>.md` per member of a panel
-(the names headless dispatch uses), so no member overwrites another.
+Keep one report per slice and member: `scout-<n>.report.md` for a single member;
+dispatch names each member report
+(`scout-<n>.report.<harness>-<model>.md`), so no member overwrites another.
 
 A `panel` on `scout` runs every member for every slice: N slices × M members
 children. For a partition, use a single-member scout; keep panels for races.
 
-Handle each child by its own exit: 0 → read the report; 3 → that slice is local;
-1/2 → a gap to report, never a silent pass.
+Exit `3` makes that slice local. Exit `1`/`2` is a gap to report, never a
+silent pass. Run local slices here one by one with the same briefs.
 
-Exit 3 (`local`) → the role isn't routed: either run the slices here one by one,
-or use the harness's native subagents (see harness notes) with the same briefs.
-A race across models: put the arms in a `[role.review]`-style `panel` in
-`.sstack/config.local.toml` on `scout`, `investigate` or `review`. Don't invent
-role names for arms: only those three (and `plan`) run read-only.
+A race across models: put the arms in a `panel` in
+`.sstack/local/roles/<role>.toml` for `scout`, `investigate` or `review`.
+Don't invent role names for arms: only those three (and `plan`) run read-only.
 
 Each child's report ends `PASS`, `ISSUES` or `BLOCKED` with evidence. A child that
 can prove a defect lists every one it can prove, not only the first.

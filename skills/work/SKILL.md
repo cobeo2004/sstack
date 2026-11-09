@@ -1,6 +1,6 @@
 ---
 name: work
-description: Run any engineering task (feature, bug fix, refactor, perf, multi-phase) through gated phases - recon and report, plan with an answer key, implement (local or routed via sstack-dispatch), test/fix with review, PR on the user's yes. Ticket ID optional. Use for "work this", "work UNI-142", "fix this bug", "build X", "phase 0 this", or when the sstack router picks a playbook.
+description: Run any engineering task (feature, bug fix, refactor, perf, multi-phase) through gated phases - recon and report, plan with an answer key, implement (local or routed through dispatch), test/fix with review, PR on the user's yes. Ticket ID optional. Use for "work this", "work UNI-142", "fix this bug", "build X", "phase 0 this", or when the sstack router picks a playbook.
 ---
 
 # work
@@ -41,12 +41,10 @@ over memory.
    Otherwise clarify: one question at a time, only for things no command can
    answer. If running something would answer it (behaviour, output, timing), run
    it or build a throwaway prototype instead of asking.
-4. Route the recon reading: `<sstack>/bin/sstack-dispatch investigate --route
-   [--files <paths>...]`. Exit 3 (`members: []`) → read here. Exit 0 → write the
-   recon questions as an `investigate` brief and send it to each member (plain
-   `sstack-dispatch investigate --brief … --report …`, or one `delegate_task` per
-   member in T3 Code). Check each report's file pointers yourself; Gate 0 stays here.
-   Many independent sources → `swarm` with role `scout` instead. Use
+4. Route the recon reading: dispatch `investigate` with the recon questions as
+   the brief and follow [sstack § Delegation](../sstack/SKILL.md#delegation).
+   Exit 3 → read here. Check each report's file pointers yourself; Gate 0 stays
+   here. Many independent sources → `swarm` with role `scout` instead. Use
    `code-graph` (`detect-changes` / impact) to find what the change reaches.
 5. Write `recon.md` with exactly these headings, then **stop and report it**:
    - **SYSTEM STATE** — what exists today, with file paths.
@@ -65,7 +63,7 @@ over memory.
 1. Write `plan.md`: ordered, bite-sized steps. Each names exact files, the change,
    the check that proves that step, and its **kind** (`frontend`, `backend`,
    `mobile`, `security`, `complex`, `mechanical`, `docs`, or a config hint; see
-   `<sstack>/bin/sstack-dispatch routes`). The kind picks the model, so the user
+   [sstack § Delegation](../sstack/SKILL.md#delegation)). The kind picks the model, so the user
    approves the routing at Gate 1. One step = one verifiable unit. A step that
    spans frontend and backend is either tagged `complex` or split in two.
 2. Write the **answer key** (`answer-key.md`) before any implementation, so
@@ -86,17 +84,19 @@ in chat where there is none. Nothing gets implemented before it.
 
 ## Phase 2 — Implement
 
-- Per step (or group of steps of one kind): `<sstack>/bin/sstack-dispatch implement
-  --brief <run>/implement-<n>.brief.md --report <run>/implement-<n>.report.md
-  --title "<ticket> implement" --hint <kind> --files <the step's files>`, brief from
-  [brief-template.md](brief-template.md) containing the approved plan. Without
-  `--hint` the kind is detected from `--files`.
+- Per step (or group of steps of one kind): dispatch `implement` with a brief from
+  [brief-template.md](brief-template.md) containing the approved plan, plus the
+  step's files and kind. Follow [sstack § Delegation](../sstack/SKILL.md#delegation);
+  without `--hint` the kind is detected from `--files`.
 - A failed child is retried once, one tier up, by the dispatcher itself
   (`rules.auto_escalate`); the stderr line and `index.jsonl` say so. Check the
   escalated child's diff like any other.
 - Exit 3 (`local`) → implement here, step by step, checking each step.
 - One implementer edits the tree at a time. No commits, no PR from a child.
-- Read the report **and** `git diff` yourself before moving on.
+- Read the report **and** the change itself before moving on: `git diff`, or
+  `git -C <child worktree> diff` for a child in its own checkout (per
+  [sstack § Delegation](../sstack/SKILL.md#delegation)). Bring that change into this
+  checkout before Phase 3: the answer key runs here, not there.
 
 ## Phase 3 — Test / fix with review → gate
 
@@ -127,10 +127,8 @@ agreed out of lane by the user. Report commands + results, findings + outcome.
 
 ## Always
 
-- In T3 Code every dispatch here is `--route` + one `delegate_task` per member
-  (`harness-notes/ade.md`), so children show as threads; plain dispatch is headless.
-- A routed child never approves its own gate. Dispatch exit 1/2 → stop at the next
-  gate and tell the user; don't quietly redo it here.
+- A routed child never approves its own gate. A dispatch exit `1`/`2` stops at the
+  next gate; don't quietly redo it here.
 - Verification gate from `sstack` before every claim.
 - At the end, run `reflect` if the user corrected you or you hit a dead end.
 

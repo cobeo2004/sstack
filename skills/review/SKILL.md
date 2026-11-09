@@ -37,15 +37,13 @@ lenses in [references/lenses.md](references/lenses.md), and this instruction:
 > and risks that need a future change to matter. Don't inflate severity. "No
 > findings" is a valid result.
 
-Inside T3 Code, take the same command with `--route` and start one `delegate_task`
-per member instead (`<sstack>/skills/sstack/harness-notes/ade.md` § Delegate a role).
-Then: `<sstack>/bin/sstack-dispatch review --brief <run>/review.brief.md --report
-<run>/review.report.md --title "<task> review"`, plus `--files` for a PR or
-committed range (`git diff --name-only <base>...<head>`; the working diff is
-detected) and `--panel` when the user asked "are we sure?". By default one
-reviewer runs, never the implementer's model. The full panel runs in parallel,
-one report each, only for `security`/`complex` changes, diffs over
-`rules.panel_diff_lines`, or `--panel`. `--dry-run` prints the route first. Exit 3 → review here yourself with the same brief, as a separate pass
+Dispatch `review` (see [sstack § Delegation](../sstack/SKILL.md#delegation)) with
+this brief, the report path, and `--files` for a PR or committed range
+(`git diff --name-only <base>...<head>`; the working diff is detected). Add
+`--panel` when the user asked "are we sure?". By default one reviewer runs,
+never the implementer's model. The full panel runs in parallel, one report each,
+only for `security`/`complex` changes, diffs over `rules.panel_diff_lines`, or
+`--panel`. Exit 3 → review here yourself with the same brief, as a separate pass
 after re-reading the diff fresh. Exit 1/2, or a member line ending in `gap (no
 report)` → report that reviewer as a gap to the user; don't treat it as "no findings".
 

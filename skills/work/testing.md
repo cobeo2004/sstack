@@ -22,11 +22,10 @@ plan gate.
 
 ## Find the browser and device
 
-Use the ADE you're running in first, then the harness's own tool, then the
-shell. The tools for T3 Code, Orca and Conductor are in
-[harness-notes/ade.md](../sstack/harness-notes/ade.md). The harness fallbacks
-are in the harness notes ("drive a browser", "drive a device"). Say in the
-report which one you used.
+Use the active ADE's note first (the router reads it at task start), then the
+harness's own tool, then the shell. The note's browser, device and capture rows
+say what to run; the harness notes hold the fallbacks. Say in the report which
+one you used.
 
 ## Code
 
@@ -89,6 +88,18 @@ If the repo has a mobile runner (Maestro, Detox, etc., per
 `.sstack/runs/<run-id>/`, the platform and device, and the runner's result if
 there's a flow.
 
+## Capture with the shell
+
+No capture tool in the active ADE (its note's `## Capture` section) → record from
+the shell, into `.sstack/runs/<run-id>/media/`:
+
+- Browser still: Playwright `page.screenshot({ path: '<file>' })`; video:
+  `recordVideo: { dir }` on the browser context.
+- iOS Simulator: `xcrun simctl io booted screenshot <file>` and
+  `xcrun simctl io booted recordVideo <file>` (Ctrl-C to stop).
+- Android: `adb exec-out screencap -p > <file>` and
+  `adb shell screenrecord /sdcard/after-flow.mp4`, then `adb pull`.
+
 ## Before / after evidence
 
 Any change a user can see ships with before/after media for the PR. A backend
@@ -107,8 +118,8 @@ change (API, service, job, data flow) ships with diagrams instead; see
 
    A brand-new screen has no before; say so instead.
 3. Use the same `<step>` names on both sides; matching names become one table
-   row. The ADE's capture tools are in
-   [harness-notes/ade.md](../sstack/harness-notes/ade.md).
+   row. The active ADE's note has the capture procedure;
+   [Capture with the shell](#capture-with-the-shell) is the fallback.
 4. Look at every image before publishing. Crop out or skip any frame that shows
    secrets, tokens or personal data.
 

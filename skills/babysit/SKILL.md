@@ -25,8 +25,9 @@ Needs `gh`. A routed child that opened a PR doesn't babysit; the orchestrator do
      (`gh run view <run-id> --log-failed`, run id from the failing check's link in
      `gh pr checks`), find the first actionable error, and
      fix its root cause (principle fix-root-causes). One failure at a time.
-     Larger fixes go through `<sstack>/bin/sstack-dispatch implement` with the failing log in
-     the brief. Verify locally and commit. Pushing needs the user's yes: ask before
+     Larger fixes: dispatch `implement` with the failing log in the brief (see
+     [sstack § Delegation](../sstack/SKILL.md#delegation)). Verify locally and
+     commit. Pushing needs the user's yes: ask before
      the first push; "babysit PR <n>" with "push fixes" in the request counts as
      that yes for plain pushes to the PR branch, never for a force-push. Re-check.
    - **Review comments:** fetch review threads and discussion
