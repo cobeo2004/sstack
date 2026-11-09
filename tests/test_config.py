@@ -9,6 +9,17 @@ HARN = '[harness.pi]\nheadless=["pi"]\n[harness.codex]\nheadless=["codex"]\n'
 
 
 class ConfigTests(TempEnv):
+    def test_empty_layer_dir_keeps_worktree_fallback(self):
+        import subprocess
+        self.glob_cfg(HARN)
+        self.repo_cfg('[role.implement]\nharness="codex"\nmodel="m2"\n')
+        g = lambda *a: subprocess.run(["git", "-C", str(self.root), *a], check=True, capture_output=True)
+        g("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "i")
+        wt = self.root.parent / "wt"
+        g("worktree", "add", "-q", str(wt))
+        (wt / ".sstack" / "roles").mkdir(parents=True)  # empty: holds no config
+        self.assertEqual(C.load(wt)["role"]["implement"]["model"], "m2")
+
     def test_role_file_replaced_whole(self):
         self.glob_cfg(HARN + '[role.implement]\nharness="pi"\nmodel="m1"\neffort="high"\n')
         self.repo_cfg('[role.implement]\nharness="codex"\nmodel="m2"\n')

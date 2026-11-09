@@ -52,7 +52,9 @@ def repo_file(root: Path, name: str) -> Path:
 
 
 def _has_config(d: Path) -> bool:
-    return any((d / n).exists() for n in LAYOUT + ("config.local.toml",))
+    """A file of the layout, or a layout dir holding at least one file; empty dirs don't count."""
+    return any((d / n).is_file() or ((d / n).is_dir() and any(c.is_file() for c in (d / n).iterdir()))
+               for n in LAYOUT + ("config.local.toml",))
 
 
 def _repo_dir(root: Path, rel: str) -> Path:
