@@ -1,0 +1,7 @@
+{
+  "_source": "hand-made from hook-cursor-session-end.json: transcript_path null (cursor sends null when transcripts are off)",
+  "session_id": "36697146-29d6-43ab-b660-651bf5120be4",
+  "hook_event_name": "sessionEnd",
+  "workspace_roots": ["/repo"],
+  "transcript_path": null
+}

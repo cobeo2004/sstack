@@ -30,16 +30,18 @@ Expected: the dry run prints what it would change and writes nothing. The real r
 - adds one marked line pointing at the `sstack` skill to `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`
   and `~/.pi/agent/AGENTS.md`;
 - creates an empty `~/.sstack/`;
-- prints the optional `SessionEnd` hook snippet for automatic reflect.
+- prints the optional hook snippets (post-edit check, end-of-session reflect) for each harness
+  whose skill dir exists; it writes no harness settings. Each harness note in
+  `skills/sstack/harness-notes/` has the same snippets.
 
 Output (the dry run, then the real run's first line):
 
 ```text
 # expect
 would create <home>/.sstack/
-Optional automatic reflect (also set [reflect] auto = true in ~/.sstack/config.toml).
-Add to ~/.claude/settings.json under "hooks":
-  "SessionEnd": [{"hooks": [{"type": "command", "command": "<sstack>/bin/sstack-reflect-hook"}]}]
+Optional hooks (sstack writes no harness settings): post-edit runs `check` from .sstack/project.toml;
+end-of-session runs reflect when [reflect] auto = true in ~/.sstack/config.toml.
+No harness skill dir found; hook snippets: <sstack>/skills/sstack/harness-notes/
 create <home>/.sstack/
 ```
 
@@ -114,6 +116,13 @@ machine read-only, shows a table of recommended changes — `.sstack/product.md`
 only the rows you pick. It then asks before running the smoke test
 ([doctor.md](doctor.md#run-the-smoke-test)).
 
+`check` in `.sstack/project.toml` is a fast check of one file (`{path}` = the edited file, e.g.
+`ruff check {path}`); the post-edit hook runs it after each agent edit and feeds a failure back.
+It runs only in repos listed in `~/.sstack/repos.txt` (`setup` registers the repo), so a cloned repo
+can't run its own `check` until you register it.
+Edits made through the shell fire no hook, so run the same `check` in CI too. Contract:
+[docs/spec/hooks.md](../spec/hooks.md).
+
 ## Next
 
 - [configuration.md](configuration.md): the split config and its four layers.
@@ -123,7 +132,8 @@ only the rows you pick. It then asks before running the smoke test
 
 ## How to change this
 
-- Installer: `bin/sstack-install`; tested by `tests/test_install.py`.
+- Installer: `bin/sstack-install`; tested by `tests/test_install.py`. Hook snippets live in its
+  `HOOKS` and in each harness note; keep both in step.
 - Built-in roles and harnesses that the output above shows: `defaults/roles/*.toml`,
   `defaults/harnesses/*.toml` (contract: [docs/spec/config.md](../spec/config.md)).
 - If you change a default, update the expected output on this page and run

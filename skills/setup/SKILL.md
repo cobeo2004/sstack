@@ -75,6 +75,9 @@ Only the chosen rows.
    `.gitignore` touched. Ask whether `project.toml` and `product.md` should be committed.
 3. **The verify commands** from the audit in `verify`, with their results. Drop any that need a
    service you don't have; add none the user didn't see at Choose.
+   Propose `check`: the fastest one-file check (`{path}` = the edited file). On yes, offer the
+   post-edit hook snippet from your harness note, and say to run the same `check` in CI: edits made
+   through the shell fire no hook.
 4. **The code graph** if `code-review-graph` is installed: see `code-graph` (`code-review-graph
    build`). If not, say so and set `graph = false`; don't install it unasked.
 5. **Point agents at the brief.** If `AGENTS.md` has a routing table, add one row:

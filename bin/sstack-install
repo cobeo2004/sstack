@@ -9,9 +9,22 @@ REPO = Path(__file__).resolve().parent.parent
 MARK = "For engineering tasks, start with the sstack skill. <!-- sstack -->"
 SKILL_DIRS = [".claude/skills", ".agents/skills", ".codex/skills", ".cursor/skills", ".pi/agent/skills"]
 INSTRUCTION_FILES = [".claude/CLAUDE.md", ".codex/AGENTS.md", ".pi/agent/AGENTS.md"]
-HOOK = """Optional automatic reflect (also set [reflect] auto = true in ~/.sstack/config.toml).
-Add to ~/.claude/settings.json under "hooks":
-  "SessionEnd": [{"hooks": [{"type": "command", "command": "%s"}]}]""" % (REPO / "bin" / "sstack-reflect-hook")
+H = REPO / "bin" / "sstack-hook"
+HEADER = ("Optional hooks (sstack writes no harness settings): post-edit runs `check` from .sstack/project.toml;\n"
+          "end-of-session runs reflect when [reflect] auto = true in ~/.sstack/config.toml.")
+HOOKS = {  # skill dir that marks the harness → its snippet; keep in step with skills/sstack/harness-notes/
+    ".claude/skills": f"""claude: add to ~/.claude/settings.json under "hooks":
+  "PostToolUse": [{{"matcher": "Edit|Write", "hooks": [{{"type": "command", "command": "{H} post-edit --harness claude"}}]}}],
+  "SessionEnd": [{{"hooks": [{{"type": "command", "command": "{REPO / 'bin' / 'sstack-reflect-hook'}"}}]}}]""",
+    ".codex/skills": f"""codex: add to ~/.codex/hooks.json under "hooks" (needs hooks = true under [features] in ~/.codex/config.toml):
+  "PostToolUse": [{{"matcher": "apply_patch", "hooks": [{{"type": "command", "command": "{H} post-edit --harness codex"}}]}}],
+  "SessionEnd": [{{"hooks": [{{"type": "command", "command": "{H} session-end --harness codex"}}]}}]""",
+    ".cursor/skills": f"""cursor: add to ~/.cursor/hooks.json under "hooks" (with "version": 1):
+  "afterFileEdit": [{{"command": "{H} post-edit --harness cursor"}}],
+  "sessionEnd": [{{"command": "{H} session-end --harness cursor"}}]""",
+    ".pi/agent/skills": f"""pi: link the extension:
+  mkdir -p ~/.pi/agent/extensions && ln -s {REPO / 'defaults' / 'hooks' / 'pi-sstack.ts'} ~/.pi/agent/extensions/sstack.ts""",
+}
 
 
 def ours(p: Path) -> bool:
@@ -74,7 +87,11 @@ def main() -> int:
         if not cfg.is_dir():
             say(f"create {cfg}/")
             dry or cfg.mkdir(parents=True)
-        print(HOOK)
+        found = [HOOKS[d] for d in HOOKS if (home / d).is_dir()]
+        if (home / ".agents/skills").is_dir() and not (home / ".codex/skills").is_dir():
+            found.append(HOOKS[".codex/skills"])  # codex reads ~/.agents/skills too
+        print(HEADER)
+        print("\n".join(found) or f"No harness skill dir found; hook snippets: {REPO / 'skills/sstack/harness-notes'}/")
     return 0
 
 
