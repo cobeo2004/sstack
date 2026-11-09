@@ -156,7 +156,7 @@ def smoke(root: Path) -> int:
             args += ["--panel"] if role == "review" else []
             r = _dispatch(root, *args, "--route")
             if r.returncode == 3:
-                print(f"SKIP {role}: runs locally")
+                print(f"SKIP {role}: runs locally", file=sys.stderr)  # stdout may be the exit-4 JSON
                 continue
             try:
                 state["roles"][role] = [c["member"] for c in json.loads(r.stdout)["calls"]]

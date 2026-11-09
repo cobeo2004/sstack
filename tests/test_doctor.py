@@ -232,6 +232,13 @@ class SmokeTests(DoctorBase):
         self.assertIn("PASS implement fake/canary-dirty", out)
         self.assertIn("FAIL tree unchanged: dirty.txt", out)
 
+    def test_tool_path_stdout_stays_json_with_a_local_role(self):
+        self.glob_cfg(roles("haiku", "haiku", "opus").replace('"fake"', '"claude"') + '[role.plan]\nharness="local"\n')
+        code, out, err = self.doctor("--smoke", env={"T3CODE_THREAD_ID": "x"})
+        self.assertEqual(code, 4, out)
+        self.assertNotIn("plan", {x["role"] for x in json.loads(out)["payloads"]})
+        self.assertIn("SKIP plan", err)
+
     def test_tool_path_payloads_then_check(self):
         self.glob_cfg(roles("haiku", "haiku", "opus").replace('"fake"', '"claude"'))
         env = {"T3CODE_THREAD_ID": "x"}
