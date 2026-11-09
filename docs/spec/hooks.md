@@ -46,7 +46,7 @@ of `~/.sstack/repos.txt` (`setup` adds it once the user picks that row). An unre
 that exists inside the repo, runs `check` with `sh -c` in the repo root. `{path}` (bare or already
 quoted, `"{path}"` / `'{path}'`) becomes `"$1"` and the repo-relative path is passed as `$1`, so a
 file name is never parsed as shell. A deleted file or one outside the repo is skipped. Each run gets
-120 s; a timeout counts as a failure (`timed out after 120s`).
+120 s; on timeout its whole process group is killed and it counts as a failure (`timed out after 120s`).
 
 Any failure: stderr gets `sstack-hook: check failed: <path>` plus the command's output, one block
 per failing file. Exit code:

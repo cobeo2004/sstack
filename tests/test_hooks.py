@@ -1,6 +1,6 @@
 """bin/sstack-hook: payload normalization per harness (docs/spec/hooks.md), the post-edit check,
 and session-end handing the transcript to the reflect hook."""
-import contextlib, io, json, os, runpy, shutil, subprocess, sys
+import contextlib, io, json, os, runpy, shutil, subprocess, sys, time
 from unittest import mock
 from pathlib import Path
 
@@ -100,13 +100,15 @@ class HookTests(TempEnv):
         self.assertEqual((self.root / "seen.txt").read_text(), name + "\n")
 
     def test_slow_check_times_out_as_a_failure(self):
-        self.project("sleep 5")
+        self.project("(sleep 1; touch late) & sleep 5")
         (self.root / "a.txt").write_text("")
         f = runpy.run_path(str(HOOK))["post_edit"]
         with mock.patch.dict(f.__globals__, TIMEOUT=0.2), contextlib.redirect_stderr(io.StringIO()) as err:
             code = f({"cwd": str(self.root), "harness": "claude", "files": [str(self.root / "a.txt")]})
         self.assertEqual(code, 2)
         self.assertIn("timed out", err.getvalue())
+        time.sleep(1.5)
+        self.assertFalse((self.root / "late").exists())  # the check's children died with it
 
     def test_no_check_or_missing_file_passes(self):
         r = self.hook("post-edit", "claude", payload("claude-post-edit", self.root))
