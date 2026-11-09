@@ -75,6 +75,7 @@ top (see `work`).
 - A routed child never approves its own gate, never commits, never opens a PR.
 - Irreversible or outward-facing actions (push, PR, deploy, delete data, messages
   to people) always need the user's explicit yes, even mid-playbook.
+- Any ADE or config change you make ends with: ask the user, then `sstack-doctor --smoke`.
 
 ## Verification gate
 

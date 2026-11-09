@@ -102,7 +102,7 @@ Default: the home layer and the current repo. `--global`: home only. `--repo`: t
 same layer dir (`.sstack/config.local.toml` → `.sstack/local/`, adding `.sstack/local/` to
 `.gitignore`), then renames the file to `<name>.bak` (`config.toml.bak`, `config.local.toml.bak`).
 All or nothing: if any target file or `.bak` already exists, nothing is written. Afterwards it runs
-`load()` and prints `next: sstack-doctor`.
+`load()` and prints ``next: ask the user, then `sstack-doctor --smoke` ``.
 
 | legacy | becomes |
 |---|---|

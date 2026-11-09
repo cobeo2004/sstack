@@ -1,0 +1,261 @@
+"""sstack-doctor (docs/spec/doctor.md): static config checks, and `--smoke`: one canary dispatch per
+routed role/member through the real path, then a check of reports, run records and the tree."""
+import argparse
+import json
+import os
+import re
+import secrets
+import shutil
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+import sstack_ade as A
+import sstack_dispatch as D
+from sstack_config import READONLY_ROLES, ConfigError, ades, git_root, legacy, load, resolve
+
+DISPATCH = Path(__file__).resolve().parent.parent / "bin" / "sstack-dispatch"
+RUNS = ".sstack/runs/"
+
+
+# ---- static checks ---------------------------------------------------------------------------
+
+def _loads(root):
+    load(root), ades(root)
+    return "config and ADEs parse"
+
+
+def _legacy(root):
+    old = legacy(root)
+    if old:
+        raise ConfigError(f"{', '.join(map(str, old))}: run `sstack-config migrate`")
+    return "none"
+
+
+def _roles(root):
+    cfg = load(root)
+    out = [f"{r} → {', '.join(A.key(m) for m in resolve(cfg, r) or []) or 'local'}" for r in sorted(cfg.get("role", {}))]
+    return "; ".join(out) or "no roles"
+
+
+def _used(cfg) -> set[str]:
+    """Harnesses a role (any panel member) or a tier routes to."""
+    used = {m["harness"] for r in cfg.get("role", {}) for m in resolve(cfg, r) or []}
+    return used | {t["harness"] for t in cfg.get("tier", {}).values() if t.get("harness") not in (None, "local")}
+
+
+def _clis(root):
+    cfg = load(root)
+    missing, seen = [], []
+    for h in sorted(_used(cfg)):
+        for k in ("headless", "headless_readonly"):
+            argv = cfg["harness"].get(h, {}).get(k)
+            if argv:
+                seen.append(argv[0])
+                if not shutil.which(argv[0]):
+                    missing.append(f"{h}.{k}: {argv[0]}")
+    if missing:
+        raise ConfigError("not on PATH: " + ", ".join(missing))
+    return ", ".join(sorted(set(seen))) or "no harness used"
+
+
+def _ade(root):
+    d = A.describe(*A.active(root, load(root), os.environ))
+    return ", ".join(f"{k} {d[k]}" for k in ("name", "why", "delegate", "browser", "device", "capture", "note"))
+
+
+def _hooks(root):
+    bad = [str(a["hook_path"]) for a in ades(root) if a["hook_path"] and not os.access(a["hook_path"], os.X_OK)]
+    if bad:
+        raise ConfigError("not executable: " + ", ".join(bad))
+    return "ok"
+
+
+CHECKS = [("config loads", _loads), ("no legacy files", _legacy), ("roles resolve", _roles),
+          ("harness CLIs", _clis), ("active ADE", _ade), ("hooks executable", _hooks)]
+
+
+def static(root) -> int:
+    code = 0
+    for name, fn in CHECKS:
+        try:
+            print(f"PASS {name}: {fn(root)}")
+        except (ConfigError, OSError, KeyError) as e:
+            print(f"FAIL {name}: {e}")
+            code = 1
+    return code
+
+
+# ---- smoke test ------------------------------------------------------------------------------
+
+TITLE = "sstack smoke"  # the index lines' "task": smoke lines stay in the append-only index, tagged
+SMOKE_DIR = re.compile(r"-smoke(-\d+)?$")
+
+
+def _brief(d: Path, role: str, token: str) -> str:
+    if role in READONLY_ROLES:
+        return f"sstack smoke test. Reply with the line `CANARY {token}` and change nothing.\n"
+    return (f"sstack smoke test. Write {d / 'canary.txt'} containing `{token}` (nothing else), "
+            f"then reply with the line `CANARY {token}`. Change nothing else.\n")
+
+
+def _dispatch(root: Path, *args) -> subprocess.CompletedProcess:
+    return subprocess.run([sys.executable, str(DISPATCH), *args], cwd=root, capture_output=True, text=True)
+
+
+def _owned(root: Path, x) -> Path | None:
+    """x resolved, when it is a direct child of <root>/.sstack/runs/ and not a symlink; else None."""
+    p = Path(x)
+    return p.resolve() if not p.is_symlink() and p.resolve().parent == (root / RUNS).resolve() else None
+
+
+def _from_smoke(root: Path, d: Path, x: Path) -> bool:
+    """x is a dispatch run dir whose report lives in this smoke dir d (run.json report_base)."""
+    try:
+        base = json.loads((x / "run.json").read_text())["report_base"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+    return (root / base).resolve().parent == d.resolve()
+
+
+def _cleanup(root: Path, d: Path, run_dirs: list[str]) -> bool:
+    """Remove the smoke dir and the run dirs its smoke.json names — all or nothing: any path that is
+    not a direct, non-symlink child of .sstack/runs/ → FAIL, nothing deleted. index.jsonl is never touched."""
+    bad = [str(x) for x in run_dirs if not _owned(root, x) or not _from_smoke(root, d, _owned(root, x))]
+    if bad:
+        print(f"FAIL cleanup: not a run of this smoke test under {root / RUNS}, nothing deleted: {', '.join(bad)}")
+        return False
+    for x in [*run_dirs, d]:
+        shutil.rmtree(_owned(root, x), ignore_errors=True)
+    return True
+
+
+def smoke(root: Path) -> int:
+    cfg = load(root)
+    base = D.snapshot(root)
+    runs = root / RUNS
+    runs.mkdir(parents=True, exist_ok=True)
+    stem, n = f"{time.strftime('%Y%m%d-%H%M')}-smoke", 1
+    while True:
+        d = runs / (stem if n == 1 else f"{stem}-{n}")
+        try:
+            d.mkdir()
+            break
+        except FileExistsError:
+            n += 1
+    d = d.resolve()
+    token = secrets.token_hex(8)
+    state = {"token": token, "baseline": base, "roles": {}, "run_dirs": [], "errors": []}
+    try:
+        payloads = []
+        for role in sorted(cfg.get("role", {})):
+            brief, report = d / f"{role}.brief.md", d / f"{role}.md"
+            brief.write_text(_brief(d, role, token))
+            args = [role, "--brief", str(brief), "--report", str(report), "--title", TITLE, "--no-escalate"]
+            args += ["--panel"] if role == "review" else []
+            r = _dispatch(root, *args, "--route")
+            if r.returncode == 3:
+                print(f"SKIP {role}: runs locally")
+                continue
+            try:
+                state["roles"][role] = [c["member"] for c in json.loads(r.stdout)["calls"]]
+            except (ValueError, KeyError, TypeError):
+                state["errors"].append(f"{role}: sstack-dispatch --route exit {r.returncode}: {r.stderr.strip()}")
+                continue
+            seen = len(_lines(root))
+            r = _dispatch(root, *args)
+            if r.returncode == 4:
+                p = json.loads(r.stdout)
+                state["run_dirs"].append(p["run_dir"])
+                payloads.append(p)
+                continue
+            # headless: this role's run dirs, from the lines it appended (other runs may append too)
+            state["run_dirs"] += sorted({str(root / l["run_dir"]) for l in _lines(root)[seen:]
+                                         if _mine(root, d, l) and "run_dir" in l} - set(state["run_dirs"]))
+            if r.returncode not in (0, 1, 2):
+                state["errors"].append(f"{role}: sstack-dispatch exit {r.returncode}: {r.stderr.strip()}")
+        (d / "smoke.json").write_text(json.dumps(state, indent=2) + "\n")
+        if payloads:
+            print(json.dumps({"smoke_run_dir": str(d), "payloads": payloads,
+                              "next": f"make every call and its `record`, then: sstack-doctor --smoke --check {d}"},
+                             indent=2))
+            return 4
+    except BaseException:
+        _cleanup(root, d, state["run_dirs"])
+        raise
+    return check(root, d)
+
+
+def _lines(root: Path) -> list[dict]:
+    p = root / D.INDEX
+    out = []
+    for l in p.read_text().splitlines() if p.is_file() else []:
+        try:
+            out.append(json.loads(l))
+        except ValueError:
+            pass
+    return [l for l in out if isinstance(l, dict)]
+
+
+def _mine(root: Path, d: Path, line: dict) -> bool:
+    return isinstance(line.get("report"), str) and (root / line["report"]).resolve().is_relative_to(d)
+
+
+def check(root: Path, d: Path) -> int:
+    owned = _owned(root, d)
+    if not owned or not SMOKE_DIR.search(owned.name):
+        print(f"FAIL check: {d} is not a {root / RUNS}<id>-smoke dir")
+        return 1
+    d = owned
+    state = json.loads((d / "smoke.json").read_text())
+    ok = True
+    try:
+        token = state["token"]
+        for e in state.get("errors", []):
+            print(f"FAIL {e}")
+            ok = False
+        want = re.compile(rf"^\s*CANARY {re.escape(token)}\s*$", re.M)
+        mine = [l for l in _lines(root) if _mine(root, d, l)]
+        for role, members in state["roles"].items():
+            report = d / f"{role}.md"
+            for m in members:
+                h, _, model = m.partition("/")
+                rp = D.report_path(report, {"harness": h, "model": None if model == "default" else model}, len(members))
+                hit = [l for l in mine if l.get("harness") == h and l.get("model") == model
+                       and (root / l["report"]).resolve() == rp]
+                why = ("no index line" if not hit else f"exit {hit[-1].get('exit')}" if hit[-1].get("exit") != 0 else
+                       f"no `CANARY {token}` line in {rp}" if not (rp.is_file() and want.search(rp.read_text())) else
+                       f"readonly_warning {hit[-1]['readonly_warning']}" if hit[-1].get("readonly_warning") else None)
+                cf = d / "canary.txt"
+                if not why and role not in READONLY_ROLES and not (cf.is_file() and cf.read_text().strip() == token):
+                    why = f"{cf.name} missing or wrong"
+                print(f"{'FAIL' if why else 'PASS'} {role} {m}" + (f": {why}" if why else ""))
+                ok = ok and not why
+        # this invocation's dirs only; index.jsonl is held to append-only by tree_changes
+        skip = [D.rel(root, x) + "/" for x in [d, *state["run_dirs"]] if _owned(root, x)]
+        changed = D.tree_changes(root, state["baseline"], skip)
+        print(f"{'FAIL' if changed else 'PASS'} tree unchanged" + (f": {', '.join(changed)}" if changed else ""))
+        ok = ok and not changed
+    finally:
+        ok = _cleanup(root, d, state.get("run_dirs", [])) and ok
+    return 0 if ok else 1
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(prog="sstack-doctor", description="Check the sstack config; --smoke runs "
+                                 "one canary dispatch per routed member (ask the user first).")
+    ap.add_argument("--smoke", action="store_true")
+    ap.add_argument("--check", metavar="RUN_DIR", help="with --smoke: verify a tool-delegated smoke run")
+    a = ap.parse_args(argv)
+    root = git_root(Path.cwd())
+    if not a.smoke:
+        return static(root)
+    if root is None:
+        print("FAIL smoke: not in a git repo", file=sys.stderr)
+        return 1
+    try:
+        return check(root, Path(a.check)) if a.check else smoke(root)
+    except (ConfigError, OSError, ValueError) as e:
+        print(f"FAIL smoke: {e}")
+        return 1

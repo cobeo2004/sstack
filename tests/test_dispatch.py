@@ -564,3 +564,16 @@ class FixB2Tests(FakeCliBase):
         self.assertIn("kaboom", err)
         self.assertEqual(sorted((r["model"], r["exit"]) for r in self.index()), [("boom", 1), ("echo", 0)])
         self.assertIn("fake/boom: exit 1", self.report().read_text())
+
+
+class EmptyIndexTests(FakeCliBase):
+    """fix-C: an empty index.jsonl (no lines yet) must not break the read-only baseline snapshot."""
+
+    def test_readonly_dispatch_with_empty_index(self):
+        self.glob_cfg(FAKE + '[role.scout]\nharness="fake"\nmodel="echo"\n')
+        idx = self.root / D.INDEX
+        idx.parent.mkdir(parents=True)
+        idx.write_text("")
+        code, _, err = self.dispatch("scout")
+        self.assertEqual(code, 0, err)
+        self.assertEqual(len(idx.read_text().splitlines()), 1)

@@ -90,7 +90,7 @@ class ConfigCliTests(TempEnv):
         repo_cfg = self.copy_unibuz()
         old = legacy_effective(self.home, self.root)
         out = self.run_cli("migrate")
-        self.assertIn("next: sstack-doctor", out)
+        self.assertIn("next: ask the user, then `sstack-doctor --smoke`", out)
         self.assertEqual((global_cfg.parent / "config.toml.bak").read_text(), (DATA / "global.toml").read_text())
         self.assertEqual((repo_cfg.parent / "config.toml.bak").read_text(), (DATA / "unibuz.toml").read_text())
         self.assertEqual(C.legacy(self.root), [])
@@ -223,11 +223,11 @@ max_parallel = 2
         repo_cfg = self.write(self.root, ".sstack/config.toml", '[project]\nverify = "make"\n')
         out = self.run_cli("migrate", "--global")
         self.assertIn(f"note: still legacy: {repo_cfg}", out)
-        self.assertIn("next: sstack-doctor", out)
+        self.assertIn("next: ask the user, then `sstack-doctor --smoke`", out)
         self.assertTrue((self.home / ".sstack/roles/scout.toml").is_file())
         out = self.run_cli("migrate", "--repo")
         self.assertNotIn("still legacy", out)
-        self.assertIn("next: sstack-doctor", out)
+        self.assertIn("next: ask the user, then `sstack-doctor --smoke`", out)
         self.assertEqual(C.legacy(self.root), [])
 
     def test_repo_migrate_uses_the_primary_in_a_worktree(self):
@@ -242,7 +242,7 @@ max_parallel = 2
         self.assertFalse((wt / ".sstack").exists())
         self.write(self.root, ".sstack/config.toml", '[project]\nverify = "make"\n')
         out = self.run_cli("migrate", "--repo", cwd=wt)
-        self.assertIn("next: sstack-doctor", out)
+        self.assertIn("next: ask the user, then `sstack-doctor --smoke`", out)
         self.assertTrue((self.root / ".sstack/project.toml").is_file())
         self.assertTrue((self.root / ".sstack/config.toml.bak").is_file())
         self.assertEqual(C.load(C.git_root(wt))["project"], {"verify": "make"})
@@ -386,7 +386,7 @@ max_parallel = 2
     def test_default_outside_git_migrates_home(self):
         self.copy_global()
         with tempfile.TemporaryDirectory() as d:
-            self.assertIn("next: sstack-doctor", self.run_cli("migrate", cwd=d))
+            self.assertIn("next: ask the user, then `sstack-doctor --smoke`", self.run_cli("migrate", cwd=d))
         self.assertTrue((self.home / ".sstack/harnesses/pi.toml").is_file())
 
     def test_home_equal_repo_migrates_config_local(self):
