@@ -112,10 +112,11 @@ change (API, service, job, data flow) ships with diagrams instead; see
 4. Look at every image before publishing. Crop out or skip any frame that shows
    secrets, tokens or personal data.
 
-Publishing happens in Phase 4, with the user's yes:
-`<sstack>/bin/sstack-pr-media <pr> <run>/media/*` pushes the files to the repo's
-`sstack-media` branch (never the PR branch) and prints a Before | After table.
-Post it with `gh pr comment <pr> --body-file <file>`.
+Publishing happens in Phase 4, with the user's yes, right after opening the PR:
+`<sstack>/bin/sstack-pr-media <pr> <run>/media/* --edit-body` pushes the files to
+the repo's `sstack-media` branch (never the PR branch) and puts the marked
+Before | After table in the PR description. PR comments are only for add-ons
+(media captured after review, follow-up notes), never the main evidence.
 
 ### Backend diagrams
 
@@ -130,8 +131,9 @@ code (the `diagram` skill's Mermaid fallback; `how` for the facts):
   no invented boxes. Keep it under about 15 nodes: the part that changed.
 - Add the proof beside it: the endpoint call or test output from Phase 3.
 
-`sstack-pr-media` inlines `.mmd` files as ```` ```mermaid ```` blocks (GitHub
-renders them) and doesn't push them. A PR with only diagrams needs no media branch.
+`sstack-pr-media` puts `.mmd` files in the same Before | After table as images,
+as ```` ```mermaid ```` blocks (GitHub renders them), and doesn't push them. A PR
+with only diagrams needs no media branch.
 
 ## When a check can't run
 

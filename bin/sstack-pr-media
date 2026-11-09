@@ -1,23 +1,32 @@
 #!/usr/bin/env python3
-"""Publish before/after screenshots and recordings for a PR to a separate media branch
-(never the PR's own branch), then print a markdown Before | After table to post on the PR.
+"""Publish before/after screenshots, diagrams and recordings for a PR to a separate
+media branch (never the PR's own branch), then print a marked Before | After section.
 
-  sstack-pr-media <pr> <file>... [--repo owner/name] [--branch sstack-media] [--dry-run]
+  sstack-pr-media <pr> <file>... [--repo owner/name] [--branch sstack-media] [--dry-run] [--edit-body]
 
-Name files before-<step>.<ext> / after-<step>.<ext>; matching steps share a row.
-Videos get an inline GIF copy when ffmpeg is installed (GitHub won't play repo videos inline).
-Mermaid files (.mmd, e.g. before-<flow>.mmd / after-<flow>.mmd for backend changes) are inlined
-as ```mermaid blocks, which GitHub renders; they are never pushed."""
+Name files before-<step>.<ext> / after-<step>.<ext>; matching steps share one HTML
+table row, with images and Mermaid diagrams side by side. Videos get an inline GIF
+copy when ffmpeg is installed (GitHub won't play repo videos inline). Mermaid files
+(.mmd, e.g. before-<flow>.mmd / after-<flow>.mmd for backend changes) are inlined as
+```mermaid blocks, which GitHub renders; they are never pushed.
+
+--edit-body puts the marked section in the PR description, replacing an earlier
+sstack-media section or appending it when there is none.
+"""
 import argparse
+import html
 import re
 import shutil
 import subprocess
 import sys
 import tempfile
+from urllib.parse import quote
 from pathlib import Path
 
 IMAGES = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
 VIDEOS = {".mp4", ".mov", ".webm"}
+MEDIA_START = "<!-- sstack-media -->"
+MEDIA_END = "<!-- /sstack-media -->"
 
 
 def git(*args, cwd=None, check=True):
@@ -42,7 +51,7 @@ def gif_of(video: Path) -> Path | None:
 
 
 def table(base: str, names: list[str], diagrams: dict[str, str] | None = None) -> str:
-    link = lambda n: f"{base}{n}?raw=true"
+    link = lambda n: f"{base}{quote(n)}?raw=true"
     rows: dict[str, dict[str, str]] = {}
     videos, other = [], []
     for n in names:
@@ -51,27 +60,59 @@ def table(base: str, names: list[str], diagrams: dict[str, str] | None = None) -
         if ext in VIDEOS:
             videos.append(f"[{n}]({link(n)})")
         elif m and ext in IMAGES:
-            rows.setdefault(m.group(2), {})[m.group(1)] = f"![{m.group(1)}]({link(n)})"
+            rows.setdefault(m.group(2), {})[m.group(1)] = f'<img src="{link(n)}" alt="{html.escape(n)}">'
         else:
             other.append(f"[{n}]({link(n)})")
-    out = ["### Before / after", ""]
+    for n, text in (diagrams or {}).items():
+        m = re.match(r"(before|after)-(.+)\.mmd$", n)
+        side, key = (m.group(1), m.group(2)) if m else ("after", Path(n).stem)
+        rows.setdefault(key, {})[side] = (
+            f"\n\n```mermaid\n{text.rstrip(chr(10))}\n```\n\n"
+        )
+    out = [MEDIA_START, "### Before / after", ""]
     if rows:
-        out += ["| | Before | After |", "|---|---|---|"]
-        out += [f"| {k} | {v.get('before', '—')} | {v.get('after', '—')} |" for k, v in rows.items()]
+        out += ["<table>", "<tr><th>Before</th><th>After</th></tr>"]
+        for step in sorted(rows):
+            out += [
+                f'<tr><td colspan="2"><b>{html.escape(step)}</b></td></tr>',
+                f'<tr><td>{rows[step].get("before", "—")}</td><td>{rows[step].get("after", "—")}</td></tr>',
+            ]
+        out += ["</table>"]
     if videos:
         out += ["", "Recordings: " + " · ".join(videos)]
     if other:
         out += ["", "Other: " + " · ".join(other)]
-    for n, text in sorted((diagrams or {}).items(), key=lambda kv: _diagram_key(kv[0])):
-        m = re.match(r"(before|after)-(.+)\.mmd$", n)
-        label = f"{m.group(2)}: {m.group(1)}" if m else Path(n).stem
-        out += ["", f"#### {label}", "", "```mermaid", text.rstrip("\n"), "```"]
+    out += ["", MEDIA_END]
     return "\n".join(out) + "\n"
 
 
-def _diagram_key(n: str):
-    m = re.match(r"(before|after)-(.+)\.mmd$", n)
-    return (m.group(2), m.group(1) == "after") if m else (n, False)
+def replace_section(body: str, section: str) -> str:
+    # pair the first end marker with the nearest start before it: a stray start never eats user text
+    end = body.find(MEDIA_END)
+    start = body.rfind(MEDIA_START, 0, end) if end != -1 else -1
+    if start != -1 and end != -1:
+        return body[:start] + section + body[end + len(MEDIA_END):]
+    body = body.rstrip()
+    return f"{body}\n\n{section}" if body else section
+
+
+def edit_pr_body(pr: str, repo: str | None, section: str) -> None:
+    repo_args = ["-R", repo] if repo else []
+    view = ["gh", "pr", "view", pr, *repo_args, "--json", "body", "-q", ".body"]
+    try:
+        current = subprocess.run(view, capture_output=True, text=True)
+    except OSError as e:
+        sys.exit(f"sstack-pr-media: {e}\n\n{section}")
+    if current.returncode:
+        sys.exit(f"sstack-pr-media: gh pr view failed: {current.stderr.strip()}\n\n{section}")
+    body = replace_section(current.stdout, section)
+    edit = ["gh", "pr", "edit", pr, *repo_args, "--body-file", "-"]
+    try:
+        result = subprocess.run(edit, input=body, capture_output=True, text=True)
+    except OSError as e:
+        sys.exit(f"sstack-pr-media: {e}\n\n{section}")
+    if result.returncode:
+        sys.exit(f"sstack-pr-media: gh pr edit failed: {result.stderr.strip()}\n\n{section}")
 
 
 def main() -> int:
@@ -81,6 +122,8 @@ def main() -> int:
     ap.add_argument("--repo")
     ap.add_argument("--branch", default="sstack-media")
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--edit-body", action="store_true",
+                    help="replace the marked section in the PR description instead of printing only")
     a = ap.parse_args()
     missing = [str(f) for f in a.files if not f.is_file()]
     if missing:
@@ -95,10 +138,13 @@ def main() -> int:
     base = f"https://github.com/{a.repo or repo_slug()}/blob/{a.branch}/{dest}/"
     if a.dry_run:
         print(f"would push {len(names)} files to origin/{a.branch}:{dest}/\n")
-        print(table(base, names, diagrams))
+        sys.stdout.write(table(base, names, diagrams))
         return 0
     if not files:  # diagrams only: nothing to host
-        print(table(base, names, diagrams))
+        section = table(base, names, diagrams)
+        if a.edit_body:
+            edit_pr_body(a.pr, a.repo, section)
+        sys.stdout.write(section)
         return 0
     tmp = Path(tempfile.mkdtemp(prefix="sstack-media-"))
     try:
@@ -121,7 +167,10 @@ def main() -> int:
     finally:
         git("worktree", "remove", "--force", str(tmp), check=False)
         shutil.rmtree(tmp, ignore_errors=True)
-    print(table(base, names, diagrams))
+    section = table(base, names, diagrams)
+    if a.edit_body:
+        edit_pr_body(a.pr, a.repo, section)
+    sys.stdout.write(section)
     return 0
 
 

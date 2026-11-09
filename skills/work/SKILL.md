@@ -114,9 +114,11 @@ agreed out of lane by the user. Report commands + results, findings + outcome.
 1. `unslop` the diff and the PR text. Use the repo's PR template if it has one.
 2. Rebase/merge the base branch and re-run the answer key on the result.
 3. **Gate 4:** the user's explicit yes before commit, push or PR, and before
-   publishing media. Then push, open the PR, publish the PR evidence per
-   [testing.md](testing.md) (`<sstack>/bin/sstack-pr-media <pr> <run>/media/*`, then
-   post its output with `gh pr comment`), and hand off to `babysit`.
+   publishing media. Then push, open the PR, and run
+   `<sstack>/bin/sstack-pr-media <pr> <run>/media/* --edit-body` right after opening,
+   so the Before | After table lands in the PR description per
+   [testing.md](testing.md). PR comments are only for add-ons, never the main
+   evidence. Then hand off to `babysit`.
 
 ## Always
 
