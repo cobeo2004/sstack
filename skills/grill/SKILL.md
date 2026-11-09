@@ -39,6 +39,14 @@ Word each question so "yes" accepts your recommendation. A question that depends
 another one still open this round belongs to a later round. Each round of answers
 pushes the frontier outward; recompute it and ask the next round.
 
+## Settle the words too
+
+When a round settles a term, add it to the repo's existing glossary — the one
+`setup` linked in `.sstack/product.md` or `CONTEXT.md`/`GLOSSARY.md`/`docs/glossary*`.
+One definition, then `_Avoid_:` with the words that mean something else here, so
+later rounds and code use one name. No glossary in the repo → skip it and say so;
+never create an empty one.
+
 ## Facts are yours, decisions are theirs
 
 Never ask the user for something you could look up. When a frontier question needs
@@ -57,8 +65,14 @@ delete it once the question is answered.
 The session is done when the frontier is empty: every branch visited, nothing
 silently assumed. Then write `.sstack/runs/<slug>-<YYYYmmdd-HHMM>/decisions.md`:
 
+- **PROBLEM** — what is wrong or missing today, in the user's words.
+- **AFFECTED USERS AND SYSTEMS** — who feels it, and what it touches (skills, code,
+  docs, services).
+- **CONSTRAINTS** — what the solution must obey: house rules, spec, stack, cost.
 - **GOAL** — one sentence, in the user's words.
 - **DONE WHEN** — a falsifiable check (a command, a page state, a number).
+- **REQUIREMENTS** — numbered `R1..Rn`, one testable promise each. `work` cites
+  them from its plan and answer key; an uncited one is a requirement nobody built.
 - **DECISIONS** — each settled question and its answer.
 - **OUT OF SCOPE** — what was raised and ruled out.
 - **OPEN** — anything the user deferred, plainly.

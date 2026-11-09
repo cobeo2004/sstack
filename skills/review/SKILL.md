@@ -34,8 +34,9 @@ lenses in [references/lenses.md](references/lenses.md), and this instruction:
 > behaviour. Report each with a title, `file:line`, the exact command, the output
 > the intent requires, and the actual output if your sandbox let you run it (you
 > may be read-only; then say "not run"). Leave out style, naming,
-> and risks that need a future change to matter. Don't inflate severity. "No
-> findings" is a valid result.
+> and risks that need a future change to matter. Mark each finding `Important`
+> (breaks the intent or a cited rule) or `Nit`, at most 5 nits, and don't inflate
+> severity. "No findings" is a valid result.
 
 Dispatch `review` (see [sstack § Delegation](../sstack/SKILL.md#delegation)) with
 this brief, the report path, and `--files` for a PR or committed range
@@ -67,9 +68,10 @@ say they came from that reviewer.
 
 - **Intent** — the restatement.
 - **Scope** — base..head SHAs, files.
-- **Findings** — for each: severity (high / medium / low, honest), `file:line`,
-  command, output, how it breaks the intent, which reviewer found it.
-  "No verified findings" when none survive.
+- **Findings** — for each: severity `Important` or `Nit`, `file:line`, command,
+  output, how it breaks the intent or the cited rule, which reviewer found it.
+  At most 5 nits; only an `Important` blocks the caller's gate. "No verified
+  findings" when none survive.
 - **Dropped** — per reviewer, how many findings were dropped and why.
 - **Gaps** — panel members that failed or timed out (from the dispatch index).
 

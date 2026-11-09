@@ -16,8 +16,12 @@ You are the <role> for this task. Stay in this lane: <what to do; for read-only
 roles: "read and report only — do not edit files">.
 
 ## Context to read first
-- AGENTS.md / CLAUDE.md in the repo root.
-- .sstack/product.md (what the app is).
+- Every AGENTS.md / CLAUDE.md from the repo root down to each touched path: the
+  nearer one overrides the root.
+- The `docs` entries in `.sstack/project.toml`, and `.sstack/product.md` (what the
+  app is).
+- The nearest similar file to each one you'll change, and its test: match the
+  naming, error style and helpers already there instead of inventing new ones.
 - <specific files, docs, ticket text>
 
 ## The work
@@ -37,7 +41,9 @@ diff range or PR and the lenses to apply.>
 1. **Files changed** — paths, or "none".
 2. **What I did** — short.
 3. **What I could not do** — and why.
-4. **Status** — `PASS`, `ISSUES` or `BLOCKED`, with evidence: each command run and
+4. **Instructions that were wrong or stale** — instruction, what was true, what I
+   did instead (or "none").
+5. **Status** — `PASS`, `ISSUES` or `BLOCKED`, with evidence: each command run and
    its trimmed output.
 ```
 
