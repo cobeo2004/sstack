@@ -118,6 +118,8 @@ only the rows you pick. It then asks before running the smoke test
 
 `check` in `.sstack/project.toml` is a fast check of one file (`{path}` = the edited file, e.g.
 `ruff check {path}`); the post-edit hook runs it after each agent edit and feeds a failure back.
+It runs only in repos listed in `~/.sstack/repos.txt` (`setup` registers the repo), so a cloned repo
+can't run its own `check` until you register it.
 Edits made through the shell fire no hook, so run the same `check` in CI too. Contract:
 [docs/spec/hooks.md](../spec/hooks.md).
 

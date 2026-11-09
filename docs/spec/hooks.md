@@ -39,7 +39,10 @@ Payload fixtures: `tests/fixtures/payloads/hook-<harness>-<event>.json`. Each ha
 ## post-edit
 
 Reads `check` from the repo's `.sstack/project.toml` (top level, a shell command with a `{path}`
-placeholder; see [config.md](config.md)). No repo, no `check` → exit 0. For each normalized file
+placeholder; see [config.md](config.md)). No repo, no `check` → exit 0. `check` comes from the
+repo, so it runs only in a repo the user registered: its root, or its primary checkout's, is a line
+of `~/.sstack/repos.txt` (`setup` adds it once the user picks that row). An unregistered repo prints
+`sstack-hook: <root> is not in ~/.sstack/repos.txt; check skipped` to stderr and exits 0. For each normalized file
 that exists inside the repo, runs `check` with `sh -c` in the repo root. `{path}` (bare or already
 quoted, `"{path}"` / `'{path}'`) becomes `"$1"` and the repo-relative path is passed as `$1`, so a
 file name is never parsed as shell. A deleted file or one outside the repo is skipped. Each run gets

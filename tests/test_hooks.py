@@ -56,6 +56,15 @@ class HookTests(TempEnv):
     def project(self, check):
         self.write(self.root, ".sstack/project.toml", f"check = {json.dumps(check)}\n")
         (self.root / "a.txt").write_text("hello\n")
+        self.write(self.home, ".sstack/repos.txt", f"{self.root}\n")
+
+    def test_unregistered_repo_never_runs_check(self):
+        self.project("touch ran")
+        (self.home / ".sstack/repos.txt").unlink()
+        r = self.hook("post-edit", "claude", payload("claude-post-edit", self.root))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("check skipped", r.stderr)
+        self.assertFalse((self.root / "ran").exists())
 
     def test_check_failure_feeds_back(self):
         self.project("false {path}")
@@ -103,6 +112,7 @@ class HookTests(TempEnv):
         r = self.hook("post-edit", "claude", payload("claude-post-edit", self.root))
         self.assertEqual((r.returncode, r.stderr), (0, ""))
         self.write(self.root, ".sstack/project.toml", 'check = "false {path}"\n')
+        self.write(self.home, ".sstack/repos.txt", f"{self.root}\n")
         r = self.hook("post-edit", "claude", payload("claude-post-edit", self.root))  # a.txt not on disk
         self.assertEqual(r.returncode, 0, r.stderr)
 
