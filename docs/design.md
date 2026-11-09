@@ -2,7 +2,9 @@
 
 Date: 2026-11-08. Status: approved by the user 2026-11-08 (with the `reflect`
 skill and dashboard added after review). Items marked *(builder's call)* were
-settled by the author, not the user.
+settled by the author, not the user. Revised 2026-11-09 (ADE/config redesign): split
+config in four layers, ADE adapters, exit 4 + `record`, `sstack-config`, `sstack-doctor`.
+Contracts live in [`spec/`](spec/); where this doc and a spec differ, the spec wins.
 
 ## Intent
 
@@ -28,9 +30,9 @@ build step, no generated files.
   brief ("what this app is and does"), not just conventions.
 - `work`: gated phases for any task (ticket ID optional) — debugging, features,
   refactors, perf, executing a plan.
-- Per-role harness + model routing from TOML, global → repo → local.
-- Works in any ADE: visible thread where the ADE supports it (T3), headless CLI
-  everywhere else.
+- Per-role harness + model routing from TOML, defaults → global → repo → local.
+- Works in any ADE: the ADE's own linked child task where it has one (T3, Orca,
+  Conductor), headless CLI everywhere else.
 - Learns: captures the user's corrections and the agent's dead ends as lessons so
   they are not repeated, and turns repeated lessons into real edits.
 - A light local dashboard showing lessons, code graph, roles/models (editable),
@@ -43,7 +45,6 @@ build step, no generated files.
   They stay installed outside sstack and update from their own sources.
 - Worktree management — the ADEs own it.
 - Data charts — `dataviz` covers them.
-- Per-ADE adapters beyond a transport entry in config.
 - Vector/embedding memory stores, autopilot/autonomous loops, eval machinery,
   provenance/credits tooling, CI-enforced policy. (Lessons are plain files.)
 
@@ -76,11 +77,14 @@ sstack/
     swarm/  review/  unslop/  babysit/  how/  why/  diagram/  code-graph/  reflect/
   bin/
     sstack-dispatch     # the router/launcher (Python, stdlib)
+    sstack-config       # show / migrate the layered config
+    sstack-doctor       # static checks + smoke test
     sstack-install      # symlinks skills into each harness's skills dir
     sstack-ui           # local dashboard server (Python stdlib http.server)
-  ui/                   # dashboard page(s): plain HTML/CSS/JS, no build step
-  config.example.toml
-  docs/design.md
+  defaults/             # built-in config layer: config.toml, harnesses/, roles/, ades/
+  lib/                  # the Python behind bin/
+  ui/                   # dashboard: index.html + ES modules per page, no build step
+  docs/design.md  docs/spec/
   tests/                # one small stdlib test file for sstack-dispatch
 ```
 
@@ -150,12 +154,11 @@ Existing repo:
    surfaces and how they connect — **linking** to deeper docs (e.g. UniBuz
    `.docs/spec/functional-spec.md`, `.docs/architecture/`) rather than copying them.
    Never restate versions, env names or dependency lists.
-3. Write `.sstack/config.toml` (`[project]` section; roles only if the user wants
-   repo-specific routing). Add `.sstack/config.local.toml` and `.sstack/runs/` to
-   `.gitignore` (or `.git/info/exclude` if the user doesn't want to touch
-   `.gitignore`).
-4. Record the repo's "prove it works" commands in `[project].verify`, confirmed with
-   the user.
+3. Write `.sstack/project.toml` (roles under `.sstack/roles/` only if the user wants
+   repo-specific routing). Add `.sstack/local/` and `.sstack/runs/` to `.gitignore`
+   (or `.git/info/exclude` if the user doesn't want to touch `.gitignore`).
+4. Record the repo's "prove it works" commands in `verify` in `project.toml`,
+   confirmed with the user.
 5. Build the code graph if `code-review-graph` is installed.
 6. Add one row to the `AGENTS.md` routing table (or one line if there is no table):
    "Any task → read `.sstack/product.md` first". `CLAUDE.md` is left alone if it
@@ -200,19 +203,19 @@ stop at the next gate and tell the user; don't silently redo the work locally.
 
 ## Routing config
 
-Three layers, merged in order: `~/.sstack/config.toml` (global) →
-`<git root>/.sstack/config.toml` (shared; repo decides whether to commit) →
-`<git root>/.sstack/config.local.toml` (git-ignored, personal).
-In a linked worktree a missing `config.toml`, `config.local.toml` or `lessons.md`
-resolves to the primary checkout's (`git worktree list --porcelain`, first entry);
-a file the worktree does have wins, and runs stay per-checkout so removing the
-worktree takes only its own runs.
+Split config, one file per thing ([`spec/config.md`](spec/config.md)), in four
+layers merged lowest first: `<sstack>/defaults/` → `~/.sstack/` (or `$SSTACK_HOME`)
+→ `<git root>/.sstack/` → `<git root>/.sstack/local/` (git-ignored, personal).
+Each layer may hold `config.toml` (`ade`, `[dispatch]`, `[rules]`, `[reflect]`,
+`[routing]`; merged key by key), `project.toml` (repo layers only) and
+`harnesses/`, `roles/`, `tiers/`, `ades/` with one TOML file per thing, each
+replaced whole. In a linked worktree a layer dir with no config resolves to the
+primary checkout's; runs stay per-checkout.
 
-Merge rule: each `[role.X]`, `[harness.X]`, `[project]` table is replaced whole;
-top-level scalars and scalars inside `[transport]`/`[rules]` override one by one;
-anything unmentioned is inherited. No trust tiers (all files are the user's; add an
-orbyn-style "committed file may only tighten" rule if configs are ever shared with
-untrusted people).
+An old single-file config (a `config.toml` holding role, harness, tier, project or
+transport tables, or the old personal local file) is a hard error naming `sstack-config migrate`,
+which splits it in place and keeps a `.bak`. `sstack-config show <kind>/<name>`
+prints the effective file and its layer. No trust tiers (all files are the user's).
 
 Roles, not skills. Five roles cover every delegating skill:
 
@@ -227,60 +230,20 @@ Roles, not skills. Five roles cover every delegating skill:
 
 An unlisted role, or `harness = "local"`, runs in the current session.
 
-Global example (ships as `config.example.toml`):
+Built-in defaults ship in [`defaults/`](../defaults/): every harness's
+`headless`/`headless_readonly` argv, roles for scout/implement/review, and the ADE
+adapters. A home layer then adds only what differs:
 
 ```toml
-[harness.pi]
-headless = ["pi", "-p", "--no-session", "--model", "{model}", "--thinking", "{effort}"]
-t3_provider = "pi"
-
-[harness.codex]
-headless = ["codex", "exec", "--sandbox", "workspace-write", "-m", "{model}", "-c", "model_reasoning_effort={effort}", "-"]
-t3_provider = "codex"
-
-[harness.claude]
-headless = ["claude", "-p", "--model", "{model}", "--permission-mode", "acceptEdits"]
-t3_provider = "claudeAgent"
-
-[harness.cursor]
-headless = ["cursor-agent", "-p", "--force", "--model", "{model}"]
-t3_provider = "cursor"
-
-[transport]
-mode = "auto"            # auto | thread | headless | local
-timeout_min = 30
-
-[transport.t3]
-detect = "T3CODE_THREAD_ID"          # env var present inside T3 Code
-cli = "$T3CODE_CLI_PATH"             # falls back to ~/.t3/bin/t3
-cmd = ["{cli}", "thread", "start", "--provider", "{provider}", "--model", "{model}",
-       "--title", "{title}", "--wait", ".", "-"]
-
-[role.scout]
-harness = "claude"
-model = "haiku"
-
-[role.implement]
+# ~/.sstack/roles/implement.toml
 harness = "pi"
 model = "opencode-go/deepseek-v4.1-flash"
 effort = "high"
-
-[role.review]
-panel = [
-  { harness = "codex",  model = "gpt-6.1-sol", effort = "high" },
-  { harness = "claude", model = "opus" },
-]
-
-[rules]
-review_not_implementer = true   # drop any panel member equal to role.implement
-max_parallel = 4
-loop_guard = 2
 ```
 
-Repo example (`.sstack/config.toml`):
+Repo example (`.sstack/project.toml`):
 
 ```toml
-[project]
 brief  = ".sstack/product.md"
 docs   = [".docs/spec/functional-spec.md", ".docs/architecture/"]
 verify = ["pnpm lint", "pnpm test"]
@@ -293,55 +256,72 @@ not just asked. Each harness may declare `headless_readonly` (e.g. codex
 `--sandbox read-only`, claude `--permission-mode plan`, cursor-agent `--mode plan`,
 pi `--tools read,grep,find,ls`), and dispatch uses it for those roles. A read-only
 role on a harness without `headless_readonly` is refused (exit 1 with a message),
-not silently run with write access. Inside T3 Code a read-only role can go through
-`delegate_task` with `interactionMode: "plan"` instead; plan mode is an
-instruction to the child, not a sandbox, so the orchestrator makes the same check. After any child, dispatch checks `git status` and records any change a
-read-only child made in the report.
+not silently run with write access. An ADE may delegate read-only roles with
+`readonly = "instructed"` (a plan mode, not a sandbox); `record` then makes the same
+check. After any read-only child the tree is compared with a baseline taken at
+dispatch and any change is appended to the report as a warning.
 
-Model ids are the same string in headless pi and in T3's pi provider
-(`provider/model`, e.g. `opencode-go/deepseek-v4.1-flash`), verified against
-`pi --list-models` and T3's provider catalog on 2026-11-08. Template placeholders
+Provider ids, model id maps and effort option ids live in each ADE's TOML
+(`[providers]`, `[models.<harness>]`, `[effort_option]`); an unmapped model is passed
+through with a note. Template placeholders
 whose value is unset (e.g. no `effort`) are dropped together with their flag.
 
 ## sstack-dispatch contract
 
+Authoritative: [`spec/dispatch.md`](spec/dispatch.md) and [`spec/ade.md`](spec/ade.md).
+
 ```
-sstack-dispatch <role> --brief <file> --report <file> [--title <t>] [--dry-run]
-sstack-dispatch <role> --route [--hint <kind>] [--files <paths>...]
+sstack-dispatch <role> --brief <file> --report <file> [--title <t>] [--via <v>] [--dry-run]
+sstack-dispatch record <role> --report <p> --member <harness>/<model> --exit <n> --run-dir <d>
+sstack-dispatch ade | routes
 ```
 
-- Resolves config layers from the git root of the current directory; in a linked
-  worktree a file it doesn't have resolves to the primary checkout's.
-- Transport (`mode = auto`): if `[transport.t3].detect` env var is set **and** the
-  role's harness has `t3_provider` → T3 thread (visible); else the harness's
-  `headless` command. `thread` forces T3 (error if unavailable), `headless` forces
-  CLI, `local` makes every role local.
-- Runs in the git root, brief on stdin, stdout captured to `--report`; enforces
-  `timeout_min` (kills the child process group).
-- `review`, or any read-only role with a `panel`: runs members in parallel
-  (≤ `max_parallel`), writes one report per member
-  (`<report>.<harness>-<model>.md`) and an index. A `panel` on a write role
-  (`implement`) is a config error naming `[role.X.hint.*]` / `[tier.*]`.
-- Exit codes: `0` ok and report non-empty; `1` child failed or empty report;
-  `2` timeout; `3` role is local/unconfigured (prints `local`). T3's own
-  `--wait` exit 2 ("agent is waiting for an answer") maps to dispatch exit 1.
-- Panel results *(builder's call)*: exit 0 if at least one member returned a
-  report, with failed/timed-out members listed as gaps in the index; exit 1 if
-  none did. `work` treats a gap as a reason to tell the user at the gate, not to
-  pass silently.
-- Effort in T3 *(builder's call)*: `t3 thread start` has no effort flag, so a
-  role's `effort` is dropped in a T3 thread and the dry run says so. `--route` +
-  T3's `delegate_task` is the path that keeps it: `target.options` takes the effort
-  under the provider's own option id.
-- `--route` runs nothing and needs no brief. It prints the route as JSON for an
-  orchestrator that starts the children itself:
-  `{role, route, readonly, members: [{harness, provider, model, effort, options}]}`.
-  `provider` is the harness's `t3_provider`; `options` carries effort under that
-  provider's own id (`reasoningEffort` codex, `effort` claudeAgent,
-  `reasoning_effort` cursor, `thinking` pi). Exit 0 with members, `3` with
-  `members: []` (run the role here), `1` on a config error.
-- `--dry-run` prints the resolved transport and command per member, runs nothing.
-- `plan` may be routed for drafting, but dispatch never runs a gate.
+- Resolves the config layers from the git root of the current directory.
+- **ADE adapters.** An ADE is `ades/<name>.toml` + optional executable
+  `ades/<name>.hook` + a note `ades/<name>.md` for the agent. With `ade = "auto"` the
+  first adapter whose `[detect]` matches is active (user layers before built-ins);
+  `ade = "<name>"`/`"none"` or `SSTACK_ADE` force it. `sstack-dispatch ade` prints
+  the active one, why, and its capabilities.
+- **Route** (`[dispatch] via` / `--via`): `auto` = the ADE's `delegate` (tool | hook |
+  none), else headless; `headless` always runs the harness CLI (hooks, CI);
+  `local` → exit 3; `ade-cli` (opt-in) runs the ADE's `[cli]` (T3: a new top-level
+  thread).
+- **Tool delegation** (T3: `delegate_task`): dispatch creates the run dir, starts
+  nothing, prints one payload call per member and exits 4. The agent makes each call
+  then runs its `record` line, which writes the index line, runs the read-only check,
+  escalates once on failure, and writes the panel index after the last member.
+- **Hook delegation** (Orca, Conductor): dispatch runs `<hook> delegate` and follows
+  its `run` / `async` (wait → collect) / `none` answer; a failing hook falls back to
+  headless.
+- `review`, or any read-only role with a `panel`: one report per member
+  (`<report>.<harness>-<model>.md`) and an index. Exit codes: `0` ok, `1`
+  failure/empty/config error, `2` timeout (process group killed, hook `cancel`),
+  `3` local, `4` the agent must call a tool.
+
+Dispatch flow, before and after the redesign:
+
+```mermaid
+flowchart LR
+    subgraph Before
+      A1[agent] -->|reads prose, may skip| D1[sstack-dispatch]
+      D1 -->|T3CODE_THREAD_ID set| T1[t3 thread start<br/>new top-level thread, no effort]
+      D1 -->|else| H1[headless CLI]
+      A1 -.->|--route then delegate_task by hand| C1[linked child, no record]
+    end
+```
+
+```mermaid
+flowchart LR
+    subgraph After
+      A2[agent] --> D2[sstack-dispatch]
+      D2 --> X{active ADE<br/>delegate.kind}
+      X -->|tool| P[exit 4 + payload] --> A2
+      A2 -->|delegate_task| C2[linked child] --> R[sstack-dispatch record<br/>index + read-only check]
+      X -->|hook| K[ades/name.hook delegate<br/>run / async / none]
+      X -->|none| H2[headless CLI]
+      K -.->|hook fails| H2
+    end
+```
 
 Brief template (written by the orchestrator to `.sstack/runs/<id>/<role>-<n>.brief.md`):
 lane, the approved plan or the recon questions, "read AGENTS.md/CLAUDE.md and
@@ -351,12 +331,18 @@ contract below.
 Report contract (child's final message): files changed; what it did; what it could
 not do; status `PASS | ISSUES | BLOCKED` with evidence (commands run + output).
 
-In T3 Code with the T3 tools, the orchestrator starts the children itself:
-`sstack-dispatch <role> --route`, then one `delegate_task` per member
-(`target.options` for effort, `interactionMode: "plan"` for a read-only role), then
-writes each child's summary to the report path and appends the run record. Why: the
-`t3 thread start` transport makes unlinked top-level threads and drops effort. Same
-brief, same report contract; read-only children get the `git status` check.
+## Doctor (`sstack-doctor`)
+
+Contract: [`spec/doctor.md`](spec/doctor.md). Static checks print `PASS|FAIL <check>`
+(config loads, no legacy files, roles resolve, harness CLIs on PATH, active ADE,
+hooks executable); exit 0/1. `--smoke` — run only after the agent asks the user —
+sends one canary brief per routed role/member through the real path: read-only
+roles reply `CANARY <token>`, implement also writes `canary.txt` in the smoke run
+dir. A tool-delegating ADE gets exit 4 payloads; the agent makes the calls and
+`record`s, then runs `--smoke --check <run dir>`. The tree outside `.sstack/runs/`
+must be unchanged; the smoke run dirs are removed afterwards, their index lines stay (task "sstack smoke").
+Setup, `sstack-config migrate` and any agent-made ADE/config change end with "ask,
+then `sstack-doctor --smoke`".
 
 ## Lessons (`reflect`)
 
@@ -404,37 +390,37 @@ page per area (user chose this over a single overview; see the clickable preview
 from the brainstorm).
 
 - **Top bar:** repo switcher (every repo listed in `~/.sstack/repos.txt`, which
-  `setup` appends to) + a "global" view; current transport.
+  `setup` appends to) + a "global" view; active ADE.
 - **Overview:** product one-liner from `.sstack/product.md`, counts (lessons to
   review, runs this week), implement route, graph freshness, last run.
 - **Lessons:** both lesson files; Accept / Forget for `pending`; shows `encoded`
   targets.
 - **Code graph:** embeds/opens `code-review-graph visualize` output; Rebuild
   button runs `code-review-graph update`.
-- **Roles & models:** merged view of the three config layers with the source layer
-  per value; edit harness/model/effort; choose which layer to save to
-  (local / repo / global). Writes TOML.
+- **Config:** every config, harness, role, tier and ADE file with its source layer;
+  edit and save to a layer (home / repo / local, never defaults), or reset to
+  inherited (deletes the layer file). Each save is validated by the real loader.
+  Hooks and notes are read-only. Active ADE + capabilities.
 - **Workflows:** the `work` phases with the role and gate for each, and the
   playbooks (bundled + repo overrides in `.sstack/playbooks/`).
-- **Runs:** `.sstack/runs/index.jsonl` (appended by `sstack-dispatch` on every
-  run: time, task, role, harness, model, transport, exit code, duration, report
-  path); click through to the brief and report.
+- **Runs:** timelines grouped by run dir from `.sstack/runs/index.jsonl` (members,
+  route, ADE, via, exit code, duration, read-only warnings); click through to the
+  brief and report.
 
 Data rules: the dashboard reads and writes only the same files agents use; it has
 no database of its own. It binds to localhost only and requires a random token
 in the URL *(builder's call)*. Extending = one more HTML section + one JSON
 endpoint that reads one more file.
 
-TOML writing *(builder's call)*: stdlib has no TOML writer, so `sstack-ui` writes
-only the `[role.*]` tables it edits, with a tiny emitter for that fixed shape,
-and leaves the rest of the file's text untouched.
+TOML writing: with one file per thing, the dashboard saves the whole file's text
+to the chosen layer; no TOML emitter is needed.
 
 ## Verification of the build
 
 1. `sstack-dispatch implement --dry-run` prints pi + `opencode-go/deepseek-v4.1-flash`
-   (headless outside T3, T3 thread inside T3).
-2. Repo `.sstack/config.toml` switching implement to codex → dry run shows codex;
-   `config.local.toml` switching it back → shows pi.
+   (headless outside T3, a `delegate_task` call inside T3).
+2. Repo `.sstack/roles/implement.toml` switching implement to codex → dry run shows
+   codex; `.sstack/local/roles/implement.toml` switching it back → shows pi.
 3. Real run in a scratch git repo: brief "create hello.txt containing hi", role
    implement on pi → file exists, report non-empty, exit 0.
 4. Fake harness `["sleep","10"]` with `timeout_min = 0.05` → exit 2.

@@ -16,14 +16,15 @@
 
 sstack is a set of 13 portable `SKILL.md` skills plus a small stdlib-Python toolkit. It takes an engineering task from "set up this repo" through recon, plan, implement, test, and PR, with a stop for your approval at each gate.
 
-Any phase can be delegated to another harness and model. For example, implement runs on pi + DeepSeek while review runs on a codex + claude panel. A single TOML file controls the routing.
+Any phase can be delegated to another harness and model. For example, implement runs on pi + DeepSeek while review runs on a codex + claude panel. Small TOML files, one per role, harness, tier and ADE, control the routing.
 
 - **One entry point.** The `sstack` skill routes each request to the right skill or playbook. It also loads repo context and accepted lessons, and enforces the verification and delegation rules.
 - **Gated phases.** `work` runs features, bug fixes, refactors, perf work, and multi-phase migrations through recon → plan → implement → test/fix → PR.
-- **Route by role.** `sstack-dispatch` maps the roles `scout`, `investigate`, `plan`, `implement`, and `review` to a harness and model. Delegated runs go through headless CLIs, or become visible threads inside T3 Code.
+- **Route by role.** `sstack-dispatch` maps the roles `scout`, `investigate`, `plan`, `implement`, and `review` to a harness and model. Inside an ADE (T3 Code, Orca, Conductor) a delegated run becomes that ADE's own child task; elsewhere it runs a headless CLI.
 - **Read-only by default.** Scout, investigate, plan, and review run in read-only mode. The dispatcher warns you if one of them changes the working tree anyway.
 - **Lessons that turn into structure.** `reflect` records your corrections as lessons. A lesson seen twice is proposed as an edit to a skill, `AGENTS.md`, or a check, so it stops being just another note.
-- **Local dashboard.** `sstack-ui` shows roles, runs, lessons, and the code graph. It runs on 127.0.0.1 and requires a token.
+- **Local dashboard.** `sstack-ui` edits config per layer and shows the active ADE, run timelines, lessons and the code graph. It runs on 127.0.0.1 and requires a token.
+- **Doctor.** `sstack-doctor` checks the config; `sstack-doctor --smoke` sends a canary through every routed role.
 
 It works in any environment that reads `SKILL.md` folders: Claude Code, Codex, Cursor, pi, T3 Code, Conductor, Orca, or a plain terminal.
 
@@ -33,7 +34,7 @@ flowchart LR
     R --> W[work: playbook]
     R --> O[how / why / review / diagram / ...]
     W --> P0[0 Recon] --> P1[1 Plan] --> P2[2 Implement] --> P3[3 Test/fix] --> P4[4 PR]
-    P2 -. sstack-dispatch .-> H[(pi / codex / claude / cursor<br/>headless or T3 thread)]
+    P2 -. dispatch implement (ADE or headless) .-> H[(pi / codex / claude / cursor<br/>ADE child or headless CLI)]
     P3 -. review panel .-> H
 ```
 
@@ -57,7 +58,7 @@ The installer:
 
 - symlinks `skills/*` into every skill directory that already exists: `~/.claude/skills`, `~/.agents/skills`, `~/.codex/skills`, `~/.cursor/skills`, and `~/.pi/agent/skills`;
 - adds one marked line pointing at the `sstack` skill to `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`, and `~/.pi/agent/AGENTS.md`;
-- copies `config.example.toml` to `~/.sstack/config.toml` if that file doesn't exist.
+- creates an empty `~/.sstack/` (the built-in defaults live in `<sstack>/defaults/`).
 
 > [!NOTE]
 > If a skill with the same name is already installed, it's renamed to `<name>.bak` and never deleted. `bin/sstack-install --uninstall` removes only sstack's own symlinks and the marked line, then lists any backups left in place.
@@ -67,7 +68,7 @@ The installer:
 In your agent, open the repo and say "set up this repo". The `setup` skill writes these files:
 
 - `.sstack/product.md`: what the app is;
-- `.sstack/config.toml`: repo routing and verify commands;
+- `.sstack/project.toml` (verify commands) and any repo routing under `.sstack/`;
 - the code graph;
 - one row in `AGENTS.md`.
 
@@ -88,9 +89,9 @@ Install sstack (https://github.com/cobeo2004/sstack) on this machine.
 3. Run `<sstack>/bin/sstack-install --dry-run` and show me the full output.
    Wait for my yes before running `<sstack>/bin/sstack-install` for real.
    Never edit ~/.claude/skills, ~/.codex/skills or similar dirs by hand.
-4. Open ~/.sstack/config.toml and list each harness that a role uses (pi, codex,
-   claude, cursor-agent). Run `<cli> --version` for each and tell me which are
-   missing. Don't install anything.
+4. Run `<sstack>/bin/sstack-doctor` and show me the output. A `FAIL harness CLIs`
+   line names the agent CLIs that are missing. Don't install anything. If it
+   says legacy config, ask me, then run `<sstack>/bin/sstack-config migrate`.
 5. Show which harness and model each role resolves to:
    `<sstack>/bin/sstack-dispatch <role> --brief /dev/null --report /dev/null --dry-run`
    for each of scout, investigate, plan, implement and review. A role that
@@ -110,11 +111,11 @@ Run this inside the repo, new or existing.
 Use the sstack skill to set up this repo for sstack (route: setup).
 
 - Existing code: read AGENTS.md / CLAUDE.md, the README and docs first, then
-  write .sstack/product.md and .sstack/config.toml from the setup templates.
+  write .sstack/product.md and .sstack/project.toml from the setup templates.
 - Empty or brand-new repo: ask me what the app is, who it's for and the stack
   before writing anything.
 - Find the real lint / typecheck / test / build commands and run each one once.
-  Put the ones that pass in [project].verify. Show me any that fail.
+  Put the ones that pass in `verify` in .sstack/project.toml. Show me any that fail.
 - Build the code graph if code-review-graph is installed. Otherwise say it was skipped.
 - Add the sstack row to AGENTS.md and register the repo for the dashboard.
 - Before you write anything, show me the files you'll create or change.
@@ -140,8 +141,8 @@ bin/sstack-dispatch implement --brief .sstack/runs/42/brief.md --report .sstack/
 bin/sstack-dispatch implement --brief b.md --report r.md --files web/components/Nav.tsx --dry-run
 # route: auto frontend → tier.standard
 bin/sstack-dispatch review --brief brief.md --report review.md --dry-run   # show the route without running it
-bin/sstack-dispatch review --route --files src/                             # JSON route for T3, runs nothing
 bin/sstack-dispatch routes                                                  # tiers, kinds and your hints
+bin/sstack-dispatch ade                                                     # the active ADE, why, its capabilities
 ```
 
 **Smart routing.** Each dispatch runs one agent, chosen in this order:
@@ -162,9 +163,13 @@ Review runs **one** reviewer, never the implementer's model. It runs the full pa
 | `1` | Failure, empty report, or config error. |
 | `2` | Timeout. The whole process group was killed. |
 | `3` | The role is local: the agent does the work in its own session. The dispatcher prints `local`. |
+| `4` | The active ADE delegates through an agent tool. Nothing started: stdout is a JSON payload, one call per member, each with its `record` command. |
 
-Each run is appended to `.sstack/runs/index.jsonl`, with the route it took. For a review panel, `--report` holds an index that links each member's report.
-`--route` is for an agent that starts the children itself: it prints `{role, route, readonly, members: [{harness, provider, model, effort, options}]}` and runs nothing (exit `3` with `members: []` means the role is local; `1` is a config error). In T3 Code the agent then calls `delegate_task` once per member, with `options` for effort and `interactionMode: "plan"` for a read-only role, and writes each child's summary to the report itself. See [`skills/sstack/harness-notes/ade.md`](skills/sstack/harness-notes/ade.md).
+**ADE adapters.** An ADE is `ades/<name>.toml` plus an optional executable `ades/<name>.hook` and a note `ades/<name>.md` for the agent. Built-ins live in [`defaults/ades/`](defaults/ades/) (T3 Code, Orca, Conductor, Cursor); one in your own layer replaces or adds to them. `[dispatch] via` picks the path: `auto` (the ADE's delegate, else headless), `headless`, `local`, or the opt-in `ade-cli`. Contract: [`docs/spec/ade.md`](docs/spec/ade.md) and [`docs/spec/dispatch.md`](docs/spec/dispatch.md).
+
+On exit `4` the agent makes each call in the payload, then runs its `sstack-dispatch record …` line. `record` writes the index line and, for a read-only role, warns in the report if the tree changed.
+
+Each run gets a dir under `.sstack/runs/` and one line per member in `.sstack/runs/index.jsonl`, with the route and ADE it took. For a review panel, `--report` holds an index that links each member's report.
 
 ### Lessons
 
@@ -215,66 +220,67 @@ bin/sstack-ui            # prints http://127.0.0.1:<port>/?t=<token>
 
 The dashboard has these views:
 
-- an overview;
-- roles, editable per config layer;
-- run history, with links to each report;
+- config: every role, harness, tier and ADE file with its source layer; save to a layer, or reset to inherited;
+- the active ADE and its capabilities;
+- run timelines: members, route, ADE, reports, exits and read-only warnings;
 - lessons, which you can accept or forget;
-- phases and playbooks;
 - the code graph, with a rebuild button.
 
 It lists repos from `~/.sstack/repos.txt`.
 
 ## Configuration
 
-Config is layered. A later layer wins:
+Config is split into one file per thing, in four layers. A later layer wins:
 
-| File | Scope |
+| Layer | Dir |
 |---|---|
-| `~/.sstack/config.toml` | Global, installed from [`config.example.toml`](config.example.toml) |
-| `<repo>/.sstack/config.toml` | Per repo. Commit it or not. |
-| `<repo>/.sstack/config.local.toml` | Personal and git-ignored |
+| defaults | [`<sstack>/defaults/`](defaults/) (built-in; don't edit) |
+| home | `~/.sstack/` (or `$SSTACK_HOME`) |
+| repo | `<repo>/.sstack/` |
+| local | `<repo>/.sstack/local/` (personal, git-ignored) |
 
-The `[role.*]`, `[harness.*]`, `[tier.*]`, and `[project]` tables are replaced whole. Other tables merge key by key. In a linked worktree a missing `config.toml`, `config.local.toml` or `lessons.md` resolves to the primary checkout's (`git worktree list --porcelain`, first entry); a file the worktree has wins, and runs stay local.
+Each layer may hold `config.toml` (`ade`, `[dispatch]`, `[rules]`, `[reflect]`, `[routing]`; merged key by key), `project.toml` (repo layers only), and `harnesses/`, `roles/`, `tiers/`, `ades/` with one TOML file per thing, each replaced whole. A file's top level is the table itself: `roles/implement.toml` holds `harness = "pi"`. In a linked worktree a layer dir with no config resolves to the primary checkout's. Full contract: [`docs/spec/config.md`](docs/spec/config.md).
 
 ```toml
-[tier.strong]                    # security, complex, review
+# tiers/strong.toml   (security, complex, review)
 harness = "codex"
 model = "gpt-6.1-sol"
-[tier.standard]                  # frontend, backend, mobile
-harness = "claude"
-model = "sonnet"
-[tier.cheap]                     # mechanical, docs
-harness = "pi"
-model = "opencode-go/deepseek-v4.1-flash"
 
-[role.implement]                 # when no kind applies
+# roles/implement.toml   (when no kind applies)
 harness = "pi"
 model = "opencode-go/deepseek-v4.1-flash"
 effort = "high"
-
-[role.implement.hint.ui]         # optional override: --hint ui, or paths match
+[hint.ui]                        # optional override: --hint ui, or paths match
 when = "our web app"
 paths = ["web/*"]
 harness = "claude"
 model = "opus"
 
-[role.review]
+# roles/review.toml
 mode = "auto"                    # one reviewer; panel only when risky
 panel = [
   { harness = "codex",  model = "gpt-6.1-sol", effort = "high" },
   { harness = "claude", model = "opus" },
 ]
-
-[rules]
-review_not_implementer = true   # drop any panel member identical to role.implement
 ```
 
-A repo's `[project.test]` table says how each surface is tested: **code** (unit and integration), **browser**, and **mobile**. For each one it records the framework, where tests live, and the run, serve or build commands. `setup` fills it in. [`skills/work/testing.md`](skills/work/testing.md) defines how the agent writes each kind of check, runs it, and proves it. For any change a user can see, the agent also does a live self-check. It drives the app in the ADE's built-in browser or device, and runs the code tests alongside. The ADE can be T3 Code (preview and device panels), Orca (`orca` browser and emulator commands) or Conductor (headless, since its in-app browser is only for you to watch). The per-ADE tools are listed in [`skills/sstack/harness-notes/ade.md`](skills/sstack/harness-notes/ade.md).
+```sh
+bin/sstack-config show roles/review   # the effective file and the layer it comes from
+bin/sstack-config migrate --dry-run   # split an old single-file config.toml (keeps a .bak)
+bin/sstack-doctor                     # static checks: PASS|FAIL per line, exit 0/1
+bin/sstack-doctor --smoke             # canary dispatch per routed member; ask the user first
+```
 
-A role with no config, or set to `harness = "local"`, runs in the current session. `[transport] mode` chooses how delegated roles run: `auto`, `thread`, `headless`, or `local`. With `auto`, sstack uses T3 Code threads when `T3CODE_THREAD_ID` is set and headless CLIs otherwise.
+If `--smoke` exits 4 (a tool-delegating ADE), make the printed calls and their `record`s, then run `sstack-doctor --smoke --check <run dir>`.
+
+An old single-file config is an error naming `sstack-config migrate`. After a migrate or any ADE/config change, the agent asks you, then runs `sstack-doctor --smoke` ([`docs/spec/doctor.md`](docs/spec/doctor.md)).
+
+A repo's `[project.test]` table says how each surface is tested: **code** (unit and integration), **browser**, and **mobile**. For each one it records the framework, where tests live, and the run, serve or build commands. `setup` fills it in. [`skills/work/testing.md`](skills/work/testing.md) defines how the agent writes each kind of check, runs it, and proves it. For any change a user can see, the agent also does a live self-check. It drives the app in the ADE's built-in browser or device, and runs the code tests alongside. How each ADE does that is in its note under [`defaults/ades/`](defaults/ades/); `sstack-dispatch ade` names the active one.
+
+A role with no config, or set to `harness = "local"`, runs in the current session.
 
 > [!IMPORTANT]
-> Read-only roles (`scout`, `investigate`, `plan`, `review`) run with their harness's `headless_readonly` command, never with write access. Routing one to a harness without that command is a config error: dispatch exits `1`. Every harness in `config.example.toml` has one, cursor included (`cursor-agent -p --mode plan`). Inside T3 Code the agent can instead delegate a read-only role with plan mode, as above.
+> Read-only roles (`scout`, `investigate`, `plan`, `review`) run with their harness's `headless_readonly` command, never with write access. Routing one to a harness without that command is a config error: dispatch exits `1`. Every built-in harness in [`defaults/harnesses/`](defaults/harnesses/) has one. An ADE that delegates read-only roles in a plan mode (`readonly = "instructed"`) gets the same tree check from `record`.
 
 ## Skills
 

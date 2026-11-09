@@ -51,7 +51,8 @@ Runs are grouped by the index line's `run_dir`.
 
 Keys: `role`, `members`, `report_base`, `panel_report`, `started_at`, `readonly`, `title`, `brief`
 (repo-relative like every path here), `route` (the routing reason), `ade` (adapter name, null when
-none was used), `via` (`auto` | `headless` | `ade-cli`), `hint` (`--hint` or null). Written later:
+none was used), `via` (`auto` | `headless` | `ade-cli`), `hint` (`--hint` or null), `no_escalate`
+(`--no-escalate`: never escalate this run; sstack-doctor smoke). Written later:
 `escalated` (true once `record` or dispatch escalated; never twice) and `panel_written` (true once
 the panel index was written; never rewritten).
 
@@ -119,7 +120,7 @@ sstack-dispatch record <role> --report <p> --member <harness>/<model> --exit <n>
 1. Reads `<d>/run.json`; appends one index line to `.sstack/runs/index.jsonl`, `secs` = now −
    `started_at`.
 2. Read-only role: the baseline check above against `<d>/baseline.json`.
-3. `--exit ≠ 0` and `[rules] auto_escalate`: prints the next exit-4 payload (one tier up) and exits 4.
+3. `--exit ≠ 0`, `[rules] auto_escalate` and not `no_escalate`: prints the next exit-4 payload (one tier up) and exits 4.
    Once per run (`escalated`); the failed report moves to `<report_base>.failed.md`.
 4. Panel (`panel_report` set): once the index holds a line from `<d>` for every member in
    `run.json`, that last `record` writes the panel index at `panel_report` (format below), from the

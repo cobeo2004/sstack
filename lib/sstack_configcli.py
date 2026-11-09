@@ -511,7 +511,7 @@ def migrate(root: Path | None, scope: str = "all", dry_run: bool = False) -> int
         except C.ConfigError as e:
             print(f"error: {e}", file=sys.stderr)
             return 1
-    print("next: sstack-doctor")
+    print("next: ask the user, then `sstack-doctor --smoke`")
     return 0
 
 

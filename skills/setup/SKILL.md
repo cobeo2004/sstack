@@ -59,8 +59,9 @@ near-empty). Re-runnable; see the last section.
    `~/.sstack/repos.txt` unless it's already listed. In a linked worktree register
    the primary checkout — the entry has to outlive the worktree.
 8. **Ask, then smoke-test.** Ask the user whether to run the doctor smoke test.
-   On yes, run `<sstack>/bin/sstack-doctor --smoke` and report every member's
-   result. Available after PR C; until then say the smoke test is not available.
+   On yes, run `<sstack>/bin/sstack-doctor --smoke` (on exit 4, make the printed
+   calls and their `record`s, then run `--smoke --check <run dir>`) and report
+   every member's result.
 9. **Report**: files written, verify commands and their results, graph status,
    clashes found, and what you could not determine.
 

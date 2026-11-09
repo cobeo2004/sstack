@@ -101,7 +101,7 @@ def snapshot(root: Path) -> dict:
     idx = root / INDEX
     data = idx.read_bytes() if idx.is_file() else None
     return {"head": (_git(root, "rev-parse", "HEAD") or "").strip() or None, "status": status, "files": files,
-            "index": data and {"size": len(data), "sha256": _sha(data)}}
+            "index": {"size": len(data), "sha256": _sha(data)} if data is not None else None}
 
 
 def _appended(root: Path, base: dict) -> bool:
@@ -242,7 +242,7 @@ def _escalate(root: Path, run_dir: Path, run: dict, failed: dict, report: Path, 
     """Single-member run failed: (member one tier up, brief with a note), moving the failed report
     aside; None when there is nowhere to go. Escalates once per run (run.json `escalated`).
     `isolated`: the failed child worked in its own worktree, so its edits are not in this tree."""
-    if run.get("escalated") or len(run["members"]) != 1 or not cfg.get("rules", {}).get("auto_escalate", True):
+    if run.get("escalated") or run.get("no_escalate") or len(run["members"]) != 1 or not cfg.get("rules", {}).get("auto_escalate", True):
         return None
     avoid = R.pick(cfg, "implement", run.get("hint"), [])[0] if run["role"] == "review" else None
     up = R.escalation(cfg, failed, avoid)
@@ -354,6 +354,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--base", default="HEAD", help="review: diff base for detection")
     ap.add_argument("--panel", action="store_true", help="review: force the full panel")
     ap.add_argument("--via", choices=VIAS, help="beats [dispatch] via")
+    ap.add_argument("--no-escalate", action="store_true", help="never retry a failed member one tier up")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--route", action="store_true", help="print the exit-4 payload shape; creates nothing")
     a = ap.parse_args(argv)
@@ -431,7 +432,8 @@ def main(argv: list[str] | None = None) -> int:
     ade_name = ade["name"] if ade and shape != "headless" else None
     run_dir = new_run(root, a.role, members, report, readonly,
                       {"title": title, "brief": rel(root, brief_p), "route": route, "ade": ade_name,
-                       "via": "headless" if shape == "headless" else via, "hint": a.hint})
+                       "via": "headless" if shape == "headless" else via, "hint": a.hint,
+                       "no_escalate": a.no_escalate})
     run = json.loads((run_dir / "run.json").read_text())
     report.parent.mkdir(parents=True, exist_ok=True)  # ADE children write the report themselves
     if shape == "tool":
