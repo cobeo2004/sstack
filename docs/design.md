@@ -145,30 +145,40 @@ MIT). Sources, pinned (clone shallow into a scratch dir, never into sstack):
 
 ## Setup
 
-`setup` runs in a repo root. It detects new vs existing.
+`setup` runs in a repo root. It begins with a **read-only audit**:
 
-Existing repo:
-1. Read `AGENTS.md`, `CLAUDE.md`, README, `.docs/` or `docs/`, manifests, repo-local
-   skills (`.agents/skills`, `.claude/skills`). Report name clashes with sstack skills.
-2. Write `.sstack/product.md`: what the app is, who it is for, the main flows, the
-   surfaces and how they connect — **linking** to deeper docs (e.g. UniBuz
-   `.docs/spec/functional-spec.md`, `.docs/architecture/`) rather than copying them.
-   Never restate versions, env names or dependency lists.
-3. Write `.sstack/project.toml` (roles under `.sstack/roles/` only if the user wants
-   repo-specific routing). Add `.sstack/local/` and `.sstack/runs/` to `.gitignore`
-   (or `.git/info/exclude` if the user doesn't want to touch `.gitignore`).
-4. Record the repo's "prove it works" commands in `verify` in `project.toml`,
-   confirmed with the user.
-5. Build the code graph if `code-review-graph` is installed.
-6. Add one row to the `AGENTS.md` routing table (or one line if there is no table):
-   "Any task → read `.sstack/product.md` first". `CLAUDE.md` is left alone if it
-   already includes `AGENTS.md`.
+- the repo: which of the files setup would write already exist, repo skill names that
+  clash with sstack skills, and the candidate "prove it works" commands, each run once;
+- the machine: `sstack-doctor` and `sstack-config show`, each agent's global instruction
+  file (`~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`, `~/.cursor/AGENTS.md`,
+  `~/.pi/agent/AGENTS.md`) against the sstack pointer and any contradicting rule above
+  it, and installed skills that do an sstack skill's job.
 
-New repo: ask the user the product questions (one at a time), then write the same
-files plus a starter `AGENTS.md`.
+Then one **recommended table** — `#`, action, where, current → proposed, why, default
+(recommended or optional) — and an ask-the-user multi-select over its rows. The choice
+is the gate: **nothing is written before the user chooses.**
 
-Re-runnable: re-running refreshes `product.md` and shows a diff; it never
-overwrites content the user wrote by hand without asking.
+Applying writes only the chosen rows:
+1. `.sstack/product.md`: what the app is, who it is for, the main flows, the surfaces and
+   how they connect — **linking** to deeper docs (e.g. `.docs/spec/functional-spec.md`,
+   `.docs/architecture/`) rather than copying them. Never restate versions, env names or
+   dependency lists.
+2. `.sstack/project.toml`, in the split layout (roles under `.sstack/roles/` only if the
+   user wants repo-specific routing), plus `.sstack/local/` and `.sstack/runs/` in
+   `.gitignore` (or `.git/info/exclude` if the user doesn't want to touch `.gitignore`).
+3. The repo's "prove it works" commands in `verify`, from the audit.
+4. The code graph if `code-review-graph` is installed.
+5. One row in the `AGENTS.md` routing table (or one line if there is no table):
+   "Any task → read `.sstack/product.md` first". `CLAUDE.md` is left alone if it already
+   includes `AGENTS.md`.
+6. Machine rows: always opt-in, the file backed up first, never on by default.
+
+The report names what was written and what was skipped, then offers the smoke test.
+
+New repo: ask the user the product questions (one at a time), then the same
+recommend → choose → apply. Re-runnable: re-running audits again, shows the result as a
+diff against last time, refreshes `product.md` behind a diff, never overwrites content the
+user wrote by hand without asking, and only adds missing config keys.
 
 ## Work
 
@@ -333,9 +343,10 @@ not do; status `PASS | ISSUES | BLOCKED` with evidence (commands run + output).
 
 ## Doctor (`sstack-doctor`)
 
-Contract: [`spec/doctor.md`](spec/doctor.md). Static checks print `PASS|FAIL <check>`
+Contract: [`spec/doctor.md`](spec/doctor.md). Static checks print `PASS|WARN|FAIL <check>`
 (config loads, no legacy files, roles resolve, harness CLIs on PATH, active ADE,
-hooks executable); exit 0/1. `--smoke` — run only after the agent asks the user —
+hooks executable, and the read-only `entry pointers` advice); exit 0/1, and `WARN` changes
+neither. `--smoke` — run only after the agent asks the user —
 sends one canary brief per routed role/member through the real path: read-only
 roles reply `CANARY <token>`, implement also writes `canary.txt` in the smoke run
 dir. A tool-delegating ADE gets exit 4 payloads; the agent makes the calls and

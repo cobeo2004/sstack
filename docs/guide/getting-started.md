@@ -108,9 +108,11 @@ ADE such as T3 Code the same command exits 4 instead and prints a tool payload; 
 
 ## Set up a repo
 
-Open the repo in your agent and say "set up this repo". The `setup` skill writes
-`.sstack/product.md`, `.sstack/project.toml` (verify commands), the code graph and one `AGENTS.md`
-row, then asks before running the smoke test ([doctor.md](doctor.md#run-the-smoke-test)).
+Open the repo in your agent and say "set up this repo". The `setup` skill audits the repo and the
+machine read-only, shows a table of recommended changes — `.sstack/product.md`,
+`.sstack/project.toml` with the verify commands, the code graph, one `AGENTS.md` row — and writes
+only the rows you pick. It then asks before running the smoke test
+([doctor.md](doctor.md#run-the-smoke-test)).
 
 ## Next
 

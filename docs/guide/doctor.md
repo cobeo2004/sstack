@@ -36,8 +36,11 @@ PASS active ADE: …
 PASS hooks executable: ok
 ```
 
-Each check prints `PASS <check>: <detail>` or `FAIL <check>: <detail>`. Exit 0 when all pass, 1 when
-any fails.
+Each check prints `PASS <check>: <detail>`, `WARN <check>: <detail>` or `FAIL <check>: <detail>`.
+Exit 0 when all pass, 1 when any fails; `WARN` is advice and never changes the exit code — `entry
+pointers` warns when an agent's global instruction file (`~/.claude/CLAUDE.md`,
+`~/.codex/AGENTS.md`, `~/.cursor/AGENTS.md`, `~/.pi/agent/AGENTS.md`) lacks the line
+`sstack-install` adds or has a contradicting rule above it.
 
 | check | passes when | usual fix on FAIL |
 |---|---|---|
@@ -47,6 +50,7 @@ any fails.
 | `harness CLIs` | argv[0] of each used harness's `headless` / `headless_readonly` is on `PATH` | install that CLI or route the role elsewhere |
 | `active ADE` | `sstack-dispatch ade` runs | fix the adapter file it names |
 | `hooks executable` | every `ades/*.hook` in use is executable | `chmod +x <hook>` |
+| `entry pointers` | read-only: each agent's global instruction file that exists carries the sstack pointer above any competing "… first" / "without asking" rule | run `setup` and pick its machine rows, or put the sstack rule above the one it names; `WARN` keeps the exit code |
 
 A failing check, for example a broken role file:
 

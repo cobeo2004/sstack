@@ -4,7 +4,9 @@ Owner: `lib/sstack_doctor.py`, `bin/sstack-doctor` (C).
 
 ## Static checks (`sstack-doctor`)
 
-Each prints `PASS|FAIL <check>: <detail>`; any FAIL → exit 1, else 0.
+Each prints `PASS|WARN|FAIL <check>: <detail>`; any FAIL → exit 1, else 0. WARN is
+advice: it prints, and the exit code does not change — other tools regenerate the file it
+names, so a surprising WARN is a glance, not a broken config.
 
 | check | passes when |
 |---|---|
@@ -14,6 +16,7 @@ Each prints `PASS|FAIL <check>: <detail>`; any FAIL → exit 1, else 0.
 | harness CLIs | argv[0] of every used harness's `headless`/`headless_readonly` is on `PATH` |
 | active ADE | `sstack-dispatch ade` runs; prints name, why, delegate, capabilities, note path |
 | hooks executable | every `ades/*.hook` that `ades()` returns is executable |
+| entry pointers | read-only, advice: every existing file among `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`, `~/.cursor/AGENTS.md`, `~/.pi/agent/AGENTS.md` holds the sstack pointer (`<!-- sstack`, "start with the sstack skill", or "sstack first") with no competing precedence rule above it (`<tool> first`, "without asking", "do not stop to ask"). PASS names the files, or says `no agent instruction files`; a problem prints `WARN entry pointers: ~/.codex/AGENTS.md missing` or `… late (line 3: …)` |
 
 ## Smoke test (`sstack-doctor --smoke`)
 
