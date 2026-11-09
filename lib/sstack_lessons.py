@@ -104,9 +104,9 @@ def changed_since(root: Path | None, commit: str) -> list[str] | None:
     """Files changed between `commit` and HEAD, or None when that commit is unknown."""
     if root is None:
         return None
-    r = subprocess.run(["git", "-C", str(root), "diff", "--name-only", f"{commit}..HEAD"],
-                       capture_output=True, text=True)
-    return r.stdout.splitlines() if r.returncode == 0 else None
+    r = subprocess.run(["git", "-C", str(root), "diff", "--name-only", "-z", f"{commit}..HEAD"],
+                       capture_output=True, text=True)  # -z: literal names, no quoting of non-ASCII
+    return [f for f in r.stdout.split("\0") if f] if r.returncode == 0 else None
 
 
 def is_stale(lesson: Lesson, root: Path | None, _seen: dict | None = None) -> bool:

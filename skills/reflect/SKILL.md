@@ -38,7 +38,7 @@ scripts, services or agent manual is `repo`, even when it is a preference.
    evidence (what happened, when).
 3. Record each as pending, pinned to the files it is about (`--path`, repeatable,
    glob) so it loads only where it applies:
-   `<sstack>/bin/sstack-lessons add --scope repo "Run pnpm, not npm" --evidence "user, 2026-11-08 UNI-142" --path "**/package.json"`.
+   `<sstack>/bin/sstack-lessons add --scope repo "Run pnpm, not npm" --evidence "user, 2026-11-08 UNI-142" --path package.json --path "**/package.json"` (`**/` needs a directory, so name the root file too).
    Skip `--path` for a rule that holds repo-wide.
    `add` also records the commit it was learned at, so the router can mark it
    `[stale]` once those files change; a lesson with no `--path` always loads.

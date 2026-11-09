@@ -200,6 +200,15 @@ class LessonScopeTests(TempEnv):
         self.assertEqual(l.fields, {"path": "web/**, lib/*.py", "commit": sha})
         self.assertEqual(self.stored("L1").fields, l.fields)  # round-trips through the file
 
+    def test_stale_with_non_ascii_name(self):
+        (self.root / "café.py").write_text("a")
+        sha = self.commit()
+        l = self.add("accents", paths=["café.py"], commit=sha)
+        (self.root / "café.py").write_text("b")
+        self.commit("c2")
+        self.assertIn("café.py", L.changed_since(self.root, sha))
+        self.assertTrue(L.is_stale(self.stored(l.id), self.root))
+
     def test_glob_with_comma_survives(self):
         l = self.add("bracket", paths=["src/[a,b].py"])
         self.assertTrue(L.applies(self.stored(l.id), ["src/a.py"]))
