@@ -268,3 +268,20 @@ class SmokeTests(DoctorBase):
         self.assertFalse(d.exists())
         self.assertCleaned()
         self.assertEqual({json.loads(l)["task"] for l in self.index()}, {"sstack smoke"})
+
+
+class EntryPointerErrorTests(DoctorBase):
+    def test_unreadable_dir_warns_not_fails(self):
+        """A permission error inside the advice-only check is WARN, exit unchanged."""
+        from test_setup_audit import POINTER
+        self.glob_cfg(roles())
+        (self.home / ".claude").mkdir()
+        (self.home / ".claude" / "CLAUDE.md").write_text(POINTER + "\n")
+        (self.home / ".codex").mkdir()
+        os.chmod(self.home / ".codex", 0)
+        try:
+            code, out, _ = self.doctor()
+        finally:
+            os.chmod(self.home / ".codex", 0o755)
+        self.assertEqual(code, 0, out)
+        self.assertNotIn("FAIL entry pointers", out)
