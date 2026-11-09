@@ -1,0 +1,18 @@
+# The old single-file example config, split. Tests use this home layer instead of it.
+# Old [transport] mode/timeout_min → [dispatch] via/timeout_min; t3_provider and [transport.t3]
+# → the ADE file's [providers] and [cli] (defaults/ades/t3.toml).
+[dispatch]
+via = "auto"
+timeout_min = 30
+
+[rules]
+review_not_implementer = true
+max_parallel = 4
+loop_guard = 2
+auto_escalate = true
+tier_order = ["cheap", "standard", "strong"]
+panel_diff_lines = 400
+
+[reflect]
+auto = false
+encode_at = 2

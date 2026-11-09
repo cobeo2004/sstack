@@ -1,0 +1,2 @@
+headless = ["codex", "exec", "--sandbox", "workspace-write", "-m", "{model}", "-c", "model_reasoning_effort={effort}", "-"]
+headless_readonly = ["codex", "exec", "--sandbox", "read-only", "-m", "{model}", "-c", "model_reasoning_effort={effort}", "-"]

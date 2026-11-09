@@ -1,0 +1,7 @@
+#!/bin/sh
+# Sync: delegate returns argv; dispatch runs it, brief on stdin, stdout = report.
+case "$1" in
+  detect) exit 0 ;;
+  delegate) cat >/dev/null; echo '{"action": "run", "argv": ["sh", "-c", "cat >/dev/null; echo REPORT sync"]}' ;;
+  *) exit 1 ;;
+esac

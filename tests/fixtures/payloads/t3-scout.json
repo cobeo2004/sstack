@@ -1,0 +1,25 @@
+{
+  "ade": "t3",
+  "role": "scout",
+  "readonly": true,
+  "run_dir": "<RUN_DIR>",
+  "calls": [
+    {
+      "member": "claude/haiku",
+      "tool": "delegate_task",
+      "load_hint": "ToolSearch select:mcp__t3-code__delegate_task",
+      "args": {
+        "title": "sstack scout",
+        "role": "research",
+        "task": "Read the brief at <BRIEF> and do exactly what it says. Write your report to <REPORT>. If you cannot write files, return the full report as your final message.",
+        "target": {
+          "providerInstanceId": "claudeAgent",
+          "model": "claude-haiku-5-5",
+          "options": {}
+        },
+        "interactionMode": "plan"
+      },
+      "record": "sstack-dispatch record scout --report <REPORT> --member claude/haiku --exit {exit} --run-dir <RUN_DIR>"
+    }
+  ]
+}

@@ -12,7 +12,6 @@ class InstallTests(TempEnv):
         self.src = self.root / "sstack"
         (self.src / "bin").mkdir(parents=True)
         shutil.copy(REPO / "bin/sstack-install", self.src / "bin")
-        shutil.copy(REPO / "config.example.toml", self.src)
         for s in ("sstack", "work"):
             (self.src / "skills" / s).mkdir(parents=True)
             (self.src / "skills" / s / "SKILL.md").write_text(f"---\nname: {s}\n---\n")
@@ -39,8 +38,8 @@ class InstallTests(TempEnv):
             self.assertEqual(link.resolve(), (self.src / "skills/sstack").resolve())
         self.assertFalse((self.home / ".agents").exists())
         self.assertFalse((self.home / ".cursor").exists())
-        self.assertEqual((self.home / ".sstack/config.toml").read_text(),
-                         (self.src / "config.example.toml").read_text())
+        self.assertTrue((self.home / ".sstack").is_dir())
+        self.assertFalse((self.home / ".sstack/config.toml").exists())
 
     def test_clash_backed_up(self):
         out = self.install()

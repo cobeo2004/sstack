@@ -153,7 +153,7 @@ class ReviewFixTests(DispatchBase):
     PANEL, dry = RouteTests.PANEL, RouteTests.dry
     """Findings from the first real sstack review (codex), plus user-defined tiers."""
     def test_local_transport_wins_for_review(self):
-        self.glob_cfg(TIERS + '[transport]\nmode="local"\n')
+        self.glob_cfg(TIERS + '[dispatch]\nvia="local"\n')
         code, out, _ = self.dry("review", "--files", "server/x.go")
         self.assertEqual((code, out.strip()), (3, "local"))
 

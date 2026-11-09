@@ -1,0 +1,10 @@
+# Fake hook adapter (hook-empty-collect). Lifecycle: docs/spec/ade.md.
+auto = true
+
+[detect]
+hook = true
+
+[delegate]
+kind = "hook"
+readonly = "instructed"
+poll_s = 0

@@ -1,0 +1,30 @@
+# Cursor IDE. No reliable env marker: shipped with auto-detect off; set `ade = "cursor"`.
+auto = false
+
+[detect]
+env = []
+
+[delegate]
+kind = "tool"
+name = "Task"
+load_hint = "built in"
+readonly = "instructed"
+
+[delegate.args]
+prompt = "Read the brief at {brief} and do exactly what it says. Write your report to {report}."
+model = "{model}"
+
+[delegate.readonly_args]
+readonly = true
+
+[browser]
+kind = "tool"
+summary = "Browser subagent (see cursor.md)"
+
+[device]
+kind = "none"
+summary = ""
+
+[capture]
+kind = "none"
+summary = ""

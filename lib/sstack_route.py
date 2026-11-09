@@ -108,8 +108,8 @@ def _hint_member(cfg: dict, h: dict) -> dict | None:
 def pick(cfg: dict, role: str, hint: str | None, files: list[str]) -> tuple[dict | None, str, list[str]]:
     """(member or None for local, route label, notes)."""
     notes: list[str] = []
-    if cfg.get("transport", {}).get("mode") == "local":
-        return None, "local (transport.mode)", notes
+    if cfg.get("dispatch", {}).get("via") == "local":
+        return None, "local (dispatch.via)", notes
     spec = cfg.get("role", {}).get(role) or {}
     hints = spec.get("hint", {})
     kt = kind_tiers(cfg)

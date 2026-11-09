@@ -1,0 +1,2 @@
+verify = ["make test"]
+brief = ".sstack/product.md"

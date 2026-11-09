@@ -1,0 +1,2 @@
+headless = ["fake"]
+headless_readonly = ["fake", "--ro"]

@@ -3,3 +3,4 @@ __pycache__/
 *.local.toml
 .superpowers/
 .omc/
+!tests/fixtures/**/*.local.toml

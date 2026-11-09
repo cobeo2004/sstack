@@ -1,0 +1,44 @@
+{
+  "ade": "t3",
+  "role": "review",
+  "readonly": true,
+  "run_dir": "<RUN_DIR>",
+  "calls": [
+    {
+      "member": "codex/gpt-6.1-sol",
+      "tool": "delegate_task",
+      "load_hint": "ToolSearch select:mcp__t3-code__delegate_task",
+      "args": {
+        "title": "sstack review",
+        "role": "review",
+        "task": "Read the brief at <BRIEF> and do exactly what it says. Write your report to <REPORT_BASE>.codex-gpt-6.1-sol.md. If you cannot write files, return the full report as your final message.",
+        "target": {
+          "providerInstanceId": "codex",
+          "model": "gpt-6.1-sol",
+          "options": {
+            "reasoningEffort": "high"
+          }
+        },
+        "interactionMode": "plan"
+      },
+      "record": "sstack-dispatch record review --report <REPORT_BASE>.codex-gpt-6.1-sol.md --member codex/gpt-6.1-sol --exit {exit} --run-dir <RUN_DIR>"
+    },
+    {
+      "member": "claude/opus",
+      "tool": "delegate_task",
+      "load_hint": "ToolSearch select:mcp__t3-code__delegate_task",
+      "args": {
+        "title": "sstack review",
+        "role": "review",
+        "task": "Read the brief at <BRIEF> and do exactly what it says. Write your report to <REPORT_BASE>.claude-opus.md. If you cannot write files, return the full report as your final message.",
+        "target": {
+          "providerInstanceId": "claudeAgent",
+          "model": "claude-opus-5-5",
+          "options": {}
+        },
+        "interactionMode": "plan"
+      },
+      "record": "sstack-dispatch record review --report <REPORT_BASE>.claude-opus.md --member claude/opus --exit {exit} --run-dir <RUN_DIR>"
+    }
+  ]
+}

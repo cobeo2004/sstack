@@ -1,0 +1,5 @@
+mode = "auto"    # auto: one reviewer, full panel for security/complex kinds or big diffs | single | panel
+panel = [
+  { harness = "codex",  model = "gpt-6.1-sol", effort = "high" },
+  { harness = "claude", model = "opus" },
+]

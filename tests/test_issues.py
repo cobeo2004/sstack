@@ -102,7 +102,7 @@ class Issue5Worktree(TempEnv):
         self.assertEqual(C.load(C.git_root(self.wt))["project"]["verify"], "make test")
 
     def test_worktree_own_config_wins(self):
-        self.write(self.wt, ".sstack/config.toml", '[project]\nverify = "own"\n')
+        self.write(self.wt, ".sstack/project.toml", 'verify = "own"\n')
         self.assertEqual(C.load(C.git_root(self.wt))["project"]["verify"], "own")
 
     def test_repo_lessons_go_to_primary(self):
@@ -128,5 +128,5 @@ class Issue6Route(DispatchBase):
 
     def test_cursor_has_readonly_command(self):
         import tomllib
-        h = tomllib.loads((REPO / "config.example.toml").read_text())["harness"]["cursor"]
+        h = tomllib.loads((REPO / "defaults/harnesses/cursor.toml").read_text())
         self.assertIn("plan", h["headless_readonly"])

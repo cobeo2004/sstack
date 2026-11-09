@@ -1,0 +1,21 @@
+# sstack built-in defaults (layer 0). Do not edit: override in ~/.sstack, .sstack or .sstack/local.
+# Layout and merge rules: docs/spec/config.md.
+ade = "auto"            # auto | none | <adapter name>; SSTACK_ADE overrides
+
+[dispatch]
+via = "auto"            # auto | headless | local | ade-cli
+timeout_min = 30
+
+[rules]
+review_not_implementer = true   # drop any panel member equal to role.implement
+max_parallel = 4
+loop_guard = 2
+auto_escalate = true            # a failed child is retried once, one tier up
+tier_order = ["cheap", "standard", "strong"]   # the escalation ladder; tiers not on it don't escalate
+panel_diff_lines = 400          # review: a diff bigger than this gets the full panel
+
+[reflect]
+auto = false      # true: SessionEnd hook runs a background reflect pass
+encode_at = 2     # a lesson seen this many times is proposed as a structural edit
+
+# No tiers ship by default, so kind routing stays off. Add tiers/<name>.toml to turn it on.

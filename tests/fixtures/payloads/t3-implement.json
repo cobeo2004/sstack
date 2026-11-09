@@ -1,0 +1,28 @@
+{
+  "ade": "t3",
+  "role": "implement",
+  "readonly": false,
+  "run_dir": "<RUN_DIR>",
+  "calls": [
+    {
+      "member": "pi/opencode-go/deepseek-v4.1-flash",
+      "tool": "delegate_task",
+      "load_hint": "ToolSearch select:mcp__t3-code__delegate_task",
+      "args": {
+        "title": "sstack implement",
+        "role": "implementation",
+        "task": "Read the brief at <BRIEF> and do exactly what it says. Write your report to <REPORT>. If you cannot write files, return the full report as your final message.",
+        "target": {
+          "providerInstanceId": "pi",
+          "model": "opencode-go/deepseek-v4.1-flash",
+          "options": {
+            "thinking": "high"
+          }
+        },
+        "isolation": "worktree"
+      },
+      "note": "model opencode-go/deepseek-v4.1-flash not in [models.pi]; passed through",
+      "record": "sstack-dispatch record implement --report <REPORT> --member pi/opencode-go/deepseek-v4.1-flash --exit {exit} --run-dir <RUN_DIR>"
+    }
+  ]
+}

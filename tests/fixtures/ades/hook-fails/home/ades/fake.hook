@@ -1,0 +1,6 @@
+#!/bin/sh
+# delegate fails: dispatch runs the member headless, with a note.
+case "$1" in
+  detect) exit 0 ;;
+  *) cat >/dev/null; echo "boom" >&2; exit 1 ;;
+esac

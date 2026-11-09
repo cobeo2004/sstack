@@ -1,0 +1,9 @@
+#!/bin/sh
+# Finishes at once but collect has no report: exit 1, and dispatch exits 1.
+case "$1" in
+  detect) exit 0 ;;
+  delegate) cat >/dev/null; echo '{"action": "async", "id": "job-1"}' ;;
+  wait) cat >/dev/null; exit 0 ;;
+  collect) cat >/dev/null; exit 1 ;;
+  *) exit 1 ;;
+esac

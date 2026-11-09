@@ -1,0 +1,7 @@
+auto = true
+
+[detect]
+env = ["ACME_SESSION"]
+
+[delegate]
+kind = "none"

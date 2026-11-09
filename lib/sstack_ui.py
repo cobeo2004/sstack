@@ -13,7 +13,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 import sstack_lessons as L
-from sstack_config import ConfigError, layer_paths, load, resolve, source_layer
+from sstack_config import ConfigError, layer_paths, layers, load, resolve, source
 
 REPO = Path(__file__).resolve().parent.parent
 ROLES = ["scout", "investigate", "plan", "implement", "review"]
@@ -99,7 +99,7 @@ def _config(root):
             members, err = None, str(e)
         spec = cfg.get("role", {}).get(role, {})
         roles.append({"role": role, "members": members or [], "local": not members, "error": err,
-                      "panel": "panel" in spec, "source": source_layer(root, f"role.{role}")})
+                      "panel": "panel" in spec, "source": (source(root, "roles", role) or [None])[0]})
     return {"roles": roles, "harnesses": sorted(cfg.get("harness", {})),
             "transport": cfg.get("transport", {}).get("mode", "auto"),
             "layers": [{"name": n, "path": str(p), "exists": p.exists()} for n, p in layer_paths(root)]}
@@ -143,17 +143,20 @@ def _workflows(root):
 
 
 def _save_role(b):
+    """Write <layer>/roles/<role>.toml (docs/spec/config.md); restore it if the loader then fails."""
     root = None if b["repo"] == "global" else Path(b["repo"])
-    layers = dict(layer_paths(root))
-    if b.get("layer") not in layers or b.get("role") not in ROLES:
+    dirs = dict(layers(root)[1:])
+    if b.get("layer") not in dirs or b.get("role") not in ROLES:
         raise ValueError("bad layer or role")
-    p = layers[b["layer"]]
-    text = p.read_text() if p.exists() else ""
+    p = dirs[b["layer"]] / "roles" / f"{b['role']}.toml"
+    old = p.read_text() if p.exists() else None
     p.parent.mkdir(parents=True, exist_ok=True)
-    new = replace_role_table(text, b["role"], {k: b.get(k) or None for k in ("harness", "model", "effort")})
-    tomllib.loads(new)  # refuse to write a file the agents can't read (TOMLDecodeError is a ValueError → 400)
-    p.write_text(new)
-    load(root)  # surfaces a broken file now, not on the next agent run
+    p.write_text("".join(f"{k} = {_toml_str(b[k])}\n" for k in ("harness", "model", "effort") if b.get(k)))
+    try:
+        load(root)  # surfaces a broken layer now, not on the next agent run
+    except ConfigError:
+        p.write_text(old) if old is not None else p.unlink()
+        raise
     return {"ok": True, "path": str(p)}
 
 

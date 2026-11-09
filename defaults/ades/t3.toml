@@ -1,0 +1,64 @@
+# T3 Code. Schema: docs/spec/ade.md. B2 owns behaviour; this is the contract skeleton.
+auto = true
+
+[detect]
+env = ["T3CODE_THREAD_ID"]
+
+[delegate]
+kind = "tool"
+name = "delegate_task"
+load_hint = "ToolSearch select:mcp__t3-code__delegate_task"
+readonly = "instructed"          # plan mode; `record` checks the tree
+
+[delegate.args]
+title = "{title}"
+role = "{ade_role}"
+task = "Read the brief at {brief} and do exactly what it says. Write your report to {report}."
+target = { providerInstanceId = "{provider}", model = "{model}", options = "{options}" }
+
+[delegate.readonly_args]          # merged over args for read-only roles
+interactionMode = "plan"
+
+[delegate.write_args]             # merged over args for write roles (implement)
+isolation = "worktree"
+
+[delegate.roles]                  # sstack role → {ade_role}
+scout = "research"
+investigate = "research"
+plan = "research"
+implement = "implementation"
+review = "review"
+
+[providers]                       # harness → T3 provider id
+pi = "pi"
+codex = "codex"
+claude = "claudeAgent"
+cursor = "cursor"
+
+[models.claude]                   # sstack model alias → T3 model id; unmapped → passed through + note
+haiku = "claude-haiku-5-5"
+sonnet = "claude-sonnet-5-5"
+opus = "claude-opus-5-5"
+
+[effort_option]                   # provider → option id carrying effort
+codex = "reasoningEffort"
+claudeAgent = "effort"
+cursor = "reasoning_effort"
+pi = "thinking"
+
+[cli]                             # via = "ade-cli" only: start a new top-level thread
+path = "$T3CODE_CLI_PATH"         # $VARS expand; empty → ~/.t3/bin/t3
+cmd = ["{cli}", "thread", "start", "--provider", "{provider}", "--model", "{model}",
+       "--title", "{title}", "--wait", ".", "-"]
+
+[browser]
+kind = "tool"
+summary = "preview_* tools (see t3.md)"
+
+[device]
+kind = "tool"
+summary = "device_* tools (see t3.md)"
+
+[capture]
+kind = "tool"
+summary = "preview_recording_* tools (see t3.md)"
