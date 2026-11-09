@@ -8,3 +8,4 @@ effort = "high"
 # paths = ["web/*"]
 # harness = "claude"
 # model = "opus"                 # or: tier = "strong"
+# skills = []   # skill names every child of this role must use (none by default)

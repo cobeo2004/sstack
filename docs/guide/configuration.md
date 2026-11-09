@@ -86,6 +86,11 @@ surface (`code`, `browser`, `mobile`) with the framework, where tests live, and 
 build commands. `setup` writes it; [skills/work/testing.md](../../skills/work/testing.md) defines
 how each surface is tested.
 
+Skills a dispatched child must use: `skills = [...]` in `roles/<role>.toml`, `[skills.kinds]
+<kind> = [...]` in `config.toml`, and `[practices] "<glob>" = [...]` in `project.toml` (skill names,
+or doc paths / URLs). A harness file's `skill_dirs` overrides where that harness's skills are found.
+Missing skills warn, never fail; `sstack-doctor` lists them. Details: [dispatch](dispatch.md#skills-in-the-brief).
+
 ## Layers
 
 Lowest first. A later layer wins.

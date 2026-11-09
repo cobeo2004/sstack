@@ -52,7 +52,8 @@ Runs are grouped by the index line's `run_dir`.
 Keys: `role`, `members`, `report_base`, `panel_report`, `started_at`, `readonly`, `title`, `brief`
 (repo-relative like every path here), `route` (the routing reason), `ade` (adapter name, null when
 none was used), `via` (`auto` | `headless` | `ade-cli`), `hint` (`--hint` or null), `no_escalate`
-(`--no-escalate`: never escalate this run; sstack-doctor smoke). Written later:
+(`--no-escalate`: never escalate this run; sstack-doctor smoke), `skills` / `skills_missing`
+(only with skills; see Skills). Written later:
 `escalated` (true once `record` or dispatch escalated; never twice) and `panel_written` (true once
 the panel index was written; never rewritten).
 
@@ -82,6 +83,35 @@ this run dir, every other run dir under `.sstack/runs/`, every report path (each
 a prefix of what is there (truncated or replaced), not when lines were appended. Changed paths, sorted, go to
 `readonly_warning` and a `WARNING: read-only role changed the working tree:` block (one path per
 line) appended to the report. Warns, never fails. Same check for `readonly = "enforced"`.
+
+## Skills
+
+Owner: `lib/sstack_skills.py`. Keys: docs/spec/config.md (skill keys).
+
+Union, in order, deduped: the role's `skills`, `[skills.kinds]` for the kind (`--hint` when it
+names a kind, else detected from `--files`), then every `[practices]` glob matching a `--files` path.
+Each name resolves to the first `<dir>/<name>/SKILL.md` across: each member harness's `skill_dirs`
+(member order; no members → every configured harness), repo `.agents/skills`, `.claude/skills`,
+`.pi/skills`, then `<sstack>/skills`. Doc paths / URLs pass through (relative → under the repo root).
+
+Empty union → nothing changes. Otherwise, after the run dir is made, dispatch writes
+`<run_dir>/brief.skills.md` = the brief + this section, and stores its path as `run.json` `brief`
+(headless stdin, hook `brief`, the exit-4 `task` and escalation all use it):
+
+```
+## Skills to use
+
+Read each before starting.
+- `tdd`: /home/u/.agents/skills/tdd/SKILL.md
+- read: /repo/docs/web.md
+- `ghost` not installed — carry on without it
+```
+
+A missing skill never fails the dispatch: stderr `sstack-dispatch: skill <name> not found`, and
+`run.json` / every index line of the run carry `skills` (resolved names, docs included) and
+`skills_missing` (both present only when the union is non-empty). `--dry-run` and the local route
+(exit 3, after the `local` line) print one line each: `skills: <name> <path>`, `skills: read <link>`,
+`missing skill: <name>`.
 
 ## Exit 4 payload
 
@@ -141,7 +171,8 @@ Index line (one JSON object per line):
  "route": "panel (--panel)", "readonly_warning": ["lib/sstack_config.py", "scratch.txt"]}
 ```
 
-`ts` = local time when the line is written; `ade` null when none was used.
+`ts` = local time when the line is written; `ade` null when none was used; `skills` and
+`skills_missing` are added when the run has skills.
 
 Panel index (`bin/sstack-reflect-hook` parses `: exit 0 → (.+)$`):
 

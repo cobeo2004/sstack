@@ -221,6 +221,15 @@ Expected: exit 0 and an index at `review.md`:
 
 Inside T3 Code the same command exits 4 with two calls; the last `record` writes the index.
 
+## Skills in the brief
+
+Configure skills per role, kind and path ([configuration](configuration.md)). When any apply, the
+child gets `<run dir>/brief.skills.md`: your brief plus `## Skills to use` with each skill's
+absolute SKILL.md path. A skill that isn't installed adds a "not installed — carry on without it"
+line, a `sstack-dispatch: skill <name> not found` line on stderr, and lands in the index line's
+`skills_missing`. `--dry-run` and exit 3 print `skills:` / `missing skill:` lines; on exit 3, read
+those skills before doing the work yourself. Contract: docs/spec/dispatch.md (Skills).
+
 ## Run dir and index
 
 Every dispatch (except `--dry-run`, `--route` and exit 3) creates one dir:
@@ -237,7 +246,8 @@ Every dispatch (except `--dry-run`, `--route` and exit 3) creates one dir:
 ```
 
 Index line keys: `ts`, `task`, `role`, `ade`, `via`, `harness`, `model`, `exit`, `secs`, `run_dir`,
-`report`, `route`, `readonly_warning`. Paths are repo-relative when inside the repo. Add
+`report`, `route`, `readonly_warning`, plus `skills` and `skills_missing` when the run has
+skills. Paths are repo-relative when inside the repo. Add
 `.sstack/runs/` to `.gitignore`.
 
 ```sh
