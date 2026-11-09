@@ -1,0 +1,62 @@
+# sstack global config — copy to ~/.sstack/config.toml (sstack-install does this).
+# Layers: ~/.sstack/config.toml → <git root>/.sstack/config.toml → <git root>/.sstack/config.local.toml
+# [role.X], [harness.X], [project] are replaced whole; other tables merge key by key.
+# Placeholders whose value is unset are dropped together with their flag.
+
+[harness.pi]
+headless = ["pi", "-p", "--no-session", "--model", "{model}", "--thinking", "{effort}"]
+headless_readonly = ["pi", "-p", "--no-session", "--model", "{model}", "--thinking", "{effort}", "--tools", "read,grep,find,ls"]
+t3_provider = "pi"
+
+[harness.codex]
+headless = ["codex", "exec", "--sandbox", "workspace-write", "-m", "{model}", "-c", "model_reasoning_effort={effort}", "-"]
+headless_readonly = ["codex", "exec", "--sandbox", "read-only", "-m", "{model}", "-c", "model_reasoning_effort={effort}", "-"]
+t3_provider = "codex"
+
+[harness.claude]
+headless = ["claude", "-p", "--model", "{model}", "--permission-mode", "acceptEdits"]
+headless_readonly = ["claude", "-p", "--model", "{model}", "--permission-mode", "plan"]
+t3_provider = "claudeAgent"
+
+[harness.cursor]
+headless = ["cursor-agent", "-p", "--force", "--model", "{model}"]
+t3_provider = "cursor"
+
+[transport]
+mode = "auto"            # auto | thread | headless | local
+timeout_min = 30
+
+[transport.t3]
+detect = "T3CODE_THREAD_ID"          # env var present inside T3 Code
+cli = "$T3CODE_CLI_PATH"             # falls back to ~/.t3/bin/t3
+cmd = ["{cli}", "thread", "start", "--provider", "{provider}", "--model", "{model}",
+       "--title", "{title}", "--wait", ".", "-"]
+
+[role.scout]
+harness = "claude"
+model = "haiku"
+
+[role.implement]
+harness = "pi"
+model = "opencode-go/deepseek-v4.1-flash"
+effort = "high"
+
+[role.review]
+panel = [
+  { harness = "codex",  model = "gpt-6.1-sol", effort = "high" },
+  { harness = "claude", model = "opus" },
+]
+
+[rules]
+review_not_implementer = true   # drop any panel member equal to role.implement
+max_parallel = 4
+loop_guard = 2
+
+[reflect]
+auto = true       # true: SessionEnd hook runs a background reflect pass
+encode_at = 2     # a lesson seen this many times is proposed as a structural edit
+
+# Added 2026-11-09 (ade-config-redesign run): complex work routes to opus; other kinds keep role defaults.
+[tier.strong]
+harness = "claude"
+model = "opus"
