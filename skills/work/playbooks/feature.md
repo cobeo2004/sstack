@@ -11,8 +11,8 @@ You own the design. Plan, review, verify. Implementation may be routed.
    (split it, per separate-before-serializing-shared-state); smallest safe
    decomposition (one implementer is usually right; say why).
 4. Plan and answer key (Phase 1); get the plan gate.
-5. Implement via `<sstack>/bin/sstack-dispatch implement` with a specific scope: file paths,
-   the data shape, success criteria (Phase 2).
+5. Implement by dispatching `implement` (see [sstack § Delegation](../../sstack/SKILL.md#delegation))
+   with a specific scope: file paths, the data shape, success criteria (Phase 2).
 6. Verify on the real surface (run the app, call the API). "Inconclusive" or the
    wrong surface is not a pass.
 7. `review` the diff; resolve findings (Phase 3 gate).

@@ -14,16 +14,19 @@ this file's resolved path (skills are symlinked; resolve the link, e.g.
 
 ## Start of every task
 
-1. Read the repo's `AGENTS.md` and/or `CLAUDE.md`.
-2. Read `.sstack/product.md` if it exists. In a linked worktree with none, read the
+1. Run `<sstack>/bin/sstack-dispatch ade`. It fails or returns no `name` → there is
+   no ADE: use the harness note and say so once. Otherwise read its `note`: the
+   active ADE's delegation, browser, device and capture procedure.
+2. Read the repo's `AGENTS.md` and/or `CLAUDE.md`.
+3. Read `.sstack/product.md` if it exists. In a linked worktree with none, read the
    primary checkout's (`git worktree list --porcelain`, first entry) — the same
    fallback config and repo lessons use. If neither has one and the task is more
    than a one-liner, say once that `setup` would create it, then carry on.
-3. Load accepted lessons from both scopes and follow them:
+4. Load accepted lessons from both scopes and follow them:
    `<sstack>/bin/sstack-lessons list --status accepted --scope repo` and
    `... --scope global`. Repo scope in a linked worktree reads the primary's
    `.sstack/lessons.md` unless this checkout has its own.
-4. Say back, in one or two sentences, the user's goal and the smallest change you
+5. Say back, in one or two sentences, the user's goal and the smallest change you
    expect to meet it. Don't wait for confirmation unless the evidence rules out
    what they asked for; then show it and stop.
 
@@ -66,11 +69,10 @@ top (see `work`).
 ## Gates
 
 - A gate is a stop: report, then wait for the user. Gates belong to this session.
-- Before any gate, read every child's report **and** the real `git diff`. Never
+- Before any gate, read every child's report **and** the change itself: `git diff`,
+  or `git -C <child worktree> diff` when the child ran in its own checkout. Never
   pass a child's self-report through as your own claim.
 - A routed child never approves its own gate, never commits, never opens a PR.
-- Dispatch exit 1 or 2 → stop at the next gate and tell the user what failed.
-  Don't silently redo the work here.
 - Irreversible or outward-facing actions (push, PR, deploy, delete data, messages
   to people) always need the user's explicit yes, even mid-playbook.
 
@@ -79,7 +81,7 @@ top (see `work`).
 Run the check, read its output, then claim. Never claim from "should work", a
 child's summary, or a truncated tail. Check order:
 
-1. The repo's existing tests (`[project].verify` in `.sstack/config.toml` first).
+1. The repo's existing tests (`[project].verify` in `.sstack/project.toml` first).
 2. Typecheck / build.
 3. A narrow command that exercises the change directly.
 4. Manual check of the real surface (run the app, call the endpoint).
@@ -88,25 +90,42 @@ Report what you ran and what it printed. If a check could not run, say so plainl
 
 ## Delegation
 
-- Always delegate through the dispatcher, never by hand-picking a model:
+Dispatch a role; never pick a model by hand.
+
+- Write the brief from [brief-template.md](../work/brief-template.md), then run
   `<sstack>/bin/sstack-dispatch <role> --brief <file> --report <file> [--title <t>]
   [--hint <kind>] [--files <paths>...]`. Roles: `scout`, `investigate`, `plan`,
-  `implement`, `review`.
-- Routing is automatic: the work kind (from `--hint` or detected from `--files`)
-  maps to a tier (`strong` / `standard` / `cheap`) and the tier to a harness and
-  model. Config hints override it. `<sstack>/bin/sstack-dispatch routes` lists them.
-  Pass the kind you put in the plan; don't pick models by hand.
-- Write the brief from `<sstack>/skills/work/brief-template.md`. Put briefs and reports under
-  `.sstack/runs/<run-id>/`.
-- Exit `3` (prints `local`) → the role is local: do the work in this session.
-- Exit `0` → read the report, then verify it yourself. Exit `1`/`2` → see Gates.
-- `--dry-run` shows the resolved harness, model and transport without running.
+  `implement`, `review`. Put briefs and reports under `.sstack/runs/<run-id>/`.
+- Routing maps the kind (`--hint` or detected from `--files`) to a tier, then to a
+  harness and model. `<sstack>/bin/sstack-dispatch routes` lists the routes;
+  `--dry-run` prints the resolved one. Pass the kind from the plan.
+- Read the exit code:
+  - `0` — read the report, then verify it yourself.
+  - `1` / `2` — stop at the next gate and report what failed; don't silently redo it
+    here.
+  - `3` — the role is local: do it in this session.
+  - `4` — nothing started. Stdout is the payload `{ade, role, readonly, run_dir,
+    calls}`:
+    1. **Start** every call in `calls`, from that one payload: load its `tool` with
+       `load_hint`, then call it with `args` unchanged.
+    2. **Wait** for each child's own completion signal. Never poll.
+    3. **Collect**: a read-only child usually runs in a mode that can't write files.
+       If its report file is missing once it finishes, write the child's final
+       message there yourself.
+    4. **Record** each with the first exit that matches: `--exit 2` if the child
+       timed out, `--exit 1` if it failed or left no report, else `--exit 0`. A `record` that exits `4` prints the next tier's payload: same
+       procedure. Read each report and verify it — launch success is not task
+       success.
+- A write child may run in its own checkout (`isolation: "worktree"` on T3). That
+  checkout starts from the last commit, so uncommitted edits and ignored files
+  (`.sstack/runs/`) are not there. Give every brief and report an absolute path, and
+  commit or otherwise make reachable whatever the child needs before dispatch. Once
+  it finishes, review `git -C <child worktree> diff` (path or branch from the tool
+  result) and bring the change into this checkout before the next gate.
+- Headless dispatch blocks until the child finishes. To run several at once, start
+  each in the background (`&` … `wait`, or the harness's background run).
 - Delegate reading by volume: fan out only when the question needs about five or
   more sources (files, PRs, logs). Fewer → read them here.
-- Inside T3 Code dispatch starts a top-level thread itself, but drops effort and
-  runs read-only roles headless, outside T3. With the T3 tools loaded, run
-  `sstack-dispatch <role> --route`, then one `delegate_task` per member
-  (`harness-notes/ade.md`); exit `3` → do the role here.
 
 ## Principles
 
@@ -129,7 +148,8 @@ native subagent", "end-of-session hook". On a given harness, read
 `harness-notes/<harness>.md` for the concrete tool:
 [claude](harness-notes/claude.md), [codex](harness-notes/codex.md),
 [cursor](harness-notes/cursor.md), [pi](harness-notes/pi.md).
-Other harnesses: use their nearest equivalent and say which.
+Browser, device and capture come from the active ADE's note; the harness note is
+the fallback. Other harnesses: use their nearest equivalent and say which.
 
 ## Reply
 

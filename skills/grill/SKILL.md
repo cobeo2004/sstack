@@ -43,7 +43,8 @@ pushes the frontier outward; recompute it and ask the next round.
 
 Never ask the user for something you could look up. When a frontier question needs
 a fact from the code, the tools or the history, find it yourself (`how`, `why`,
-`code-graph`), or for a many-source question send `<sstack>/bin/sstack-dispatch scout`.
+`code-graph`), or for a many-source question dispatch `scout`
+([sstack § Delegation](../sstack/SKILL.md#delegation)).
 Don't block on it: only the questions downstream of a running lookup wait; ask the
 rest of the frontier now. Each decision goes to the user, and you wait for it.
 

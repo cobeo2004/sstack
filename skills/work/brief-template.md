@@ -1,7 +1,9 @@
 # Brief template
 
-Write each brief to `.sstack/runs/<run-id>/<role>-<n>.brief.md` and pass it to
-`<sstack>/bin/sstack-dispatch <role> --brief <file> --report <file>`. Fill every `<…>`.
+Write each brief to `.sstack/runs/<run-id>/<role>-<n>.brief.md` and pass it, and the
+report path, as absolute paths: a write child's own checkout has neither the ignored
+run dir nor your uncommitted edits. Then `dispatch <role>` (see
+[sstack § Delegation](../sstack/SKILL.md#delegation)). Fill every `<…>`.
 
 ```markdown
 # <role> brief — <ticket or task title>
@@ -39,5 +41,6 @@ diff range or PR and the lenses to apply.>
    its trimmed output.
 ```
 
-The orchestrator reads the report **and** `git diff`, and re-runs the decisive
-checks itself before any gate.
+The orchestrator reads the report **and** the change itself — `git diff`, or
+`git -C <child worktree> diff` for a child in its own checkout — and re-runs the
+decisive checks itself before any gate.
