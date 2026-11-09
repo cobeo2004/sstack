@@ -4,7 +4,7 @@ import tomllib
 from pathlib import Path
 
 READONLY_ROLES = {"scout", "investigate", "plan", "review"}
-WHOLE = {"role", "harness"}  # tables whose children are replaced whole
+WHOLE = {"role", "harness", "tier"}  # tables whose children are replaced whole
 
 
 class ConfigError(Exception):

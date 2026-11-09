@@ -86,8 +86,13 @@ Report what you ran and what it printed. If a check could not run, say so plainl
 ## Delegation
 
 - Always delegate through the dispatcher, never by hand-picking a model:
-  `<sstack>/bin/sstack-dispatch <role> --brief <file> --report <file> [--title <t>]`.
-  Roles: `scout`, `investigate`, `plan`, `implement`, `review`.
+  `<sstack>/bin/sstack-dispatch <role> --brief <file> --report <file> [--title <t>]
+  [--hint <kind>] [--files <paths>...]`. Roles: `scout`, `investigate`, `plan`,
+  `implement`, `review`.
+- Routing is automatic: the work kind (from `--hint` or detected from `--files`)
+  maps to a tier (`strong` / `standard` / `cheap`) and the tier to a harness and
+  model. Config hints override it. `<sstack>/bin/sstack-dispatch routes` lists them.
+  Pass the kind you put in the plan; don't pick models by hand.
 - Write the brief from `<sstack>/skills/work/brief-template.md`. Put briefs and reports under
   `.sstack/runs/<run-id>/`.
 - Exit `3` (prints `local`) → the role is local: do the work in this session.

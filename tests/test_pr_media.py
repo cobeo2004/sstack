@@ -53,3 +53,12 @@ class PrMediaTests(TempEnv):
         out = self.publish("42", str(self.media / "after-home.png"), "--repo", "me/app", "--dry-run")
         self.assertIn("would push", out)
         self.assertEqual(git(self.origin, "branch", "--list", "sstack-media"), "")
+
+    def test_mermaid_diagrams_render_inline(self):
+        (self.media / "before-checkout.mmd").write_text("sequenceDiagram\n  A->>B: charge\n")
+        (self.media / "after-checkout.mmd").write_text("sequenceDiagram\n  A->>Q: enqueue\n  Q->>B: charge\n")
+        out = self.publish("42", str(self.media / "before-checkout.mmd"), str(self.media / "after-checkout.mmd"),
+                           "--repo", "me/app", "--dry-run")
+        self.assertIn("#### checkout: before\n\n```mermaid\nsequenceDiagram\n  A->>B: charge\n```", out)
+        self.assertIn("#### checkout: after\n\n```mermaid\nsequenceDiagram\n  A->>Q: enqueue", out)
+        self.assertNotIn("Other:", out)

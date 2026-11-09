@@ -32,6 +32,22 @@ cli = "$T3CODE_CLI_PATH"             # falls back to ~/.t3/bin/t3
 cmd = ["{cli}", "thread", "start", "--provider", "{provider}", "--model", "{model}",
        "--title", "{title}", "--wait", ".", "-"]
 
+# Tiers: named agents that work kinds route to automatically (sstack-dispatch routes).
+# Any name works ([tier.ui-fast], [tier.local-gpu]); delete every [tier.*] to turn kind routing off.
+[tier.strong]
+harness = "codex"
+model = "gpt-6.1-sol"
+effort = "high"
+
+[tier.standard]
+harness = "claude"
+model = "sonnet"
+
+[tier.cheap]
+harness = "pi"
+model = "opencode-go/deepseek-v4.1-flash"
+effort = "high"
+
 [role.scout]
 harness = "claude"
 model = "haiku"
@@ -41,7 +57,20 @@ harness = "pi"
 model = "opencode-go/deepseek-v4.1-flash"
 effort = "high"
 
+# Remap built-in kinds to your tiers, or add kind names usable with --hint:
+# [routing.kinds]
+# frontend = "ui-fast"
+# data = "local-gpu"
+
+# Optional overrides, checked before the built-in kinds: --hint <name>, or `paths` match.
+# [role.implement.hint.ui]
+# when = "our web app"          # shown by `sstack-dispatch routes`
+# paths = ["web/*"]
+# harness = "claude"
+# model = "opus"                 # or: tier = "strong"
+
 [role.review]
+mode = "auto"    # auto: one reviewer, full panel for security/complex kinds or big diffs | single | panel
 panel = [
   { harness = "codex",  model = "gpt-6.1-sol", effort = "high" },
   { harness = "claude", model = "opus" },
@@ -51,6 +80,9 @@ panel = [
 review_not_implementer = true   # drop any panel member equal to role.implement
 max_parallel = 4
 loop_guard = 2
+auto_escalate = true            # a failed child is retried once, one tier up
+tier_order = ["cheap", "standard", "strong"]   # the escalation ladder; tiers not on it don't escalate
+panel_diff_lines = 400          # review: a diff bigger than this gets the full panel
 
 [reflect]
 auto = false      # true: SessionEnd hook runs a background reflect pass

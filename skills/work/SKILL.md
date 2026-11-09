@@ -58,7 +58,11 @@ over memory.
 ## Phase 1 — Plan → gate
 
 1. Write `plan.md`: ordered, bite-sized steps. Each names exact files, the change,
-   and the check that proves that step. One step = one verifiable unit.
+   the check that proves that step, and its **kind** (`frontend`, `backend`,
+   `mobile`, `security`, `complex`, `mechanical`, `docs`, or a config hint; see
+   `<sstack>/bin/sstack-dispatch routes`). The kind picks the model, so the user
+   approves the routing at Gate 1. One step = one verifiable unit. A step that
+   spans frontend and backend is either tagged `complex` or split in two.
 2. Write the **answer key** (`answer-key.md`) before any implementation, so
    correctness is defined by something the implementer can't change:
    - the success checks, each tagged `code:`, `browser:` or `mobile:` and written
@@ -77,9 +81,14 @@ in chat where there is none. Nothing gets implemented before it.
 
 ## Phase 2 — Implement
 
-- `<sstack>/bin/sstack-dispatch implement --brief <run>/implement-<n>.brief.md --report
-  <run>/implement-<n>.report.md --title "<ticket> implement"`, brief from
-  [brief-template.md](brief-template.md) containing the approved plan.
+- Per step (or group of steps of one kind): `<sstack>/bin/sstack-dispatch implement
+  --brief <run>/implement-<n>.brief.md --report <run>/implement-<n>.report.md
+  --title "<ticket> implement" --hint <kind> --files <the step's files>`, brief from
+  [brief-template.md](brief-template.md) containing the approved plan. Without
+  `--hint` the kind is detected from `--files`.
+- A failed child is retried once, one tier up, by the dispatcher itself
+  (`rules.auto_escalate`); the stderr line and `index.jsonl` say so. Check the
+  escalated child's diff like any other.
 - Exit 3 (`local`) → implement here, step by step, checking each step.
 - One implementer edits the tree at a time. No commits, no PR from a child.
 - Read the report **and** `git diff` yourself before moving on.
@@ -105,9 +114,9 @@ agreed out of lane by the user. Report commands + results, findings + outcome.
 1. `unslop` the diff and the PR text. Use the repo's PR template if it has one.
 2. Rebase/merge the base branch and re-run the answer key on the result.
 3. **Gate 4:** the user's explicit yes before commit, push or PR, and before
-   publishing media. Then push, open the PR, publish the before/after media
-   (`<sstack>/bin/sstack-pr-media <pr> <run>/media/*`, then post its table with
-   `gh pr comment`), and hand off to `babysit`.
+   publishing media. Then push, open the PR, publish the PR evidence per
+   [testing.md](testing.md) (`<sstack>/bin/sstack-pr-media <pr> <run>/media/*`, then
+   post its output with `gh pr comment`), and hand off to `babysit`.
 
 ## Always
 

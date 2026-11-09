@@ -5,7 +5,9 @@
   sstack-pr-media <pr> <file>... [--repo owner/name] [--branch sstack-media] [--dry-run]
 
 Name files before-<step>.<ext> / after-<step>.<ext>; matching steps share a row.
-Videos get an inline GIF copy when ffmpeg is installed (GitHub won't play repo videos inline)."""
+Videos get an inline GIF copy when ffmpeg is installed (GitHub won't play repo videos inline).
+Mermaid files (.mmd, e.g. before-<flow>.mmd / after-<flow>.mmd for backend changes) are inlined
+as ```mermaid blocks, which GitHub renders; they are never pushed."""
 import argparse
 import re
 import shutil
@@ -39,7 +41,7 @@ def gif_of(video: Path) -> Path | None:
     return out if r.returncode == 0 else None
 
 
-def table(base: str, names: list[str]) -> str:
+def table(base: str, names: list[str], diagrams: dict[str, str] | None = None) -> str:
     link = lambda n: f"{base}{n}?raw=true"
     rows: dict[str, dict[str, str]] = {}
     videos, other = [], []
@@ -60,7 +62,16 @@ def table(base: str, names: list[str]) -> str:
         out += ["", "Recordings: " + " · ".join(videos)]
     if other:
         out += ["", "Other: " + " · ".join(other)]
+    for n, text in sorted((diagrams or {}).items(), key=lambda kv: _diagram_key(kv[0])):
+        m = re.match(r"(before|after)-(.+)\.mmd$", n)
+        label = f"{m.group(2)}: {m.group(1)}" if m else Path(n).stem
+        out += ["", f"#### {label}", "", "```mermaid", text.rstrip("\n"), "```"]
     return "\n".join(out) + "\n"
+
+
+def _diagram_key(n: str):
+    m = re.match(r"(before|after)-(.+)\.mmd$", n)
+    return (m.group(2), m.group(1) == "after") if m else (n, False)
 
 
 def main() -> int:
@@ -74,8 +85,9 @@ def main() -> int:
     missing = [str(f) for f in a.files if not f.is_file()]
     if missing:
         sys.exit(f"sstack-pr-media: no such file: {', '.join(missing)}")
-    files = list(a.files)
-    for f in a.files:
+    diagrams = {f.name: f.read_text() for f in a.files if f.suffix.lower() == ".mmd"}
+    files = [f for f in a.files if f.suffix.lower() != ".mmd"]
+    for f in list(files):
         if f.suffix.lower() in VIDEOS and (g := gif_of(f)):
             files.append(g)
     names = sorted(dict.fromkeys(f.name for f in files))
@@ -83,7 +95,10 @@ def main() -> int:
     base = f"https://github.com/{a.repo or repo_slug()}/blob/{a.branch}/{dest}/"
     if a.dry_run:
         print(f"would push {len(names)} files to origin/{a.branch}:{dest}/\n")
-        print(table(base, names))
+        print(table(base, names, diagrams))
+        return 0
+    if not files:  # diagrams only: nothing to host
+        print(table(base, names, diagrams))
         return 0
     tmp = Path(tempfile.mkdtemp(prefix="sstack-media-"))
     try:
@@ -106,7 +121,7 @@ def main() -> int:
     finally:
         git("worktree", "remove", "--force", str(tmp), check=False)
         shutil.rmtree(tmp, ignore_errors=True)
-    print(table(base, names))
+    print(table(base, names, diagrams))
     return 0
 
 

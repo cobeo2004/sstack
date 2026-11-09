@@ -10,7 +10,7 @@ FAKE = f'[harness.fake]\nheadless = ["{sys.executable}", "{REPO}/tests/fakes/fak
 NO_T3 = {k: v for k, v in os.environ.items() if not k.startswith("T3CODE")}
 
 
-class DispatchTests(TempEnv):
+class DispatchBase(TempEnv):
     def run_main(self, *args, env=None):
         out, err = io.StringIO(), io.StringIO()
         e = dict(NO_T3, HOME=str(self.home), **(env or {}))
@@ -32,6 +32,8 @@ class DispatchTests(TempEnv):
     def example(self):
         self.glob_cfg((REPO / "config.example.toml").read_text())
 
+
+class DispatchTests(DispatchBase):
     def test_fill_drops_unset_flag(self):
         self.assertEqual(D.fill(["pi", "--model", "{model}", "--thinking", "{effort}"],
                                 {"model": "m", "effort": None}), ["pi", "--model", "m"])
@@ -48,7 +50,7 @@ class DispatchTests(TempEnv):
         code, out, _ = self.run_main("implement", "--brief", self.brief(), "--report", str(self.report()),
                                      "--dry-run", env={"T3CODE_THREAD_ID": "x", "T3CODE_CLI_PATH": "/t3"})
         self.assertEqual(code, 0)
-        self.assertTrue(out.startswith("thread: /t3 thread start"), out)
+        self.assertIn("\nthread: /t3 thread start", out)
         self.assertIn("--provider pi", out)
         self.assertIn("effort dropped", out)
 
@@ -77,7 +79,7 @@ class DispatchTests(TempEnv):
         self.assertEqual(len(lines), 1)
         rec = json.loads(lines[0])
         self.assertEqual(rec["exit"], 0)
-        self.assertEqual(set(rec), {"ts", "task", "role", "harness", "model", "transport", "exit", "secs", "report"})
+        self.assertEqual(set(rec), {"ts", "task", "role", "harness", "model", "transport", "route", "exit", "secs", "report"})
 
     def test_empty_report_is_failure(self):
         self.glob_cfg(FAKE + '[role.implement]\nharness="fake"\nmodel="empty"\n')
@@ -115,7 +117,7 @@ class DispatchTests(TempEnv):
 
     def test_panel_partial_failure(self):
         self.glob_cfg(FAKE + '[role.review]\npanel=[{harness="fake",model="echo"},{harness="fake",model="fail"}]\n')
-        code, _, _ = self.run_main("review", "--brief", self.brief(), "--report", str(self.report()))
+        code, _, _ = self.run_main("review", "--brief", self.brief(), "--report", str(self.report()), "--panel")
         self.assertEqual(code, 0)
         index = self.report().read_text()
         self.assertIn("fake/echo: exit 0", index)

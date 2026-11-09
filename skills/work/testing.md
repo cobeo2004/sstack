@@ -91,7 +91,9 @@ there's a flow.
 
 ## Before / after evidence
 
-Any change a user can see ships with before/after media for the PR.
+Any change a user can see ships with before/after media for the PR. A backend
+change (API, service, job, data flow) ships with diagrams instead; see
+[Backend diagrams](#backend-diagrams).
 
 1. **After:** while running the live self-check on the change, save a screenshot
    at each key step as `.sstack/runs/<run-id>/media/after-<step>.png`. Record
@@ -114,6 +116,22 @@ Publishing happens in Phase 4, with the user's yes:
 `<sstack>/bin/sstack-pr-media <pr> <run>/media/*` pushes the files to the repo's
 `sstack-media` branch (never the PR branch) and prints a Before | After table.
 Post it with `gh pr comment <pr> --body-file <file>`.
+
+### Backend diagrams
+
+For a change in how requests, jobs or data move, draw the flow as Mermaid from the
+code (the `diagram` skill's Mermaid fallback; `how` for the facts):
+
+- `media/before-<flow>.mmd` from the base commit and `media/after-<flow>.mmd` from
+  the change. Use a `sequenceDiagram` for calls between services, a `flowchart`
+  for branching logic, a `stateDiagram-v2` for status changes, an `erDiagram` for
+  schema changes. A brand-new flow has only `after`.
+- Each node and arrow is a real function, endpoint, queue or table you can cite;
+  no invented boxes. Keep it under about 15 nodes: the part that changed.
+- Add the proof beside it: the endpoint call or test output from Phase 3.
+
+`sstack-pr-media` inlines `.mmd` files as ```` ```mermaid ```` blocks (GitHub
+renders them) and doesn't push them. A PR with only diagrams needs no media branch.
 
 ## When a check can't run
 

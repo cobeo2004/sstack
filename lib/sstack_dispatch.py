@@ -12,6 +12,7 @@ from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+import sstack_route as R
 from sstack_config import READONLY_ROLES, ConfigError, git_root, load, resolve
 
 PH = re.compile(r"\{(\w+)\}")
@@ -116,20 +117,41 @@ def append_run(root: Path, record: dict) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    argv = sys.argv[1:] if argv is None else argv
+    cwd = Path.cwd()
+    root = git_root(cwd) or cwd
+    if argv[:1] == ["routes"]:
+        try:
+            print(R.routes_text(load(git_root(cwd))), end="")
+        except ConfigError as e:
+            print(f"sstack-dispatch: {e}", file=sys.stderr)
+            return 1
+        return 0
     ap = argparse.ArgumentParser(prog="sstack-dispatch")
     ap.add_argument("role")
     ap.add_argument("--brief", required=True)
     ap.add_argument("--report", required=True)
     ap.add_argument("--title")
+    ap.add_argument("--hint", help="a config hint or a built-in kind (sstack-dispatch routes)")
+    ap.add_argument("--files", nargs="*", help="files the work touches; review defaults to git diff")
+    ap.add_argument("--base", default="HEAD", help="review: diff base for detection")
+    ap.add_argument("--panel", action="store_true", help="review: force the full panel")
     ap.add_argument("--dry-run", action="store_true")
     a = ap.parse_args(argv)
-    cwd = Path.cwd()
-    root = git_root(cwd) or cwd
     title = a.title or f"sstack {a.role}"
     try:
         cfg = load(git_root(cwd))
-        members = resolve(cfg, a.role)
-        if members is None:
+        rules = cfg.get("rules", {})
+        files, lines = list(a.files or []), 0
+        if a.role == "review":  # the diff size gates the panel even when --files names the scope
+            detected, lines = R.changed(root, a.base)
+            files = files if a.files is not None else detected
+        member, route, notes = R.pick(cfg, a.role, a.hint, files)
+        if a.role == "review" and cfg.get("transport", {}).get("mode") != "local":
+            members, route = _review_members(cfg, a, member, files, lines, rules)
+        else:
+            members = [member] if member else None
+        if not members:
             print("local")
             return 3
         plans = [plan_member(cfg, a.role, m, os.environ, title) for m in members]
@@ -138,6 +160,9 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     if a.dry_run:
+        print(f"route: {route}")
+        for n in notes:
+            print(f"  note: {n}")
         for m, pl in zip(members, plans):
             print(f"{pl['transport']}: {shlex.join(pl['argv'])}")
             for n in pl["notes"]:
@@ -148,14 +173,11 @@ def main(argv: list[str] | None = None) -> int:
     base = Path(a.report).resolve()
     timeout_s = float(cfg.get("transport", {}).get("timeout_min", 30)) * 60
     readonly = a.role in READONLY_ROLES
-    rules = cfg.get("rules", {})
 
-    def run(item):
-        m, pl = item
-        rp = report_path(base, m, len(members))
+    def run(m, pl, rp, text, how):
         before = _status(root) if readonly else set()
         t = time.monotonic()
-        code = run_member(pl["argv"], root, brief, timeout_s, rp, pl["transport"])
+        code = run_member(pl["argv"], root, text, timeout_s, rp, pl["transport"])
         secs = round(time.monotonic() - t, 1)
         if code != 0 and len(members) > 1 and rp.exists() and rp.stat().st_size == 0:
             rp.unlink()
@@ -171,19 +193,60 @@ def main(argv: list[str] | None = None) -> int:
                     f.write("\n\nWARNING: read-only role changed the working tree:\n" + "\n".join(changed) + "\n")
         append_run(root, {"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "task": title, "role": a.role,
                           "harness": m["harness"], "model": m["model"], "transport": pl["transport"],
-                          "exit": code, "secs": secs, "report": str(rp)})
-        return m, rp, code
+                          "route": how, "exit": code, "secs": secs, "report": str(rp)})
+        return code
 
     if len(members) == 1:
-        return run((members[0], plans[0]))[2]
+        code = run(members[0], plans[0], base, brief, route)
+        avoid = R.pick(cfg, "implement", a.hint, files)[0] if a.role == "review" else None
+        up = R.escalation(cfg, members[0], avoid) if code != 0 and rules.get("auto_escalate", True) else None
+        if not up:
+            return code
+        m2, tier = up
+        failed = base.with_name(f"{base.stem}.failed{base.suffix}")
+        for src, dst in ((base, failed), (base.with_name(base.name + ".err"), failed.with_name(failed.name + ".err"))):
+            if src.exists():
+                src.replace(dst)
+        print(f"sstack-dispatch: {members[0]['harness']}/{members[0]['model']} exit {code}; "
+              f"escalating once to tier.{tier} ({m2['harness']}/{m2['model']})", file=sys.stderr)
+        note = (f"\n\n---\nNote: a previous attempt on a cheaper model failed (exit {code}); its report is "
+                f"{failed}. The working tree may hold its partial edits: read `git diff` first and keep "
+                f"only what is right.\n")
+        try:
+            pl2 = plan_member(cfg, a.role, m2, os.environ, title)
+        except ConfigError as e:
+            print(f"sstack-dispatch: {e}", file=sys.stderr)
+            return code
+        return run(m2, pl2, base, brief + note, f"escalated from {route} → tier.{tier}")
+
     with ThreadPoolExecutor(int(rules.get("max_parallel", 4))) as ex:
-        results = list(ex.map(run, zip(members, plans)))
-    lines = [f"# {a.role} panel\n"]
-    for m, rp, code in results:
-        lines.append(f"- {m['harness']}/{m['model']}: exit {code} → {rp if code == 0 else 'gap (no report)'}")
-    base.write_text("\n".join(lines) + "\n")
-    return 0 if any(c == 0 for _, _, c in results) else 1
+        codes = list(ex.map(lambda mp: run(*mp, report_path(base, mp[0], len(members)), brief, route),
+                            zip(members, plans)))
+    lines_out = [f"# {a.role} panel\n"]
+    for m, code in zip(members, codes):
+        rp = report_path(base, m, len(members))
+        lines_out.append(f"- {m['harness']}/{m['model']}: exit {code} → {rp if code == 0 else 'gap (no report)'}")
+    base.write_text("\n".join(lines_out) + "\n")
+    return 0 if any(c == 0 for c in codes) else 1
 
 
-if __name__ == "__main__":
-    sys.exit(main())
+def _review_members(cfg, a, picked, files, lines, rules):
+    """One reviewer by default; the full panel for risky kinds, big diffs, --panel or mode=panel."""
+    spec = cfg.get("role", {}).get("review") or {}
+    mode = spec.get("mode", "auto")
+    kind = a.hint if a.hint in R.KIND_TIER else R.classify(files)
+    big = lines > int(rules.get("panel_diff_lines", 400))
+    reason = ("--panel" if a.panel else "mode=panel" if mode == "panel" else
+              kind if mode == "auto" and kind in R.PANEL_KINDS else
+              f"diff {lines} lines" if mode == "auto" and big else None)
+    impl = None
+    if rules.get("review_not_implementer", True):
+        impl, _, _ = R.pick(cfg, "implement", a.hint, files)
+    if reason and "panel" in spec:
+        panel = [m for m in resolve(cfg, "review") or [] if not R.same(m, impl)]
+        return panel, f"panel ({reason})"
+    candidates = [picked] + [R._member(cfg, x) for x in spec.get("panel", [])] + [R.tier_member(cfg, "strong")]
+    for c in candidates:
+        if c and not R.same(c, impl):
+            return [c], "single" + (f" ({reason}, no panel configured)" if reason else "")
+    return [], "local"

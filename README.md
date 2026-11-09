@@ -137,8 +137,21 @@ Ask for the work in plain language: "fix the login redirect bug", "how does bill
 
 ```sh
 bin/sstack-dispatch implement --brief .sstack/runs/42/brief.md --report .sstack/runs/42/report.md --title "fix login"
+bin/sstack-dispatch implement --brief b.md --report r.md --files web/components/Nav.tsx --dry-run
+# route: auto frontend → tier.standard
 bin/sstack-dispatch review --brief brief.md --report review.md --dry-run   # show the route without running it
+bin/sstack-dispatch routes                                                  # tiers, kinds and your hints
 ```
+
+**Smart routing.** Each dispatch runs one agent, chosen in this order:
+
+1. `--hint <name>` naming a config hint, or a config hint whose `paths` match `--files`.
+2. The work kind, from `--hint <kind>` or detected from `--files`: `security` and `complex` → `tier.strong`; `frontend`, `backend` and `mobile` → `tier.standard`; `mechanical` and `docs` → `tier.cheap`. This applies to `implement`, and only when `[tier.*]` is configured.
+3. The role's own `[role.*]` config. A role with none runs locally.
+
+Tiers are yours to define: any `[tier.<name>]` works. `[routing.kinds]` remaps a built-in kind to your tier (`frontend = "ui-fast"`) or adds a kind name for `--hint` (`data = "local-gpu"`). `rules.tier_order` sets the escalation ladder. A hint or remap that names an undefined tier is a config error.
+
+Review runs **one** reviewer, never the implementer's model. It runs the full panel only for `security`/`complex` changes, diffs over `rules.panel_diff_lines` (default 400), or `--panel`. A failed child is retried once, one tier up `rules.tier_order`, never onto the implementer's model for a review (`rules.auto_escalate`). The failed report is kept as `<report>.failed.md`.
 
 | Exit | Meaning |
 |---|---|
@@ -147,7 +160,7 @@ bin/sstack-dispatch review --brief brief.md --report review.md --dry-run   # sho
 | `2` | Timeout. The whole process group was killed. |
 | `3` | The role is local: the agent does the work in its own session. The dispatcher prints `local`. |
 
-Each run is appended to `.sstack/runs/index.jsonl`. For a review panel, `--report` holds an index that links each member's report.
+Each run is appended to `.sstack/runs/index.jsonl`, with the route it took. For a review panel, `--report` holds an index that links each member's report.
 
 ### Lessons
 
@@ -185,6 +198,8 @@ For any change a user can see, the agent captures `before-<step>.png` on the bas
 - turns videos into inline GIFs when `ffmpeg` is installed;
 - prints a **Before | After** table to post on the PR.
 
+Backend changes get diagrams instead of screenshots. The agent draws the changed flow from the code as `before-<flow>.mmd` and `after-<flow>.mmd`, as a sequence, flowchart, state or ER diagram. `sstack-pr-media` inlines them as Mermaid blocks, which GitHub renders, and pushes nothing for them.
+
 Publishing is a push, so the agent asks first.
 
 ### Dashboard
@@ -214,15 +229,32 @@ Config is layered. A later layer wins:
 | `<repo>/.sstack/config.toml` | Per repo. Commit it or not. |
 | `<repo>/.sstack/config.local.toml` | Personal and git-ignored |
 
-The `[role.*]`, `[harness.*]`, and `[project]` tables are replaced whole. Other tables merge key by key.
+The `[role.*]`, `[harness.*]`, `[tier.*]`, and `[project]` tables are replaced whole. Other tables merge key by key.
 
 ```toml
-[role.implement]
+[tier.strong]                    # security, complex, review
+harness = "codex"
+model = "gpt-6.1-sol"
+[tier.standard]                  # frontend, backend, mobile
+harness = "claude"
+model = "sonnet"
+[tier.cheap]                     # mechanical, docs
+harness = "pi"
+model = "opencode-go/deepseek-v4.1-flash"
+
+[role.implement]                 # when no kind applies
 harness = "pi"
 model = "opencode-go/deepseek-v4.1-flash"
 effort = "high"
 
+[role.implement.hint.ui]         # optional override: --hint ui, or paths match
+when = "our web app"
+paths = ["web/*"]
+harness = "claude"
+model = "opus"
+
 [role.review]
+mode = "auto"                    # one reviewer; panel only when risky
 panel = [
   { harness = "codex",  model = "gpt-6.1-sol", effort = "high" },
   { harness = "claude", model = "opus" },
