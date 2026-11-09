@@ -294,6 +294,40 @@ A role with no config, or set to `harness = "local"`, runs in the current sessio
 | `unslop` | Cleaning code slop and AI-sounding prose out of a diff before the PR |
 | `reflect` | Turning corrections into lessons, and repeated lessons into structural edits |
 
+How the skills hand off to each other. The `sstack` router picks one; `work` calls the others at fixed phases. Diamonds are gates: they wait for your yes.
+
+```mermaid
+flowchart TD
+    REQ([Request]) --> SS[sstack router<br/>reads AGENTS.md, product.md, lessons]
+    SS -->|no product.md| SETUP[setup]
+    SS -->|fuzzy idea / grill me| GRILL[grill]
+    SS -->|feature, bug, refactor, perf, migration| P0
+    SS -->|answer only| ASK[how / why / diagram / swarm / code-graph]
+    SS -->|review a diff or PR| REV
+    SS -->|open PR needs care| BABY
+
+    GRILL -->|decisions.md| P0
+
+    subgraph WORK [work]
+        P0[Phase 0 Recon] --> G0{Gate 0}
+        G0 --> P1[Phase 1 Plan + answer key] --> G1{Gate 1}
+        G1 --> P2[Phase 2 Implement] --> P3[Phase 3 Test / fix]
+        P3 --> G3{Gate 3}
+        G3 --> P4[Phase 4 PR] --> G4{Gate 4}
+    end
+
+    P0 -.->|no definition of done| GRILL
+    P0 -.->|blast radius| CG[code-graph]
+    P0 -.->|many sources| SW[swarm]
+    P2 -.->|sstack-dispatch implement| H[(pi / codex / claude / cursor)]
+    P3 --> REV[review]
+    REV -->|findings| P3
+    P4 --> UN[unslop]
+    G4 -->|push + PR| BABY[babysit]
+    WORK -.->|corrected / dead end| REFL[reflect]
+    REFL -.->|accepted lessons| SS
+```
+
 The `sstack` skill links eight engineering principles in [`skills/sstack/principles/`](skills/sstack/principles/) and per-harness tool notes in [`skills/sstack/harness-notes/`](skills/sstack/harness-notes/).
 
 ## Development
