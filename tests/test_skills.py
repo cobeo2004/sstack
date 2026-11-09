@@ -116,3 +116,8 @@ class SkillLint(unittest.TestCase):
 
     def test_skill_set(self):
         self.assertEqual({f.parent.name for f in skill_files()}, SKILLS_SET)
+
+    def test_work_traceability_reference(self):
+        trace = SKILLS / "work" / "traceability.md"
+        self.assertTrue(trace.exists(), trace)
+        self.assertIn("traceability.md", (SKILLS / "work" / "SKILL.md").read_text())

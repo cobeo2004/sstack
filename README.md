@@ -22,7 +22,9 @@ Any phase can be delegated to another harness and model. For example, implement 
 - **Gated phases.** `work` runs features, bug fixes, refactors, perf work, and multi-phase migrations through recon → plan → implement → test/fix → PR.
 - **Route by role.** `sstack-dispatch` maps the roles `scout`, `investigate`, `plan`, `implement`, and `review` to a harness and model. Inside an ADE (T3 Code, Orca, Conductor) a delegated run becomes that ADE's own child task; elsewhere it runs a headless CLI.
 - **Read-only by default.** Scout, investigate, plan, and review run in read-only mode. The dispatcher warns you if one of them changes the working tree anyway.
-- **Lessons that turn into structure.** `reflect` records your corrections as lessons. A lesson seen twice is proposed as an edit to a skill, `AGENTS.md`, or a check, so it stops being just another note.
+- **Lessons that turn into structure.** `reflect` records your corrections as lessons. A lesson seen twice is proposed as an edit to a skill, `AGENTS.md`, or a check, so it stops being just another note. Repo lessons land in one `## Things agents get wrong` section of `AGENTS.md`, each naming the check that enforces it.
+- **Intent you can trace.** `grill` writes numbered requirements (`R1..Rn`) with the problem, who it affects and the constraints. `work` makes every plan step and every check cite one, and an uncovered requirement blocks the plan gate. Review findings are `Important` or `Nit`; only `Important` blocks.
+- **The repo's own rules first.** Every brief points the child at the `AGENTS.md` files down to the paths it touches, the repo's docs, and the nearest similar file to copy. Review's compliance lens cites the rule a finding breaks.
 - **Local dashboard.** `sstack-ui` edits config per layer and shows the active ADE, run timelines, lessons and the code graph. It runs on 127.0.0.1 and requires a token.
 - **Doctor.** `sstack-doctor` checks the config; `sstack-doctor --smoke` sends a canary through every routed role.
 

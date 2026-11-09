@@ -58,7 +58,10 @@ Only the chosen rows.
 
 1. **`.sstack/product.md`** from [templates/product.md](templates/product.md): what the app is, who
    it's for, the main flows, the surfaces and how they connect. **Link** to deeper docs (e.g.
-   `.docs/spec/functional-spec.md`, `.docs/architecture/`) instead of copying them, and never restate
+   `.docs/spec/functional-spec.md`, `.docs/architecture/`) instead of copying them. Link the repo's own
+   glossary (`CONTEXT.md`, `GLOSSARY.md`, `docs/glossary*`) and decision records (`docs/adr/`,
+   `docs/decisions/`) when they exist; `grill` and `work` write settled terms back to that glossary and
+   read those ADRs. Never create either; no glossary → say so in the report. Never restate
    what the repo already encodes: versions, env var names, dependency lists, scripts, folder trees.
    If a fact lives in a file an agent can read, point at the file. Under about 60 lines.
 2. **The repo config in the split layout** ([config spec](../../docs/spec/config.md)):

@@ -20,6 +20,13 @@ scripts, folder trees). Point at the file instead. Keep it short. -->
 
 - <Surface (app / API / admin / worker)>: <what it does>; talks to <surface> via <how>.
 
+## Glossary and decisions
+
+- Glossary: <path to the repo's own glossary, or "none"> — the terms it defines,
+  and the words it says not to use.
+- Decision records: <path to `docs/adr/` and friends, or "none"> — what was already
+  decided; a plan that contradicts one says so.
+
 ## Deeper docs
 
 - [<doc>](<relative path>) — <what's in it>

@@ -35,8 +35,8 @@ over memory.
    Worktrees still share databases, ports and services: note any this task touches.
 2. Sync with the base branch (fetch; note how far behind you are). Read the ticket
    if there is one (or `decisions.md` if `grill` produced this run), the house rules
-   (`AGENTS.md`/`CLAUDE.md`), `.sstack/product.md`, and the docs it links that
-   matter here.
+   (`AGENTS.md`/`CLAUDE.md`), `.sstack/product.md`, the docs it links, and the ADRs
+   and glossary covering this area: [traceability.md](traceability.md).
 3. No falsifiable definition of done and no `decisions.md` → run `grill` first.
    Otherwise clarify: one question at a time, only for things no command can
    answer. If running something would answer it (behaviour, output, timing), run
@@ -60,8 +60,9 @@ over memory.
 
 ## Phase 1 — Plan → gate
 
-1. Write `plan.md`: ordered, bite-sized steps. Each names exact files, the change,
-   the check that proves that step, and its **kind** (`frontend`, `backend`,
+1. Write `plan.md`: ordered, bite-sized steps. Each names the `R#` it serves
+   ([traceability.md](traceability.md)), exact files, the change, the check that
+   proves that step, and its **kind** (`frontend`, `backend`,
    `mobile`, `security`, `complex`, `mechanical`, `docs`, or a config hint; see
    [sstack § Delegation](../sstack/SKILL.md#delegation)). The kind picks the model, so the user
    approves the routing at Gate 1. One step = one verifiable unit. A step that
@@ -80,7 +81,8 @@ over memory.
 3. Role `plan` may draft the plan if routed; the gate stays here.
 
 **Gate 1:** the harness's plan approval (see harness notes), or an explicit "yes"
-in chat where there is none. Nothing gets implemented before it.
+in chat where there is none, and no requirement left without a check. Nothing gets
+implemented before it.
 
 ## Phase 2 — Implement
 
@@ -111,8 +113,8 @@ in chat where there is none. Nothing gets implemented before it.
 3. Run `review` on the diff (role `review`, ideally a different model family from
    the implementer). Re-check every finding yourself before acting on it.
 
-**Gate 3:** all checks green **and** every review finding fixed or explicitly
-agreed out of lane by the user. Report commands + results, findings + outcome.
+**Gate 3:** all checks green **and** every Important finding fixed or agreed out
+of lane by the user; nits listed. Report commands + results, findings + outcome.
 
 ## Phase 4 — PR → gate
 
@@ -129,8 +131,8 @@ agreed out of lane by the user. Report commands + results, findings + outcome.
 
 - A routed child never approves its own gate. A dispatch exit `1`/`2` stops at the
   next gate; don't quietly redo it here.
-- Verification gate from `sstack` before every claim.
-- At the end, run `reflect` if the user corrected you or you hit a dead end.
+- Verification gate from `sstack` before every claim; at the end, run `reflect` if
+  the user corrected you or you hit a dead end.
 
 ## Repo playbook overrides
 

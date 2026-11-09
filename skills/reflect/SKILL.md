@@ -18,6 +18,11 @@ Agents read only `accepted` lessons (the `sstack` router loads them).
   rejected approach with a reason.
 - **Dead ends in the code:** an approach that failed here for a reason a future
   agent would hit again ("tests need `supabase start` first, else ECONNREFUSED").
+- **Recurring review findings:** the same review finding (class, not instance)
+  raised run after run — a repo lesson waiting to become a check. Recon patterns
+  are not a lesson source.
+- **A child's "Instructions that were wrong or stale":** each report line is
+  evidence that a brief, skill or doc sent an agent the wrong way.
 
 Not lessons: one-offs, facts already in `AGENTS.md`/`CLAUDE.md`/the code, generic
 advice, anything secret. Scope: a lesson that names this repo's files, docs,
@@ -26,7 +31,8 @@ scripts, services or agent manual is `repo`, even when it is a preference.
 
 ## Manual flow
 
-1. Review the session: the user's corrections and the dead ends, with where each
+1. Review the session: the user's corrections, the dead ends, a review finding
+   that recurred, and a child report's wrong-or-stale lines, with where each
    happened.
 2. Propose **at most 3** lessons. Each is one line, imperative, specific, with
    evidence (what happened, when).
@@ -37,6 +43,19 @@ scripts, services or agent manual is `repo`, even when it is a preference.
    "no" → `<sstack>/bin/sstack-lessons forget <id> --scope <s>`. The dashboard can do the same.
    Never accept on the user's behalf.
 
+## Repo lessons live in one AGENTS.md section
+
+Repo lessons about how agents work in this repo go in exactly one section of
+`AGENTS.md`, `## Things agents get wrong`, one line each:
+
+```
+- <the mistake agents make> — <the enforcer: a check, lint, test, or "none">
+```
+
+The enforcer is the point: a line whose enforcer is "none" is still a wish, and
+says so honestly. Delete a line once a check prevents that mistake, so the section
+stays short. Nothing of this kind goes anywhere else in `AGENTS.md`.
+
 ## Repeat → structure
 
 When `add` prints `ENCODE` (the lesson's `seen` reached `[reflect] encode_at`,
@@ -45,7 +64,8 @@ mistake hard to repeat, cheapest reliable first:
 
 1. a check or script (a lint rule, a test, a verify command in
    `[project].verify`), when a machine can enforce it;
-2. the repo's `AGENTS.md` or a repo skill, for a repo lesson;
+2. one line in `AGENTS.md`'s `## Things agents get wrong` section (see above), or
+   a repo skill, for a repo lesson;
 3. the owning sstack skill (`<sstack>/skills/<skill>/SKILL.md`), for a global one.
 
 Show the diff. Apply it only on the user's yes, run the skill lint
@@ -67,10 +87,12 @@ pending lessons at the start of the next task or in the dashboard.
 You are reviewing one finished agent session to find lessons. Read the
 transcript file named below (JSON lines; user messages and tool results).
 
-Find at most 3 lessons of two kinds: the user's corrections of the agent ("don't
-do X", "use Y", a rejected approach with a reason), and dead ends in the code that
-a future agent would hit again, with the reason. Skip one-offs, generic advice,
-anything already written in the repo's AGENTS.md or CLAUDE.md, and anything
+Find at most 3 lessons of these kinds: the user's corrections of the agent ("don't
+do X", "use Y", a rejected approach with a reason), dead ends in the code that a
+future agent would hit again with the reason, instructions that were wrong or
+stale (a brief, skill or doc that sent the agent the wrong way), and a review
+finding that has now come up in more than one run. Skip one-offs, generic
+advice, anything already written in the repo's AGENTS.md or CLAUDE.md, and anything
 secret (tokens, keys, personal data). The known lessons are listed below the
 transcript path: skip any lesson already listed, even if worded differently, and
 output `SEEN: <scope>:<id> | <evidence>` for it instead.
