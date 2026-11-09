@@ -34,7 +34,7 @@ flowchart LR
     R --> W[work: playbook]
     R --> O[how / why / review / diagram / ...]
     W --> P0[0 Recon] --> P1[1 Plan] --> P2[2 Implement] --> P3[3 Test/fix] --> P4[4 PR]
-    P2 -. dispatch implement (ADE or headless) .-> H[(pi / codex / claude / cursor<br/>ADE child or headless CLI)]
+    P2 -. "dispatch implement (ADE or headless)" .-> H[(pi / codex / claude / cursor<br/>ADE child or headless CLI)]
     P3 -. review panel .-> H
 ```
 
@@ -270,7 +270,7 @@ flowchart TD
     P0 -.->|no definition of done| GRILL
     P0 -.->|blast radius| CG[code-graph]
     P0 -.->|many sources| SW[swarm]
-    P2 -.->|dispatch implement (ADE or headless)| H[(pi / codex / claude / cursor)]
+    P2 -.->|"dispatch implement (ADE or headless)"| H[(pi / codex / claude / cursor)]
     P3 --> REV[review]
     REV -->|findings| P3
     P4 --> UN[unslop]
