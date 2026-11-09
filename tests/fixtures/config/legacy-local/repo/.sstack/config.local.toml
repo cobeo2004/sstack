@@ -1,0 +1,3 @@
+# Old per-user overrides beside split files: refused; migrate moves it to .sstack/local/.
+[role.implement]
+harness = "codex"
