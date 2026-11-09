@@ -270,7 +270,7 @@ flowchart TD
     P0 -.->|no definition of done| GRILL
     P0 -.->|blast radius| CG[code-graph]
     P0 -.->|many sources| SW[swarm]
-    P2 -.->|sstack-dispatch implement| H[(pi / codex / claude / cursor)]
+    P2 -.->|dispatch implement (ADE or headless)| H[(pi / codex / claude / cursor)]
     P3 --> REV[review]
     REV -->|findings| P3
     P4 --> UN[unslop]
