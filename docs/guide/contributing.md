@@ -19,12 +19,12 @@ export PATH="$HOME/sstack/bin:$PATH"   # where getting-started.md cloned sstack
 
 | path | holds |
 |---|---|
-| `bin/` | entry points: `sstack-dispatch`, `sstack-config`, `sstack-doctor`, `sstack-ui`, `sstack-lessons`, `sstack-worktree`, `sstack-install`, `sstack-pr-media`, `sstack-reflect-hook` |
+| `bin/` | entry points: `sstack-dispatch`, `sstack-config`, `sstack-doctor`, `sstack-ui`, `sstack-lessons`, `sstack-worktree`, `sstack-install`, `sstack-pr-media`, `sstack-hook`, `sstack-reflect-hook` |
 | `lib/` | the code behind them: `sstack_config.py` (loader), `sstack_configcli.py`, `sstack_ade.py`, `sstack_dispatch.py`, `sstack_route.py`, `sstack_doctor.py`, `sstack_ui.py`, `sstack_lessons.py`, `sstack_worktree.py` |
-| `defaults/` | the built-in config layer: `config.toml`, `harnesses/`, `roles/`, `ades/` |
+| `defaults/` | the built-in config layer: `config.toml`, `harnesses/`, `roles/`, `ades/`; `hooks/pi-sstack.ts` (pi hook extension) |
 | `skills/<name>/SKILL.md` | the 13 skills; `skills/sstack/` is the router |
 | `ui/` | dashboard front end (`index.html`, `app.js`, `pages/*.js`, `tokens.css`) |
-| `docs/spec/` | contracts: `config.md`, `ade.md`, `dispatch.md`, `doctor.md`, `ui.md` |
+| `docs/spec/` | contracts: `config.md`, `ade.md`, `dispatch.md`, `doctor.md`, `hooks.md`, `ui.md` |
 | `docs/guide/` | these user and agent guides |
 | `docs/design.md` | design history and rationale |
 | `tests/` | `test_*.py` (stdlib `unittest`), `helpers.py`, `fakes/`, `fixtures/` |
@@ -48,6 +48,7 @@ Run one area while you work:
 | config loader, layers, legacy | `test_config.py`, `test_contracts.py` |
 | `sstack-config migrate` / `show` | `test_configcli.py` |
 | ADE detection, hooks | `test_ade.py` |
+| harness hooks (`sstack-hook`) | `test_hooks.py` |
 | dispatch, record, run dir | `test_dispatch.py`, `test_route.py`, `test_integration.py` |
 | doctor, smoke | `test_doctor.py` |
 | dashboard | `test_ui.py` |
@@ -114,6 +115,10 @@ PASS roles resolve: …
   `test_skills.py` enforces both, plus frontmatter and length caps (150 lines per skill, 200 for the
   router). Skill text follows the writing-great-skills guidance: short, imperative, one procedure
   per skill.
+- **Every hook on every harness.** A new sstack hook adds a row to every
+  `skills/sstack/harness-notes/*.md` (the snippet, or `none: <reason>`), its name to `HOOK_ROWS` in
+  `test_skills.py`, its snippet to `HOOKS` in `bin/sstack-install`, and its payloads to
+  [docs/spec/hooks.md](../spec/hooks.md) with one fixture per harness.
 - **Docs follow code.** A user-visible change updates the page in `docs/guide/` that covers it, and
   `test_docs.py` must pass.
 

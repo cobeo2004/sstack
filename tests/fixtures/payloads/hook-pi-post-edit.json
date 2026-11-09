@@ -1,0 +1,7 @@
+{
+  "_source": "defined by defaults/hooks/pi-sstack.ts (pi tool_result on edit/write: event.toolName, event.input; ctx.cwd, ctx.sessionManager.getSessionFile()); field names from pi docs/extensions.md",
+  "cwd": "/repo",
+  "tool_name": "edit",
+  "input": {"path": "a.txt", "oldText": "hello", "newText": "bye"},
+  "session_file": "/home/transcripts/session.jsonl"
+}

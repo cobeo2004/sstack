@@ -1,0 +1,8 @@
+{
+  "_source": "recorded: codex-cli 0.167.0 2026-11-09, SessionEnd in .codex/hooks.json; paths scrubbed",
+  "session_id": "01a1bff9-3cc3-7871-89ea-b84779e09b4c",
+  "transcript_path": "/home/transcripts/session.jsonl",
+  "cwd": "/repo",
+  "hook_event_name": "SessionEnd",
+  "reason": "other"
+}

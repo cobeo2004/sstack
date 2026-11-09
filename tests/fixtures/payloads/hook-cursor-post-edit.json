@@ -1,0 +1,20 @@
+{
+  "_source": "recorded: cursor-agent 2026.09.28 2026-11-09, afterFileEdit in .cursor/hooks.json; paths and email scrubbed",
+  "conversation_id": "36697146-29d6-43ab-b660-651bf5120be4",
+  "generation_id": "36697146-29d6-43ab-b660-651bf5120be4",
+  "model": "grok-4.7",
+  "file_path": "/repo/a.txt",
+  "edits": [
+    {
+      "old_string": "",
+      "new_string": "hello\n"
+    }
+  ],
+  "session_id": "36697146-29d6-43ab-b660-651bf5120be4",
+  "hook_event_name": "afterFileEdit",
+  "cursor_version": "2026.09.28-64d2043",
+  "workspace_roots": [
+    "/repo"
+  ],
+  "transcript_path": "/home/transcripts/session.jsonl"
+}

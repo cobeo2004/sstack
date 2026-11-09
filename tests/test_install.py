@@ -47,6 +47,29 @@ class InstallTests(TempEnv):
         self.assertTrue((self.home / ".claude/skills/work").is_symlink())
         self.assertIn("SessionEnd", out)
 
+    def test_hook_snippets_for_detected_harnesses_only(self):
+        settings = self.home / ".claude/settings.json"
+        out = self.install()
+        hook = str(self.src / "bin/sstack-hook")
+        self.assertIn(f"{hook} post-edit --harness claude", out)
+        self.assertIn(f"{hook} post-edit --harness codex", out)
+        self.assertIn(f"{hook} session-end --harness codex", out)
+        self.assertNotIn("--harness cursor", out)
+        self.assertNotIn("pi-sstack.ts", out)
+        self.assertFalse(settings.exists())
+        self.assertFalse((self.home / ".codex/hooks.json").exists())
+
+    def test_shared_agents_dir_gets_codex_snippet(self):
+        shutil.rmtree(self.home / ".codex")
+        (self.home / ".agents/skills").mkdir(parents=True)
+        out = self.install()
+        self.assertEqual(out.count("--harness codex"), 2)  # post-edit + session-end, printed once
+
+    def test_pi_snippet_points_at_extension(self):
+        (self.home / ".pi/agent/skills").mkdir(parents=True)
+        self.assertIn(str(self.src / "defaults/hooks/pi-sstack.ts"), self.install())
+        self.assertFalse((self.home / ".pi/agent/extensions").exists())
+
     def test_rerun_idempotent(self):
         self.install(); self.install()
         names = sorted(p.name for p in (self.home / ".claude/skills").iterdir())

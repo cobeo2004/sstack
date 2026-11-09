@@ -1,0 +1,28 @@
+{
+  "_source": "recorded: claude 2026-11-09, PostToolUse matcher Edit|Write via --settings; paths scrubbed",
+  "session_id": "5d4bfd78-489a-44da-8dcb-0671218dc5b0",
+  "transcript_path": "/home/transcripts/session.jsonl",
+  "cwd": "/repo",
+  "scratchpad_dir": "/tmp/scratchpad",
+  "prompt_id": "e189b8dd-f59c-40ad-843d-4dd4dd28ee8e",
+  "permission_mode": "acceptEdits",
+  "effort": {
+    "level": "medium"
+  },
+  "hook_event_name": "PostToolUse",
+  "tool_name": "Write",
+  "tool_input": {
+    "file_path": "/repo/a.txt",
+    "content": "hello"
+  },
+  "tool_response": {
+    "type": "create",
+    "filePath": "/repo/a.txt",
+    "content": "hello",
+    "structuredPatch": [],
+    "originalFile": null,
+    "userModified": false
+  },
+  "tool_use_id": "toolu_017YXvMbjvZ7oXwU9FoQJhAc",
+  "duration_ms": 3
+}

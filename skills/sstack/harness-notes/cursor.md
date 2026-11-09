@@ -8,7 +8,8 @@
 | spawn a native subagent | not assumed; routed roles use `dispatch` ([sstack](../SKILL.md#delegation)), or do the role here on exit `3` |
 | drive a browser | the active ADE's note; else Cursor's built-in browser tool if enabled; else the repo's e2e runner from the shell |
 | drive a device | the active ADE's note; else the repo's mobile runner (e.g. `maestro test`) from the shell |
-| end-of-session hook | none assumed; run `reflect` by hand at the end of a task |
+| post-edit hook | `afterFileEdit` in `~/.cursor/hooks.json` (`"version": 1`) → `<sstack>/bin/sstack-hook post-edit --harness cursor`; a failure goes to Cursor's hook log only, not to the agent (the installer prints the snippet) |
+| end-of-session hook | `sessionEnd` in `~/.cursor/hooks.json` → `<sstack>/bin/sstack-hook session-end --harness cursor`; no transcript → run `reflect` by hand (the installer prints the snippet) |
 
 - Headless child: `cursor-agent -p --force --model <m>`; read-only roles use
   `--mode plan` (set in `<sstack>/defaults/harnesses/cursor.toml`).

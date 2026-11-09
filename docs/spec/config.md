@@ -19,6 +19,10 @@ Owner: `lib/sstack_config.py`. Fixtures: `tests/fixtures/config/<case>/` (each w
 A file's top level is the table itself: `roles/implement.toml` holds `harness = "pi"`, not
 `[role.implement]`.
 
+`project.toml` keys are read by skills (template: `skills/setup/templates/project.toml`), except
+`check`: a fast file-scoped shell command with a `{path}` placeholder, run by `sstack-hook post-edit`
+on each edited file ([hooks.md](hooks.md)). Unset or empty → no check.
+
 ```toml
 # config.toml
 ade = "auto"              # auto | none | <adapter>; env SSTACK_ADE wins

@@ -8,7 +8,8 @@
 | spawn a native subagent | not assumed; routed roles use `dispatch` ([sstack](../SKILL.md#delegation)) |
 | drive a browser | the active ADE's note; else no built-in browser; the repo's e2e runner or headless Playwright from the shell, else a gap |
 | drive a device | the active ADE's note; else the repo's mobile runner (e.g. `maestro test`) or the `agent-device` CLI from the shell, else a gap |
-| end-of-session hook | none assumed; run `reflect` by hand at the end of a task |
+| post-edit hook | symlink `<sstack>/defaults/hooks/pi-sstack.ts` into `~/.pi/agent/extensions/`: on `edit`/`write` it runs `sstack-hook post-edit --harness pi` and marks a failing `check` as `isError` (the installer prints the line) |
+| end-of-session hook | the same extension, on `session_shutdown` → `sstack-hook session-end --harness pi`; no session file (`--no-session`) → run `reflect` by hand |
 
 - Headless child: `pi -p --no-session --model <provider/model> --thinking <level>`.
   Read-only roles add `--tools read,grep,find,ls`.

@@ -1,0 +1,6 @@
+{
+  "_source": "defined by defaults/hooks/pi-sstack.ts (pi session_shutdown: event.reason; ctx.cwd, ctx.sessionManager.getSessionFile()); field names from pi docs/extensions.md",
+  "cwd": "/repo",
+  "reason": "quit",
+  "session_file": "/home/transcripts/session.jsonl"
+}

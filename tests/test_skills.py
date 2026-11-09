@@ -121,3 +121,13 @@ class SkillLint(unittest.TestCase):
         trace = SKILLS / "work" / "traceability.md"
         self.assertTrue(trace.exists(), trace)
         self.assertIn("traceability.md", (SKILLS / "work" / "SKILL.md").read_text())
+
+HOOK_ROWS = ["| post-edit hook |", "| end-of-session hook |"]  # one per sstack hook (docs/spec/hooks.md)
+
+
+class HookRows(unittest.TestCase):
+    def test_every_harness_note_has_every_hook_row(self):
+        for f in (SKILLS / "sstack" / "harness-notes").glob("*.md"):
+            text = f.read_text()
+            for row in HOOK_ROWS:
+                self.assertIn(row, text, f"{f}: add a row (snippet, or `none: <reason>`)")

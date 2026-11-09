@@ -3,6 +3,7 @@ brief  = ".sstack/product.md"
 docs   = []          # links to deeper docs, e.g. [".docs/spec/functional-spec.md", ".docs/architecture/"]
 verify = []          # confirmed with the user, e.g. ["pnpm lint", "pnpm test"]
 graph  = true        # false if code-review-graph isn't installed
+check  = ""          # fast check of one edited file, run by the post-edit hook; e.g. "ruff check {path}"
 
 # How each surface is tested (see skills/work/testing.md). Drop surfaces the app doesn't have.
 # {path} = the test file or name to run. UI changes always get a live self-check in the
