@@ -248,6 +248,7 @@ proves each kind of check.
 | `why` | Why code is this way, from history, with each claim tagged by confidence |
 | `diagram` | Architecture, sequence, data-flow, and state diagrams grounded in the code |
 | `code-graph` | Building the code graph and finding a diff's blast radius |
+| `practices` | Finding best-practice skills and docs for the repo's stack, linked in `.sstack/project.toml` `[practices]` |
 | `unslop` | Cleaning code slop and AI-sounding prose out of a diff before the PR |
 | `reflect` | Turning corrections into lessons, and repeated lessons into structural edits |
 
