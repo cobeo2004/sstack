@@ -299,7 +299,7 @@ How the skills hand off to each other. The `sstack` router picks one; `work` cal
 ```mermaid
 flowchart TD
     REQ([Request]) --> SS[sstack router<br/>reads AGENTS.md, product.md, lessons]
-    SS -->|no product.md| SETUP[setup]
+    SS -->|set up / onboard this repo| SETUP[setup]
     SS -->|fuzzy idea / grill me| GRILL[grill]
     SS -->|feature, bug, refactor, perf, migration| P0
     SS -->|answer only| ASK[how / why / diagram / swarm / code-graph]
