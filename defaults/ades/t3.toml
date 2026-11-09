@@ -13,7 +13,7 @@ readonly = "instructed"          # plan mode; `record` checks the tree
 [delegate.args]
 title = "{title}"
 role = "{ade_role}"
-task = "Read the brief at {brief} and do exactly what it says. Write your report to {report}."
+task = "{task}"                   # sstack_ade.TASK: read {brief}, write {report} (or return it as the final message)
 target = { providerInstanceId = "{provider}", model = "{model}", options = "{options}" }
 
 [delegate.readonly_args]          # merged over args for read-only roles
@@ -39,6 +39,9 @@ cursor = "cursor"
 haiku = "claude-haiku-5-5"
 sonnet = "claude-sonnet-5-5"
 opus = "claude-opus-5-5"
+
+[models.codex]                    # T3 takes codex CLI ids as they are; listed so they pass without a note
+"gpt-6.1-sol" = "gpt-6.1-sol"
 
 [effort_option]                   # provider → option id carrying effort
 codex = "reasoningEffort"

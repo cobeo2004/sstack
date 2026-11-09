@@ -21,9 +21,10 @@ class ReflectDedupeTests(TempEnv):
         self.glob_cfg(f'[harness.fake]\nheadless_readonly = ["{sys.executable}", "{agent}", "{{model}}"]\n'
                       '[role.scout]\nharness = "fake"\nmodel = "x"\n[reflect]\nauto = true\n')
 
-    def hook(self, transcript: Path, session="s1"):
+    def hook(self, transcript: Path, session="s1", env=None):
         e = {k: v for k, v in os.environ.items() if not k.startswith(("T3CODE", "SSTACK_"))}
         e["HOME"] = str(self.home)
+        e.update(env or {})
         payload = {"transcript_path": str(transcript), "cwd": str(self.root), "session_id": session,
                    "hook_event_name": "SessionEnd"}
         r = subprocess.run([sys.executable, str(REPO / "bin/sstack-reflect-hook"), "--foreground"],
@@ -104,3 +105,13 @@ class ReflectDedupeTests(TempEnv):
         t = self.root / "t.jsonl"; t.write_text('{"n":1}\n')
         self.hook(t)
         self.assertEqual(json.loads(state.read_text()), {"other": 5, "s1": 1})
+
+    def test_hook_in_t3_runs_headless(self):
+        # a SessionEnd hook has no agent to call delegate_task: it passes --via headless (no exit 4)
+        self.setup_agent("NONE\nPASS")
+        t = self.root / "t.jsonl"; t.write_text("{}\n")
+        self.hook(t, env={"T3CODE_THREAD_ID": "x"})
+        self.assertEqual(len(self.briefs()), 1)
+        [report] = self.root.glob(".sstack/runs/reflect-*/scout.report.md")
+        self.assertIn("NONE", report.read_text())
+        self.assertEqual(json.loads((self.root / ".sstack/runs/reflect-state.json").read_text()), {"s1": 1})

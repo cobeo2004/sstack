@@ -1,0 +1,42 @@
+#!/usr/bin/env python3
+"""Orca adapter hook (docs/spec/ade.md). delegate: `orca orchestration task-create` then
+`worker-start`; wait: `check --wait`; collect: the report the worker wrote; cancel: `task-cancel`.
+ponytail: CLI flags follow Orca's docs (stablyai/orca), unverified against a live install; tested
+with tests/fakes/orca. State ($SSTACK_HOOK_STATE): report = the member's report path."""
+import json, os, shutil, subprocess, sys
+from pathlib import Path
+
+cap, d = sys.argv[1], json.loads(sys.stdin.read() or "{}")
+state = Path(os.environ.get("SSTACK_HOOK_STATE", "."))
+orca = lambda *a, **kw: subprocess.run(["orca", "orchestration", *a], capture_output=True, text=True, **kw)
+
+if cap == "detect":
+    sys.exit(0 if os.environ.get("ORCA_AGENT_SESSION_ID") else 1)
+if cap == "delegate":
+    if not shutil.which("orca"):
+        print(json.dumps({"action": "none", "note": "orca CLI not on PATH; running headless"}))
+        sys.exit(0)
+    agent, _, model = d["member"].partition("/")
+    task = (f"Read the brief at {d['brief']} and do exactly what it says. Write your report to {d['report']}. "
+            "If you cannot write files, return the full report as your final message.")  # = sstack_ade.TASK
+    # `--opt=value`: a user title starting with "-" stays a value, never a flag
+    r = orca("task-create", f"--title={d['title']}", "--prompt", task, "--json", check=True)
+    try:
+        job = json.loads(r.stdout)["id"]
+    except (ValueError, KeyError, TypeError):
+        job = r.stdout.split()[0]
+    orca("worker-start", "--task", job, "--worktree", "current" if d["readonly"] else "new-child",
+         "--agent", agent, *(["--model", model] if model and model != "default" else []), check=True)
+    (state / "report").write_text(d["report"])
+    print(json.dumps({"action": "async", "id": job}))
+elif cap == "wait":
+    sys.exit(0 if orca("check", "--task", d["id"], "--wait").returncode == 0 else 1)
+elif cap == "collect":
+    p = Path((state / "report").read_text()) if (state / "report").is_file() else None
+    text = p.read_text() if p and p.is_file() else ""
+    sys.stdout.write(text)
+    sys.exit(0 if text else 1)
+elif cap == "cancel":
+    orca("task-cancel", "--task", d["id"])
+else:
+    sys.exit(1)

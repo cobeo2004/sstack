@@ -11,7 +11,7 @@ load_hint = "built in"
 readonly = "instructed"
 
 [delegate.args]
-prompt = "Read the brief at {brief} and do exactly what it says. Write your report to {report}."
+prompt = "{task}"                 # sstack_ade.TASK
 model = "{model}"
 
 [delegate.readonly_args]
