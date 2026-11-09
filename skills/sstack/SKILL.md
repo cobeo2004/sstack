@@ -55,13 +55,14 @@ this file's resolved path (skills are symlinked; resolve the link, e.g.
 | One question that needs many independent looks | `swarm` |
 | Architecture / sequence / data-flow / state picture | `diagram` |
 | Impact of a change, dependency graph, "what does this touch" | `code-graph` |
+| Best practices for this stack, "link skills to this repo" | `practices` |
 | Clean up a diff or prose before a PR | `unslop` |
 | The user corrects you, you hit a dead end, or "remember this" | `reflect` |
 | A fully specified one-line edit | do it, then the verification gate |
 
 Nothing fits → use `work` with the closest playbook and say which steps you
-dropped. Domain skills (framework, design, platform) are not sstack's; load them
-alongside when the task touches their domain.
+dropped. Domain skills (framework, design, platform) are not sstack's: `practices`
+finds them for this repo and links them in `[practices]`.
 
 ## Follow the playbook
 

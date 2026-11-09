@@ -23,7 +23,7 @@ Repo: what already exists of each thing setup writes — `.sstack/product.md`, `
 entries, the `AGENTS.md` row, the code graph — then `AGENTS.md`, `CLAUDE.md`, README, `.docs/` or
 `docs/`, manifests, CI config, and repo-local skills in `.agents/skills/` and `.claude/skills/`.
 Report any repo skill whose name clashes with an sstack skill (`sstack setup work swarm review unslop
-babysit how why diagram code-graph reflect`): the repo's copy wins inside that repo, so say which.
+babysit how why diagram code-graph reflect practices`): the repo's copy wins inside that repo, so say which.
 From manifests and CI, list the candidate "prove it works" commands (lint, typecheck, test, build),
 read each script first, and run only the ones that cannot change tracked files (no `--fix`,
 `--write`, `-u`/snapshot updates, codegen); keep each one's output and exit code, and note any needing
@@ -73,7 +73,9 @@ Only the chosen rows.
    `.sstack/harnesses/<name>.toml`, machine-local overrides in `.sstack/local/`. Add `.sstack/local/`
    and `.sstack/runs/` to `.gitignore`, or to `.git/info/exclude` if the user doesn't want
    `.gitignore` touched. Ask whether `project.toml` and `product.md` should be committed.
-3. **The verify commands** from the audit in `verify`, with their results. Drop any that need a
+3. **The verify commands** from the audit in `verify`, with their results. Then run `practices`
+   with the audit's stack: it proposes `[practices]` in `project.toml` (globs → skills or docs that
+   dispatched children read) and writes only on the user's yes. Drop any that need a
    service you don't have; add none the user didn't see at Choose.
    Propose `check`: the fastest one-file check (`{path}` = the edited file). On yes, offer the
    post-edit hook snippet from your harness note, and say to run the same `check` in CI: edits made
@@ -116,6 +118,24 @@ Audit again, show it as a diff against last time, and recommend only what change
 `product.md` against the repo and **shows a diff** before writing. Never overwrite text the user wrote
 by hand without asking: propose the change and wait. Config: only add missing keys; never change
 existing values unasked. Registering the repo is idempotent.
+
+**Drift check, report only.** Nothing is rewritten without a yes. Compare what the repo says about
+itself with the code, over `.sstack/product.md`, `AGENTS.md` (and `CLAUDE.md` when it stands alone),
+and every `docs` entry in `project.toml`. Label each item:
+
+| label | means |
+|---|---|
+| `Missing` | the file, path or command it names is gone |
+| `Changed` | both exist, the claim no longer holds |
+| `Extra` | code no doc names, or a `docs` entry nothing reads |
+| `Moved` | it exists at a new path |
+| `Unverifiable` | no check from here, and why |
+
+Anchor both sides: `<file>:<line>` for the claim, the code path (with `file:line` where it is one) for
+the evidence. Worst first: `Missing` and `Changed`, then `Moved` and `Extra`, then `Unverifiable`.
+
+**Stack with no practices.** When the manifests name a language, framework or database and
+`project.toml` has no `[practices]` entry for it, say so and offer to run `practices`.
 
 ---
 Adapted from pstack `setup-pstack` + `create-verification-skill` (michael-denyer/pstack-claude
