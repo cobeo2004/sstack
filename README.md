@@ -8,7 +8,7 @@
 ![Dependencies](https://img.shields.io/badge/dependencies-none-brightgreen)
 ![Skills](https://img.shields.io/badge/skills-13-orange)
 
-[Overview](#overview) • [Getting started](#getting-started) • [Agent prompts](#agent-prompts) • [Usage](#usage) • [Configuration](#configuration) • [Skills](#skills)
+[Overview](#overview) • [Docs](#docs) • [Getting started](#getting-started) • [Agent prompts](#agent-prompts) • [Usage](#usage) • [Configuration](#configuration) • [Skills](#skills)
 
 </div>
 
@@ -38,39 +38,33 @@ flowchart LR
     P3 -. review panel .-> H
 ```
 
+## Docs
+
+The guides in [`docs/guide/`](docs/guide/) are written for people and agents alike: each has
+commands you can run as-is, their expected output and exit codes, and a "How to change this"
+section.
+
+- [Getting started](docs/guide/getting-started.md): install, check, first dispatch.
+- [Configuration](docs/guide/configuration.md): split layout, four layers, merge rules, migrate, `sstack-config show`.
+- [ADEs](docs/guide/ades.md): built-in adapters, detection order, `SSTACK_ADE`, capabilities.
+- [Writing an ADE adapter](docs/guide/writing-an-ade.md): TOML schema, hook JSON contract, worked examples.
+- [Dispatch](docs/guide/dispatch.md): roles, panels, `via`, exit codes 0–4, `record`, run records.
+- [Doctor and smoke test](docs/guide/doctor.md): static checks and the canary smoke test.
+- [Dashboard](docs/guide/dashboard.md): the local config and runs cockpit and its API.
+- [Contributing](docs/guide/contributing.md): repo layout, tests, spec-first rule, PR rules.
+
+Contracts live in [`docs/spec/`](docs/spec/).
+
 ## Getting started
 
-### Prerequisites
-
-- Python 3.11 or later. Nothing else is needed for the core.
-- The agent CLIs you want to route to, e.g. `pi`, `codex`, `claude`, `cursor-agent`.
-- Optional: the `code-review-graph` CLI for the `code-graph` skill, and the `archify` skill for `diagram`.
-
-### Install
-
 ```sh
-git clone https://github.com/cobeo2004/sstack.git && cd sstack
-bin/sstack-install --dry-run   # show what would change
-bin/sstack-install             # link the skills and add the router line
+git clone https://github.com/cobeo2004/sstack.git ~/sstack
+~/sstack/bin/sstack-install --dry-run   # show what would change
+~/sstack/bin/sstack-install             # link the skills and add the router line
 ```
 
-The installer:
-
-- symlinks `skills/*` into every skill directory that already exists: `~/.claude/skills`, `~/.agents/skills`, `~/.codex/skills`, `~/.cursor/skills`, and `~/.pi/agent/skills`;
-- adds one marked line pointing at the `sstack` skill to `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`, and `~/.pi/agent/AGENTS.md`;
-- creates an empty `~/.sstack/` (the built-in defaults live in `<sstack>/defaults/`).
-
-> [!NOTE]
-> If a skill with the same name is already installed, it's renamed to `<name>.bak` and never deleted. `bin/sstack-install --uninstall` removes only sstack's own symlinks and the marked line, then lists any backups left in place.
-
-### Set up a repo
-
-In your agent, open the repo and say "set up this repo". The `setup` skill writes these files:
-
-- `.sstack/product.md`: what the app is;
-- `.sstack/project.toml` (verify commands) and any repo routing under `.sstack/`;
-- the code graph;
-- one row in `AGENTS.md`.
+Prerequisites, what the installer changes, checking the install and a first dispatch:
+[docs/guide/getting-started.md](docs/guide/getting-started.md).
 
 ## Agent prompts
 
@@ -145,31 +139,12 @@ bin/sstack-dispatch routes                                                  # ti
 bin/sstack-dispatch ade                                                     # the active ADE, why, its capabilities
 ```
 
-**Smart routing.** Each dispatch runs one agent, chosen in this order:
-
-1. `--hint <name>` naming a config hint, or a config hint whose `paths` match `--files`.
-2. The work kind, from `--hint <kind>` or detected from `--files`: `security` and `complex` → `tier.strong`; `frontend`, `backend` and `mobile` → `tier.standard`; `mechanical` and `docs` → `tier.cheap`. This applies to `implement`, and only when `[tier.*]` is configured.
-3. The role's own `[role.*]` config. A role with none runs locally.
-
-A plain `.ts`/`.js`/`.mjs` file is `backend` under `server/`, `api/`, `functions/`, `supabase/` or `db/`, and `frontend` anywhere else. A change where every file is prose is `docs`, even when a path mentions auth; a `security` change ignores path hints that would downgrade it unless the hint sets `override_security = true`. Untracked files under a hidden directory (`.omc/`, `.cache/`) are not counted.
-
-Tiers are yours to define: any `[tier.<name>]` works. `[routing.kinds]` remaps a built-in kind to your tier (`frontend = "ui-fast"`) or adds a kind name for `--hint` (`data = "local-gpu"`). `rules.tier_order` sets the escalation ladder. A hint or remap that names an undefined tier is a config error.
-
-Review runs **one** reviewer, never the implementer's model. It runs the full panel only for `security`/`complex` changes, diffs over `rules.panel_diff_lines` (default 400), or `--panel`. The same `panel` works on any read-only role; on `implement` it is a config error. A failed child is retried once, one tier up `rules.tier_order`, never onto the implementer's model for a review (`rules.auto_escalate`). The failed report is kept as `<report>.failed.md`.
-
-| Exit | Meaning |
-|---|---|
-| `0` | Success. The report is non-empty. |
-| `1` | Failure, empty report, or config error. |
-| `2` | Timeout. The whole process group was killed. |
-| `3` | The role is local: the agent does the work in its own session. The dispatcher prints `local`. |
-| `4` | The active ADE delegates through an agent tool. Nothing started: stdout is a JSON payload, one call per member, each with its `record` command. |
-
-**ADE adapters.** An ADE is `ades/<name>.toml` plus an optional executable `ades/<name>.hook` and a note `ades/<name>.md` for the agent. Built-ins live in [`defaults/ades/`](defaults/ades/) (T3 Code, Orca, Conductor, Cursor); one in your own layer replaces or adds to them. `[dispatch] via` picks the path: `auto` (the ADE's delegate, else headless), `headless`, `local`, or the opt-in `ade-cli`. Contract: [`docs/spec/ade.md`](docs/spec/ade.md) and [`docs/spec/dispatch.md`](docs/spec/dispatch.md).
-
-On exit `4` the agent makes each call in the payload, then runs its `sstack-dispatch record …` line. `record` writes the index line and, for a read-only role, warns in the report if the tree changed.
-
-Each run gets a dir under `.sstack/runs/` and one line per member in `.sstack/runs/index.jsonl`, with the route and ADE it took. For a review panel, `--report` holds an index that links each member's report.
+Each dispatch picks a harness and model from the role's config, a hint, or the work kind; inside an
+ADE it becomes that ADE's child task, else a headless CLI. It exits `0` (report written), `1`
+(failure), `2` (timeout), `3` (run locally) or `4` (the agent must make the printed tool calls,
+then run each `sstack-dispatch record` line). Each run gets a dir under `.sstack/runs/` and a line
+in `.sstack/runs/index.jsonl`. Details: [docs/guide/dispatch.md](docs/guide/dispatch.md) and
+[docs/guide/ades.md](docs/guide/ades.md).
 
 ### Lessons
 
@@ -218,15 +193,8 @@ Publishing is a push, so the agent asks first.
 bin/sstack-ui            # prints http://127.0.0.1:<port>/?t=<token>
 ```
 
-The dashboard has these views:
-
-- config: every role, harness, tier and ADE file with its source layer; save to a layer, or reset to inherited;
-- the active ADE and its capabilities;
-- run timelines: members, route, ADE, reports, exits and read-only warnings;
-- lessons, which you can accept or forget;
-- the code graph, with a rebuild button.
-
-It lists repos from `~/.sstack/repos.txt`.
+It edits config per layer and shows the active ADE, run timelines, lessons and the code graph.
+See [docs/guide/dashboard.md](docs/guide/dashboard.md).
 
 ## Configuration
 
@@ -239,30 +207,9 @@ Config is split into one file per thing, in four layers. A later layer wins:
 | repo | `<repo>/.sstack/` |
 | local | `<repo>/.sstack/local/` (personal, git-ignored) |
 
-Each layer may hold `config.toml` (`ade`, `[dispatch]`, `[rules]`, `[reflect]`, `[routing]`; merged key by key), `project.toml` (repo layers only), and `harnesses/`, `roles/`, `tiers/`, `ades/` with one TOML file per thing, each replaced whole. A file's top level is the table itself: `roles/implement.toml` holds `harness = "pi"`. In a linked worktree a layer dir with no config resolves to the primary checkout's. Full contract: [`docs/spec/config.md`](docs/spec/config.md).
-
-```toml
-# tiers/strong.toml   (security, complex, review)
-harness = "codex"
-model = "gpt-6.1-sol"
-
-# roles/implement.toml   (when no kind applies)
-harness = "pi"
-model = "opencode-go/deepseek-v4.1-flash"
-effort = "high"
-[hint.ui]                        # optional override: --hint ui, or paths match
-when = "our web app"
-paths = ["web/*"]
-harness = "claude"
-model = "opus"
-
-# roles/review.toml
-mode = "auto"                    # one reviewer; panel only when risky
-panel = [
-  { harness = "codex",  model = "gpt-6.1-sol", effort = "high" },
-  { harness = "claude", model = "opus" },
-]
-```
+Each layer holds one TOML file per thing (`roles/implement.toml` holds `harness = "pi"`), plus a
+`config.toml` merged key by key. An old single-file config is an error naming
+`sstack-config migrate`.
 
 ```sh
 bin/sstack-config show roles/review   # the effective file and the layer it comes from
@@ -271,16 +218,14 @@ bin/sstack-doctor                     # static checks: PASS|FAIL per line, exit 
 bin/sstack-doctor --smoke             # canary dispatch per routed member; ask the user first
 ```
 
-If `--smoke` exits 4 (a tool-delegating ADE), make the printed calls and their `record`s, then run `sstack-doctor --smoke --check <run dir>`.
+Details: [docs/guide/configuration.md](docs/guide/configuration.md) and
+[docs/guide/doctor.md](docs/guide/doctor.md). Read-only roles (`scout`, `investigate`, `plan`,
+`review`) always run with their harness's `headless_readonly` command, and `record` warns when one
+changes the tree.
 
-An old single-file config is an error naming `sstack-config migrate`. After a migrate or any ADE/config change, the agent asks you, then runs `sstack-doctor --smoke` ([`docs/spec/doctor.md`](docs/spec/doctor.md)).
-
-A repo's `[project.test]` table says how each surface is tested: **code** (unit and integration), **browser**, and **mobile**. For each one it records the framework, where tests live, and the run, serve or build commands. `setup` fills it in. [`skills/work/testing.md`](skills/work/testing.md) defines how the agent writes each kind of check, runs it, and proves it. For any change a user can see, the agent also does a live self-check. It drives the app in the ADE's built-in browser or device, and runs the code tests alongside. How each ADE does that is in its note under [`defaults/ades/`](defaults/ades/); `sstack-dispatch ade` names the active one.
-
-A role with no config, or set to `harness = "local"`, runs in the current session.
-
-> [!IMPORTANT]
-> Read-only roles (`scout`, `investigate`, `plan`, `review`) run with their harness's `headless_readonly` command, never with write access. Routing one to a harness without that command is a config error: dispatch exits `1`. Every built-in harness in [`defaults/harnesses/`](defaults/harnesses/) has one. An ADE that delegates read-only roles in a plan mode (`readonly = "instructed"`) gets the same tree check from `record`.
+A repo's `project.toml` also says how each surface (code, browser, mobile) is tested; `setup` fills
+it in and [`skills/work/testing.md`](skills/work/testing.md) defines how the agent writes, runs and
+proves each kind of check.
 
 ## Skills
 
@@ -308,6 +253,6 @@ The `sstack` skill links eight engineering principles in [`skills/sstack/princip
 python3 -m unittest discover -s tests
 ```
 
-The tests use a temporary HOME and repo, plus a fake agent ([`tests/fakes/fake_agent.py`](tests/fakes/fake_agent.py)), so they never call a real model. [`tests/test_skills.py`](tests/test_skills.py) lints every skill: frontmatter, length caps, harness-neutral wording, and links that resolve.
-
-The full design is in [docs/design.md](docs/design.md).
+The tests use a temporary HOME and repo and fake agent CLIs, so they never call a real model. See
+[docs/guide/contributing.md](docs/guide/contributing.md) for the layout, the spec-first rule and
+PR rules. The design history is in [docs/design.md](docs/design.md).
