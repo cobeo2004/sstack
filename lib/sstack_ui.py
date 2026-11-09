@@ -18,7 +18,7 @@ from urllib.parse import parse_qs, quote, unquote, urlparse
 
 import sstack_ade as A
 import sstack_lessons as L
-from sstack_config import ConfigError, ades, git_root, home_dir, layers, load, resolve, source
+from sstack_config import _has_config, _primary, ConfigError, ades, git_root, home_dir, layers, load, resolve, source
 
 REPO = Path(__file__).resolve().parent.parent
 KINDS = {"harnesses": "harness", "roles": "role", "tiers": "tier"}
@@ -52,7 +52,12 @@ def _check_layer(root: Path | None, layer: str) -> Path:
     have = _layer_map(root)
     if layer not in have:
         raise ValueError(f"layer {layer!r} is unavailable for this repo")
-    return have[layer]
+    d = have[layer]
+    # ponytail: ~/.sstack may be a dotfiles symlink (your choice); a repo's .sstack or .sstack/local may not
+    for x in ((d, d.parent) if layer == "local" else (d,) if layer == "repo" else ()):
+        if x.is_symlink():
+            raise ValueError(f"refusing a symlinked layer dir: {x}")
+    return d
 
 
 def _config_path(root: Path | None, layer: str, kind: str, name: str) -> Path:
@@ -127,7 +132,15 @@ def _copy_layer(src: Path, dst: Path) -> None:
 
 def _staged(root: Path | None, base: Path, staged: Path) -> list[tuple[str, Path]]:
     """The real layer stack with `base` swapped for its staged copy."""
-    return [(n, staged if d == base else d) for n, d in layers(root)]
+    out = []
+    for n, d in layers(root):
+        if d == base:
+            d = staged
+            if root is not None and n in ("repo", "local") and not _has_config(staged):
+                prim = _primary(root) / base.relative_to(root) if base.is_relative_to(root) else base
+                d = prim if prim != base and _has_config(prim) else staged  # the loader's worktree fallback
+        out.append((n, d))
+    return out
 
 
 def _validate(root: Path | None, staged_ls: list) -> None:

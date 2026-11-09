@@ -43,6 +43,32 @@ class ServerTests(TempEnv):
         q = f"?repo={urllib.parse.quote(str(self.root))}"
         return self.request("DELETE", path + q)
 
+    def test_symlinked_repo_layer_root_refused(self):
+        outside = self.home / "outside"
+        outside.mkdir()
+        (self.root / ".sstack/local").mkdir(parents=True, exist_ok=True)
+        shutil.rmtree(self.root / ".sstack/local")
+        (self.root / ".sstack/local").symlink_to(outside)
+        with self.assertRaises(urllib.error.HTTPError) as e:
+            self.put("/api/config/local/roles/review", REVIEW)
+        self.assertEqual(e.exception.code, 400)
+        self.assertEqual(list(outside.iterdir()), [])
+
+    def test_worktree_reset_validates_the_fallback_layer(self):
+        import subprocess
+        g = lambda *a: subprocess.run(["git", "-C", str(self.root), *a], check=True, capture_output=True)
+        g("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "i")
+        wt = (self.root.parent / "wt").resolve()
+        g("worktree", "add", "-q", str(wt))
+        (self.root / ".sstack/local/roles").mkdir(parents=True, exist_ok=True)
+        (self.root / ".sstack/local/roles/review.toml").write_text('harness = "nope"\nmodel = "x"\n')
+        (wt / ".sstack/local").mkdir(parents=True)
+        (wt / ".sstack/local/config.toml").write_text('[dispatch]\nvia = "auto"\n')
+        with self.assertRaises(urllib.error.HTTPError) as e:
+            self.request("DELETE", f"/api/config/local/config?repo={urllib.parse.quote(str(wt))}")
+        self.assertEqual(e.exception.code, 400)
+        self.assertTrue((wt / ".sstack/local/config.toml").is_file())
+
     def test_token_required(self):
         with self.assertRaises(urllib.error.HTTPError) as cm:
             self.get("/api/repos", token=False)
