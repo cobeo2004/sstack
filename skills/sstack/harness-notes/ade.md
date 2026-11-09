@@ -42,6 +42,20 @@ The two rows below are what the skill lint checks for; they summarise the table.
   - Device video: the `agent-device` command's recording (see its `help`).
 
   Copy each file into the run's `media/` folder.
+- **Delegate a role.** `sstack-dispatch`'s own thread transport (`t3 thread start`)
+  makes a top-level thread with no parent and drops effort. With the T3 tools
+  loaded, take the route and start the children yourself:
+  1. `sstack-dispatch <role> --route [--hint <kind>] [--files …]` prints
+     `{role, route, readonly, members: [{harness, provider, model, effort, options}]}`.
+     Exit `3` with `members: []` → run the role here. Exit `1` → config error, stop.
+  2. One `delegate_task` per member: `target = {providerInstanceId: provider,
+     model, options}`, `role` = `implementation` / `review` / `research`, and
+     `interactionMode: "plan"` when `readonly`. Children are linked to this thread
+     and honour `options` (effort).
+  3. The parent writes the child's summary to the run's `--report` path and records
+     the run; a child's final message is not the report until you have read it.
+  Plan mode is an instruction to the child, not a sandbox: for a read-only role, take `git status --porcelain` before and after
+  and append the working-tree warning headless dispatch would write.
 - If the tools aren't loaded, search the deferred tool list for `preview` or `device`.
 
 ## Orca

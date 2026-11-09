@@ -203,6 +203,10 @@ stop at the next gate and tell the user; don't silently redo the work locally.
 Three layers, merged in order: `~/.sstack/config.toml` (global) →
 `<git root>/.sstack/config.toml` (shared; repo decides whether to commit) →
 `<git root>/.sstack/config.local.toml` (git-ignored, personal).
+In a linked worktree a missing `config.toml`, `config.local.toml` or `lessons.md`
+resolves to the primary checkout's (`git worktree list --porcelain`, first entry);
+a file the worktree does have wins, and runs stay per-checkout so removing the
+worktree takes only its own runs.
 
 Merge rule: each `[role.X]`, `[harness.X]`, `[project]` table is replaced whole;
 top-level scalars and scalars inside `[transport]`/`[rules]` override one by one;
@@ -283,14 +287,16 @@ verify = ["pnpm lint", "pnpm test"]
 graph  = true
 ```
 
-Read-only roles *(builder's call, marked)*: `scout`, `investigate` and `review` run
-in the user's working tree in parallel, so "don't edit" is enforced, not just
-asked. Each harness may declare `headless_readonly` (e.g. codex
-`--sandbox read-only`, claude `--permission-mode plan`, pi `--tools read,grep,find,ls`),
-and dispatch uses it for those roles. A read-only role on a harness without
-`headless_readonly` is refused (exit 1 with a message), not silently run with
-write access. After any child, dispatch checks `git status` and records any
-change a read-only child made in the report.
+Read-only roles *(builder's call, marked)*: `scout`, `investigate`, `plan` and
+`review` run in the user's working tree in parallel, so "don't edit" is enforced,
+not just asked. Each harness may declare `headless_readonly` (e.g. codex
+`--sandbox read-only`, claude `--permission-mode plan`, cursor-agent `--mode plan`,
+pi `--tools read,grep,find,ls`), and dispatch uses it for those roles. A read-only
+role on a harness without `headless_readonly` is refused (exit 1 with a message),
+not silently run with write access. Inside T3 Code a read-only role can go through
+`delegate_task` with `interactionMode: "plan"` instead; plan mode is an
+instruction to the child, not a sandbox, so the orchestrator makes the same check. After any child, dispatch checks `git status` and records any change a
+read-only child made in the report.
 
 Model ids are the same string in headless pi and in T3's pi provider
 (`provider/model`, e.g. `opencode-go/deepseek-v4.1-flash`), verified against
@@ -301,17 +307,21 @@ whose value is unset (e.g. no `effort`) are dropped together with their flag.
 
 ```
 sstack-dispatch <role> --brief <file> --report <file> [--title <t>] [--dry-run]
+sstack-dispatch <role> --route [--hint <kind>] [--files <paths>...]
 ```
 
-- Resolves config layers from the git root of the current directory.
+- Resolves config layers from the git root of the current directory; in a linked
+  worktree a file it doesn't have resolves to the primary checkout's.
 - Transport (`mode = auto`): if `[transport.t3].detect` env var is set **and** the
   role's harness has `t3_provider` → T3 thread (visible); else the harness's
   `headless` command. `thread` forces T3 (error if unavailable), `headless` forces
   CLI, `local` makes every role local.
 - Runs in the git root, brief on stdin, stdout captured to `--report`; enforces
   `timeout_min` (kills the child process group).
-- `review` with a `panel`: runs members in parallel (≤ `max_parallel`), writes one
-  report per member (`<report>.<harness>-<model>.md`) and an index.
+- `review`, or any read-only role with a `panel`: runs members in parallel
+  (≤ `max_parallel`), writes one report per member
+  (`<report>.<harness>-<model>.md`) and an index. A `panel` on a write role
+  (`implement`) is a config error naming `[role.X.hint.*]` / `[tier.*]`.
 - Exit codes: `0` ok and report non-empty; `1` child failed or empty report;
   `2` timeout; `3` role is local/unconfigured (prints `local`). T3's own
   `--wait` exit 2 ("agent is waiting for an answer") maps to dispatch exit 1.
@@ -320,9 +330,16 @@ sstack-dispatch <role> --brief <file> --report <file> [--title <t>] [--dry-run]
   none did. `work` treats a gap as a reason to tell the user at the gate, not to
   pass silently.
 - Effort in T3 *(builder's call)*: `t3 thread start` has no effort flag, so a
-  role's `effort` is dropped in a T3 thread and the dry run says so. When the
-  orchestrator uses T3's native `delegate_task` instead, it passes effort as a
-  provider option.
+  role's `effort` is dropped in a T3 thread and the dry run says so. `--route` +
+  T3's `delegate_task` is the path that keeps it: `target.options` takes the effort
+  under the provider's own option id.
+- `--route` runs nothing and needs no brief. It prints the route as JSON for an
+  orchestrator that starts the children itself:
+  `{role, route, readonly, members: [{harness, provider, model, effort, options}]}`.
+  `provider` is the harness's `t3_provider`; `options` carries effort under that
+  provider's own id (`reasoningEffort` codex, `effort` claudeAgent,
+  `reasoning_effort` cursor, `thinking` pi). Exit 0 with members, `3` with
+  `members: []` (run the role here), `1` on a config error.
 - `--dry-run` prints the resolved transport and command per member, runs nothing.
 - `plan` may be routed for drafting, but dispatch never runs a gate.
 
@@ -334,9 +351,12 @@ contract below.
 Report contract (child's final message): files changed; what it did; what it could
 not do; status `PASS | ISSUES | BLOCKED` with evidence (commands run + output).
 
-In T3 Code, the orchestrator may use T3's native `delegate_task` tool instead of the
-CLI when the configured provider is available there — same brief, same report
-contract.
+In T3 Code with the T3 tools, the orchestrator starts the children itself:
+`sstack-dispatch <role> --route`, then one `delegate_task` per member
+(`target.options` for effort, `interactionMode: "plan"` for a read-only role), then
+writes each child's summary to the report path and appends the run record. Why: the
+`t3 thread start` transport makes unlinked top-level threads and drops effort. Same
+brief, same report contract; read-only children get the `git status` check.
 
 ## Lessons (`reflect`)
 

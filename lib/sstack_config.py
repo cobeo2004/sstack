@@ -3,6 +3,8 @@ import subprocess
 import tomllib
 from pathlib import Path
 
+from sstack_worktree import primary_of
+
 READONLY_ROLES = {"scout", "investigate", "plan", "review"}
 WHOLE = {"role", "harness", "tier"}  # tables whose children are replaced whole
 
@@ -17,11 +19,36 @@ def git_root(cwd: Path) -> Path | None:
     return Path(r.stdout.strip()) if r.returncode == 0 else None
 
 
+def _primary(root: Path) -> Path:
+    """The primary checkout of a linked worktree; `root` itself otherwise."""
+    if (root / ".git").is_dir():
+        return root  # a primary checkout's .git is a directory; a linked worktree's is a file
+    try:
+        return primary_of(root)
+    except (subprocess.CalledProcessError, OSError, IndexError):
+        return root
+
+
+def repo_file(root: Path, name: str) -> Path:
+    """This checkout's `.sstack/<name>`, else the primary checkout's, else this checkout's.
+    A linked worktree usually excludes `.sstack/` from git, so its config and lessons live
+    in the primary one. Runs stay per-checkout (they name this checkout's paths)."""
+    own = root / ".sstack" / name
+    if own.exists():
+        return own
+    primary = _primary(root)
+    # ponytail: the fallback is per `.sstack/` directory, not per file, so a worktree that
+    # wants no repo config at all cannot say so with an empty `.sstack/`.
+    if primary == root or not (primary / ".sstack").is_dir():
+        return own
+    return primary / ".sstack" / name
+
+
 def layer_paths(root: Path | None) -> list[tuple[str, Path]]:
     out = [("global", Path.home() / ".sstack" / "config.toml")]
     if root is not None:
-        out += [("repo", root / ".sstack" / "config.toml"),
-                ("local", root / ".sstack" / "config.local.toml")]
+        out += [("repo", repo_file(root, "config.toml")),
+                ("local", repo_file(root, "config.local.toml"))]
     return out
 
 

@@ -140,6 +140,7 @@ bin/sstack-dispatch implement --brief .sstack/runs/42/brief.md --report .sstack/
 bin/sstack-dispatch implement --brief b.md --report r.md --files web/components/Nav.tsx --dry-run
 # route: auto frontend → tier.standard
 bin/sstack-dispatch review --brief brief.md --report review.md --dry-run   # show the route without running it
+bin/sstack-dispatch review --route --files src/                             # JSON route for T3, runs nothing
 bin/sstack-dispatch routes                                                  # tiers, kinds and your hints
 ```
 
@@ -149,9 +150,11 @@ bin/sstack-dispatch routes                                                  # ti
 2. The work kind, from `--hint <kind>` or detected from `--files`: `security` and `complex` → `tier.strong`; `frontend`, `backend` and `mobile` → `tier.standard`; `mechanical` and `docs` → `tier.cheap`. This applies to `implement`, and only when `[tier.*]` is configured.
 3. The role's own `[role.*]` config. A role with none runs locally.
 
+A plain `.ts`/`.js`/`.mjs` file is `backend` under `server/`, `api/`, `functions/`, `supabase/` or `db/`, and `frontend` anywhere else. A change where every file is prose is `docs`, even when a path mentions auth; a `security` change ignores path hints that would downgrade it unless the hint sets `override_security = true`. Untracked files under a hidden directory (`.omc/`, `.cache/`) are not counted.
+
 Tiers are yours to define: any `[tier.<name>]` works. `[routing.kinds]` remaps a built-in kind to your tier (`frontend = "ui-fast"`) or adds a kind name for `--hint` (`data = "local-gpu"`). `rules.tier_order` sets the escalation ladder. A hint or remap that names an undefined tier is a config error.
 
-Review runs **one** reviewer, never the implementer's model. It runs the full panel only for `security`/`complex` changes, diffs over `rules.panel_diff_lines` (default 400), or `--panel`. A failed child is retried once, one tier up `rules.tier_order`, never onto the implementer's model for a review (`rules.auto_escalate`). The failed report is kept as `<report>.failed.md`.
+Review runs **one** reviewer, never the implementer's model. It runs the full panel only for `security`/`complex` changes, diffs over `rules.panel_diff_lines` (default 400), or `--panel`. The same `panel` works on any read-only role; on `implement` it is a config error. A failed child is retried once, one tier up `rules.tier_order`, never onto the implementer's model for a review (`rules.auto_escalate`). The failed report is kept as `<report>.failed.md`.
 
 | Exit | Meaning |
 |---|---|
@@ -161,6 +164,7 @@ Review runs **one** reviewer, never the implementer's model. It runs the full pa
 | `3` | The role is local: the agent does the work in its own session. The dispatcher prints `local`. |
 
 Each run is appended to `.sstack/runs/index.jsonl`, with the route it took. For a review panel, `--report` holds an index that links each member's report.
+`--route` is for an agent that starts the children itself: it prints `{role, route, readonly, members: [{harness, provider, model, effort, options}]}` and runs nothing (exit `3` with `members: []` means the role is local; `1` is a config error). In T3 Code the agent then calls `delegate_task` once per member, with `options` for effort and `interactionMode: "plan"` for a read-only role, and writes each child's summary to the report itself. See [`skills/sstack/harness-notes/ade.md`](skills/sstack/harness-notes/ade.md).
 
 ### Lessons
 
@@ -229,7 +233,7 @@ Config is layered. A later layer wins:
 | `<repo>/.sstack/config.toml` | Per repo. Commit it or not. |
 | `<repo>/.sstack/config.local.toml` | Personal and git-ignored |
 
-The `[role.*]`, `[harness.*]`, `[tier.*]`, and `[project]` tables are replaced whole. Other tables merge key by key.
+The `[role.*]`, `[harness.*]`, `[tier.*]`, and `[project]` tables are replaced whole. Other tables merge key by key. In a linked worktree a missing `config.toml`, `config.local.toml` or `lessons.md` resolves to the primary checkout's (`git worktree list --porcelain`, first entry); a file the worktree has wins, and runs stay local.
 
 ```toml
 [tier.strong]                    # security, complex, review
@@ -269,7 +273,7 @@ A repo's `[project.test]` table says how each surface is tested: **code** (unit 
 A role with no config, or set to `harness = "local"`, runs in the current session. `[transport] mode` chooses how delegated roles run: `auto`, `thread`, `headless`, or `local`. With `auto`, sstack uses T3 Code threads when `T3CODE_THREAD_ID` is set and headless CLIs otherwise.
 
 > [!IMPORTANT]
-> Read-only roles (`scout`, `investigate`, `plan`, `review`) always run headless with their harness's `headless_readonly` command, even inside T3 Code. Routing one to a harness without that command (for example `cursor`) is a config error: dispatch exits `1` instead of running it with write access.
+> Read-only roles (`scout`, `investigate`, `plan`, `review`) run with their harness's `headless_readonly` command, never with write access. Routing one to a harness without that command is a config error: dispatch exits `1`. Every harness in `config.example.toml` has one, cursor included (`cursor-agent -p --mode plan`). Inside T3 Code the agent can instead delegate a read-only role with plan mode, as above.
 
 ## Skills
 

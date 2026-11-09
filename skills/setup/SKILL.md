@@ -5,8 +5,15 @@ description: Make a repo agent-ready for sstack, new or existing. Writes .sstack
 
 # setup
 
-Run in the repo root. First decide: **existing repo** (has code or docs) or **new
-repo** (empty or near-empty). Re-runnable; see the last section.
+Run in the repo root. **If this is a linked worktree** (`git rev-parse --git-dir`
+≠ `git rev-parse --git-common-dir`), say so first: `.sstack/` here is not the
+repo's. Offer the primary checkout (`git worktree list --porcelain`, first entry)
+and run `setup` there — sstack reads `product.md`, config and repo lessons from it
+in every worktree. Continue here only if the user wants a separate setup for this
+checkout.
+
+First decide: **existing repo** (has code or docs) or **new repo** (empty or
+near-empty). Re-runnable; see the last section.
 
 ## Existing repo
 
@@ -46,7 +53,8 @@ repo** (empty or near-empty). Re-runnable; see the last section.
    No `AGENTS.md` → create a minimal one with that line. Leave `CLAUDE.md` alone if
    it already includes `AGENTS.md` (e.g. `@AGENTS.md`); otherwise add the same line.
 7. **Register the repo** for the dashboard: append the absolute repo root to
-   `~/.sstack/repos.txt` unless it's already listed.
+   `~/.sstack/repos.txt` unless it's already listed. In a linked worktree register
+   the primary checkout — the entry has to outlive the worktree.
 8. **Report**: files written, verify commands and their results, graph status,
    clashes found, and what you could not determine.
 

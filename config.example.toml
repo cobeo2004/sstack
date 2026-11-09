@@ -20,6 +20,7 @@ t3_provider = "claudeAgent"
 
 [harness.cursor]
 headless = ["cursor-agent", "-p", "--force", "--model", "{model}"]
+headless_readonly = ["cursor-agent", "-p", "--trust", "--mode", "plan", "--model", "{model}"]
 t3_provider = "cursor"
 
 [transport]
