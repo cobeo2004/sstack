@@ -120,11 +120,17 @@ sstack-dispatch record <role> --report <p> --member <harness>/<model> --exit <n>
 1. Reads `<d>/run.json`; appends one index line to `.sstack/runs/index.jsonl`, `secs` = now −
    `started_at`.
 2. Read-only role: the baseline check above against `<d>/baseline.json`.
-3. `--exit ≠ 0`, `[rules] auto_escalate` and not `no_escalate`: prints the next exit-4 payload (one tier up) and exits 4.
+3. Member failed (`--exit ≠ 0`, or `--exit 0` with a missing or empty report), the run's ADE is a
+   tool ADE, a single member, a higher tier on `tier_order`, `[rules] auto_escalate` and not
+   `no_escalate`: prints the next exit-4 payload (one tier up) and exits 4.
    Once per run (`escalated`); the failed report moves to `<report_base>.failed.md`.
 4. Panel (`panel_report` set): once the index holds a line from `<d>` for every member in
    `run.json`, that last `record` writes the panel index at `panel_report` (format below), from the
    latest line per member; once per run (`panel_written`).
+
+Exit code: 4 when step 3 escalated; else, for the `record` that writes the panel index, 0 when any
+member's line has exit 0, else 1; else the member's code: the `--exit` value when not 0, else 0
+with a non-empty report and 1 without one. Step 0 failures exit 1.
 
 Index line (one JSON object per line):
 
