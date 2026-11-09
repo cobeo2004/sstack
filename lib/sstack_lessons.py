@@ -65,23 +65,21 @@ def _norm(s: str) -> str:
     return " ".join(s.lower().split())
 
 
+def _clean(s: str) -> str:
+    return " ".join(s.split()).replace(" | ", " / ")  # keep the line grammar intact
+
+
 def _lessons(items):
     return [i for i in items if isinstance(i, Lesson)]
 
 
 def add(path: Path, text: str, evidence: str | None) -> Lesson:
     items = _read(path)
-    clean = lambda s: " ".join(s.split()).replace(" | ", " / ")  # keep the line grammar intact
-    text = clean(text)
-    evidence = clean(evidence) if evidence else evidence
+    text = _clean(text)
+    evidence = _clean(evidence) if evidence else None
     for l in _lessons(items):
         if _norm(l.text) == _norm(text):
-            l.seen += 1
-            if evidence:
-                old = l.fields.get("evidence")
-                l.fields["evidence"] = f"{old}; {evidence}" if old else evidence
-            _write(path, items)
-            return l
+            return bump(path, l.id, evidence)
     nums = [int(l.id[1:]) for l in _lessons(items) if re.fullmatch(r"L\d+", l.id)]
     new = Lesson(f"L{max(nums, default=0) + 1}", "pending", 1, text,
                  {"evidence": evidence} if evidence else {})
@@ -98,6 +96,18 @@ def _find(items, lesson_id: str) -> Lesson:
         if l.id == lesson_id:
             return l
     raise KeyError(lesson_id)
+
+
+def bump(path: Path, lesson_id: str, evidence: str | None) -> Lesson:
+    items = _read(path)
+    l = _find(items, lesson_id)
+    l.seen += 1
+    evidence = _clean(evidence) if evidence else None
+    if evidence:
+        old = l.fields.get("evidence")
+        l.fields["evidence"] = f"{old}; {evidence}" if old else evidence
+    _write(path, items)
+    return l
 
 
 def set_status(path: Path, lesson_id: str, status: str, encoded: str | None = None) -> Lesson:

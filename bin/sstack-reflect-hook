@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """End-of-session hook: if [reflect] auto = true, run a background reflect pass
-(role scout) over the transcript and record its LESSON lines as pending."""
+(role scout) over the transcript lines not reflected yet, recording its LESSON
+lines as pending and bumping the known ones it reports as SEEN."""
 import json
 import os
 import re
@@ -16,6 +17,7 @@ import sstack_lessons  # noqa: E402
 from sstack_config import ConfigError, git_root, load  # noqa: E402
 
 LESSON = re.compile(r"^\s*LESSON:\s*(repo|global)\s*\|\s*(.+?)\s*\|\s*(.+?)\s*$")
+SEEN = re.compile(r"^\s*SEEN:\s*(repo|global):(\S+)\s*(?:\|\s*(.*?))?\s*$")
 PANEL_OK = re.compile(r": exit 0 → (.+)$", re.M)  # sstack_dispatch's panel index line
 
 
@@ -23,6 +25,14 @@ def capture_brief() -> str:
     text = (REPO / "skills" / "reflect" / "SKILL.md").read_text()
     m = re.search(r"^## Capture brief\n(.*?)(?=^## |^---$)", text, re.S | re.M)
     return m.group(1).strip()
+
+
+def known(root: Path) -> str:
+    rows = [f"- {scope}:{l.id} [{l.status}] {l.text}" for scope in ("repo", "global")
+            for l in sstack_lessons._lessons(sstack_lessons._read(sstack_lessons.lessons_path(scope, root)))]
+    return ("Known lessons (skip these even if worded differently; output SEEN instead):\n"
+            + "\n".join(rows or ["- (none)"])
+            + "\nReport a known one as `SEEN: <repo|global>:<id> | <evidence>`.")
 
 
 def run(payload: dict) -> int:
@@ -34,30 +44,70 @@ def run(payload: dict) -> int:
         return 0
     if os.environ.get("SSTACK_REFLECT") or not cfg.get("reflect", {}).get("auto") or root is None:
         return 0
+    state_path = root / ".sstack" / "runs" / "reflect-state.json"
+    session, src = payload.get("session_id"), payload.get("transcript_path")
+    state, total, new = {}, None, None
+    if session and src:
+        try:
+            lines = Path(src).read_text().splitlines(True)
+        except OSError:
+            lines = None  # transcript gone: point the brief at the path we were given, as before
+        if lines is not None:
+            try:
+                state = json.loads(state_path.read_text())
+            except (OSError, ValueError):
+                state = {}
+            start = state.get(session, 0) if isinstance(state, dict) else 0
+            start = start if isinstance(start, int) and 0 <= start <= len(lines) else 0  # shorter file: read it whole
+            total, new = len(lines), lines[start:]
+            if not new:
+                return 0  # nothing new since this session last reflected: no run dir, no dispatch
     run_dir = root / ".sstack" / "runs" / f"reflect-{time.strftime('%Y%m%d-%H%M%S')}"
     run_dir.mkdir(parents=True, exist_ok=True)
+    if new is not None:
+        src = run_dir / "transcript.jsonl"
+        src.write_text("".join(new))
     brief = run_dir / "scout.brief.md"
-    brief.write_text(f"# reflect capture\n\n{capture_brief()}\n\nTranscript: {payload.get('transcript_path', '(none)')}\n")
+    brief.write_text(f"# reflect capture\n\n{capture_brief()}\n\n{known(root)}\n\nTranscript: {src or '(none)'}\n")
     report = run_dir / "scout.report.md"
     os.environ["SSTACK_REFLECT"] = "1"  # the child's own session end must not reflect again
     os.chdir(root)
     code = sstack_dispatch.main(["scout", "--brief", str(brief), "--report", str(report), "--title", "sstack reflect"])
     if code != 0 or not report.exists():
-        return 0
+        return 0  # offset not saved: the next session end retries these lines
+    if total is not None:
+        # re-read: another session's hook may have saved its offset while the scout ran
+        # ponytail: read-modify-write without a lock; a same-instant write can still lose one entry
+        try:
+            state = json.loads(state_path.read_text())
+        except (OSError, ValueError):
+            state = {}
+        state = state if isinstance(state, dict) else {}  # a corrupt state file starts over
+        state[session] = total
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        state_path.write_text(json.dumps(state))
     # A panel's report is an index; only members it marks `exit 0` count (a failed member's
     # partial report stays on disk). The same lesson from two members is one lesson, compared
     # the way the store compares them.
     text = report.read_text()
     paths = ([Path(p) for p in PANEL_OK.findall(text)] if text.startswith("# scout panel") else [report])
     done: set[tuple[str, str]] = set()
+    bumped: set[tuple[str, str]] = set()
     for path in paths:
         for line in path.read_text().splitlines():
             m = LESSON.match(line)
             key = m and (m.group(1), sstack_lessons._norm(m.group(2)))
-            if not m or m.group(2).startswith("<") or key in done:
+            if m and not m.group(2).startswith("<") and key not in done:
+                done.add(key)
+                sstack_lessons.add(sstack_lessons.lessons_path(m.group(1), root), m.group(2), m.group(3))
+            s = SEEN.match(line)
+            if not s or (s.group(1), s.group(2)) in bumped:
                 continue
-            done.add(key)
-            sstack_lessons.add(sstack_lessons.lessons_path(m.group(1), root), m.group(2), m.group(3))
+            bumped.add((s.group(1), s.group(2)))
+            try:
+                sstack_lessons.bump(sstack_lessons.lessons_path(s.group(1), root), s.group(2), s.group(3))
+            except KeyError:
+                pass  # SEEN for a lesson we do not have: nothing to bump
     return 0
 
 

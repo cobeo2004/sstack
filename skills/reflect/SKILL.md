@@ -20,8 +20,9 @@ Agents read only `accepted` lessons (the `sstack` router loads them).
   agent would hit again ("tests need `supabase start` first, else ECONNREFUSED").
 
 Not lessons: one-offs, facts already in `AGENTS.md`/`CLAUDE.md`/the code, generic
-advice, anything secret. Scope: `repo` if it's about this codebase, `global` if
-it's about the user or general practice.
+advice, anything secret. Scope: a lesson that names this repo's files, docs,
+scripts, services or agent manual is `repo`, even when it is a preference.
+`global` is only for rules that would hold in any repo.
 
 ## Manual flow
 
@@ -55,8 +56,10 @@ an sstack skill, then mark it: `<sstack>/bin/sstack-lessons encode <id> --scope 
 
 With `[reflect] auto = true` and the end-of-session hook installed (see harness
 notes; the installer prints the snippet), `bin/sstack-reflect-hook` runs the
-`scout` role in the background over the session transcript using the capture
-brief below, and records what it returns as `pending`. It never accepts. Review
+`scout` role in the background over the transcript lines this session hasn't
+reflected on yet (offsets in `.sstack/runs/reflect-state.json`) using the capture
+brief below plus the known lessons of both scopes. It records new lessons as
+`pending` and bumps `seen` for each `SEEN` line, so repeats reach `[reflect] encode_at`. It never accepts. Review
 pending lessons at the start of the next task or in the dashboard.
 
 ## Capture brief
@@ -68,14 +71,17 @@ Find at most 3 lessons of two kinds: the user's corrections of the agent ("don't
 do X", "use Y", a rejected approach with a reason), and dead ends in the code that
 a future agent would hit again, with the reason. Skip one-offs, generic advice,
 anything already written in the repo's AGENTS.md or CLAUDE.md, and anything
-secret (tokens, keys, personal data).
+secret (tokens, keys, personal data). The known lessons are listed below the
+transcript path: skip any lesson already listed, even if worded differently, and
+output `SEEN: <scope>:<id> | <evidence>` for it instead.
 
 Do not edit any file. Output one line per lesson, exactly:
 
 LESSON: <repo|global> | <one imperative sentence> | <evidence: what happened, where in the session>
 
-Use `repo` for facts about this codebase and `global` for the user's preferences
-or general practice. If there are no lessons, output `NONE`. End with `PASS`.
+A lesson that names this repo's files, docs, scripts, services or agent manual is
+`repo`, even when it is a preference. `global` is only for rules that would hold
+in any repo. If there are no lessons, output `NONE`. End with `PASS`.
 
 ---
 Adapted from pstack `reflect` + `principle-encode-lessons-in-structure`

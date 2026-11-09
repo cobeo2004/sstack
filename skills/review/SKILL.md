@@ -37,6 +37,8 @@ lenses in [references/lenses.md](references/lenses.md), and this instruction:
 > and risks that need a future change to matter. Don't inflate severity. "No
 > findings" is a valid result.
 
+Inside T3 Code, take the same command with `--route` and start one `delegate_task`
+per member instead (`<sstack>/skills/sstack/harness-notes/ade.md` § Delegate a role).
 Then: `<sstack>/bin/sstack-dispatch review --brief <run>/review.brief.md --report
 <run>/review.report.md --title "<task> review"`, plus `--files` for a PR or
 committed range (`git diff --name-only <base>...<head>`; the working diff is
