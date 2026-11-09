@@ -19,6 +19,7 @@ PH = re.compile(r"\{(\w+)\}")
 # The option id a T3/provider child takes effort as (recon, 2026-11-09: they differ per provider).
 EFFORT_OPTION = {"codex": "reasoningEffort", "claudeAgent": "effort", "cursor": "reasoning_effort",
                  "pi": "thinking"}
+T3_NO_PROJECT = "No T3 Code project matches"  # t3 thread start: cwd isn't a registered project
 
 
 def fill(template: list[str], values: dict[str, str | None]) -> list[str]:
@@ -202,6 +203,23 @@ def main(argv: list[str] | None = None) -> int:
     readonly = a.role in READONLY_ROLES
 
     def run(m, pl, rp, text, how):
+        code = _run(m, pl, rp, text, how)
+        err = rp.with_name(rp.name + ".err")
+        if (code == 1 and pl["transport"] == "thread" and err.exists()
+                and T3_NO_PROJECT in err.read_text()):
+            # a linked worktree isn't a T3 project; a thread in the primary checkout would edit
+            # the wrong tree, so run headless here instead. mode = "thread" set explicitly is honoured:
+            # plan_member raises and the original failure stands.
+            try:
+                pl2 = plan_member(cfg, a.role, m, {}, title)
+            except ConfigError:
+                return code
+            print(f"sstack-dispatch: T3 can't resolve {root} as a project; "
+                  f"falling back to headless ({m['harness']}/{m['model']})", file=sys.stderr)
+            code = _run(m, pl2, rp, text, how)
+        return code
+
+    def _run(m, pl, rp, text, how):
         before = _status(root) if readonly else set()
         t = time.monotonic()
         code = run_member(pl["argv"], root, text, timeout_s, rp, pl["transport"])

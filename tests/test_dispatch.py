@@ -138,3 +138,29 @@ class DispatchTests(DispatchBase):
         code, _, _ = self.run_main("scout", "--brief", self.brief(), "--report", str(self.report()))
         self.assertEqual(code, 0)
         self.assertIn("read-only role changed the working tree", self.report().read_text())
+
+
+class ThreadFallbackTests(DispatchBase):
+    def cfg(self, t3_err):
+        t3 = self.root.parent / "t3"
+        t3.write_text(f"#!/bin/sh\necho \"{t3_err}\" >&2\nexit 1\n"); t3.chmod(0o755)
+        self.glob_cfg(FAKE + 't3_provider = "fake"\n[role.implement]\nharness = "fake"\nmodel = "echo"\n'
+                      f'[transport.t3]\ndetect = "T3CODE_THREAD_ID"\ncmd = ["{t3}", "-"]\n')
+
+    def test_unresolvable_t3_project_falls_back_to_headless(self):
+        # a linked worktree isn't a T3 project: `t3 thread start ... .` refuses it
+        self.cfg("No T3 Code project matches '.'. Pass a project id or a path inside a project.")
+        code, _, err = self.run_main("implement", "--brief", self.brief(), "--report", str(self.report()),
+                                     env={"T3CODE_THREAD_ID": "x"})
+        self.assertEqual(code, 0, err)
+        self.assertIn("REPORT\ndo the thing", self.report().read_text())
+        self.assertIn("falling back to headless", err)
+        runs = [json.loads(l) for l in (self.root / ".sstack/runs/index.jsonl").read_text().splitlines()]
+        self.assertEqual([r["transport"] for r in runs], ["thread", "headless"])
+
+    def test_other_thread_failure_does_not_fall_back(self):
+        self.cfg("child crashed")
+        code, _, err = self.run_main("implement", "--brief", self.brief(), "--report", str(self.report()),
+                                     env={"T3CODE_THREAD_ID": "x"})
+        self.assertEqual(code, 1)
+        self.assertNotIn("falling back", err)

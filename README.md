@@ -192,15 +192,16 @@ bin/sstack-worktree copy         # copy only what the primary's .worktreeinclude
 ### Before/after media on PRs
 
 ```sh
-bin/sstack-pr-media 142 .sstack/runs/<run-id>/media/* > media.md   # add --dry-run to preview
-gh pr comment 142 --body-file media.md
+bin/sstack-pr-media 142 .sstack/runs/<run-id>/media/* --edit-body   # add --dry-run to preview
 ```
+
+Run it right after opening the PR so the table lands in the PR description, never a comment. Comments are only for add-ons (media captured after review, follow-up notes), never the main evidence.
 
 For any change a user can see, the agent captures `before-<step>.png` on the base commit and `after-<step>.png` on the change, plus a recording of the flow. It uses the ADE's capture tools for this. `sstack-pr-media` then:
 
 - pushes the files to a separate `sstack-media` branch, never the PR branch;
 - turns videos into inline GIFs when `ffmpeg` is installed;
-- prints a **Before | After** table to post on the PR.
+- prints a marked **Before | After** HTML table with screenshots and Mermaid diagrams side by side; `--edit-body` replaces that section in the PR description.
 
 Backend changes get diagrams instead of screenshots. The agent draws the changed flow from the code as `before-<flow>.mmd` and `after-<flow>.mmd`, as a sequence, flowchart, state or ER diagram. `sstack-pr-media` inlines them as Mermaid blocks, which GitHub renders, and pushes nothing for them.
 
