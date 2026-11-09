@@ -16,6 +16,7 @@ import sstack_lessons  # noqa: E402
 from sstack_config import ConfigError, git_root, load  # noqa: E402
 
 LESSON = re.compile(r"^\s*LESSON:\s*(repo|global)\s*\|\s*(.+?)\s*\|\s*(.+?)\s*$")
+PANEL_OK = re.compile(r": exit 0 → (.+)$", re.M)  # sstack_dispatch's panel index line
 
 
 def capture_brief() -> str:
@@ -43,17 +44,19 @@ def run(payload: dict) -> int:
     code = sstack_dispatch.main(["scout", "--brief", str(brief), "--report", str(report), "--title", "sstack reflect"])
     if code != 0 or not report.exists():
         return 0
-    # A panel writes one report per member next to the index; every member's lessons count,
-    # but the same lesson from two members is one lesson.
+    # A panel's report is an index; only members it marks `exit 0` count (a failed member's
+    # partial report stays on disk). The same lesson from two members is one lesson, compared
+    # the way the store compares them.
+    text = report.read_text()
+    paths = ([Path(p) for p in PANEL_OK.findall(text)] if text.startswith("# scout panel") else [report])
     done: set[tuple[str, str]] = set()
-    for path in sorted(run_dir.glob("scout.report*.md")):
-        if path.name.endswith(".failed.md"):
-            continue
+    for path in paths:
         for line in path.read_text().splitlines():
             m = LESSON.match(line)
-            if not m or m.group(2).startswith("<") or (m.group(1), m.group(2)) in done:
+            key = m and (m.group(1), sstack_lessons._norm(m.group(2)))
+            if not m or m.group(2).startswith("<") or key in done:
                 continue
-            done.add((m.group(1), m.group(2)))
+            done.add(key)
             sstack_lessons.add(sstack_lessons.lessons_path(m.group(1), root), m.group(2), m.group(3))
     return 0
 

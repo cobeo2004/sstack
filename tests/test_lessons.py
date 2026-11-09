@@ -139,3 +139,24 @@ class ReflectHookTests(TempEnv):
                 break
             time.sleep(0.1)
         self.assertIn("run pnpm", p.read_text())
+
+    def panel_hook(self, agent_src):
+        agent = self.home / "agent.py"
+        agent.write_text("import sys; sys.stdin.read(); m = sys.argv[1]\n" + agent_src)
+        h = f'["{sys.executable}", "{agent}", "{{model}}"]'
+        self.glob_cfg(f'[harness.fake]\nheadless_readonly = {h}\n'
+                      '[role.scout]\npanel=[{harness="fake",model="good"},{harness="fake",model="bad"}]\n'
+                      '[reflect]\nauto = true\n')
+        r = self.hook(self.payload(), "--foreground")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return (self.root / ".sstack/lessons.md").read_text()
+
+    def test_reflect_hook_skips_failed_panel_member(self):
+        text = self.panel_hook("print('LESSON: repo | from ' + m + ' | why')\nsys.exit(m == 'bad')\n")
+        self.assertIn("from good", text)
+        self.assertNotIn("from bad", text)  # its report exists but the index marks it a gap
+
+    def test_reflect_hook_dedupes_like_the_store(self):
+        text = self.panel_hook("print('LESSON: repo | ' + ('Use pnpm' if m == 'good' else 'use   PNPM') + ' | why')\n")
+        self.assertIn("seen=1", text)
+        self.assertNotIn("seen=2", text)
