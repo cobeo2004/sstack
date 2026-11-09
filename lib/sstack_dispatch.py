@@ -1,86 +1,56 @@
-"""sstack-dispatch: run a role's brief on its configured harness(es), capture the report."""
+"""sstack-dispatch (docs/spec/dispatch.md): route a role's brief to its member(s) through the active
+ADE (agent-tool payload, exit 4), its hook, its [cli], or the harness headless; `record` closes a
+tool-shaped run; `ade` prints the active adapter."""
 import argparse
+import fcntl
+import hashlib
 import json
 import os
 import re
 import shlex
-import signal
 import subprocess
 import sys
 import time
-from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+import sstack_ade as A
 import sstack_route as R
 from sstack_config import READONLY_ROLES, ConfigError, ades, git_root, load, resolve
 
-PH = re.compile(r"\{(\w+)\}")
-# The option id a T3/provider child takes effort as (recon, 2026-11-09: they differ per provider).
-EFFORT_OPTION = {"codex": "reasoningEffort", "claudeAgent": "effort", "cursor": "reasoning_effort",
-                 "pi": "thinking"}
-T3_NO_PROJECT = "No T3 Code project matches"  # t3 thread start: cwd isn't a registered project
+VIAS = ("auto", "headless", "local", "ade-cli")
+WARNING = "\n\nWARNING: read-only role changed the working tree:\n"
+INDEX = ".sstack/runs/index.jsonl"
+fill, key = A.fill, A.key
 
 
-def fill(template: list[str], values: dict[str, str | None]) -> list[str]:
-    out: list[str] = []
-    for el in template:
-        names = PH.findall(el)
-        if any(values.get(n) is None for n in names):
-            if out and out[-1].startswith("-"):
-                out.pop()
-            continue
-        out.append(PH.sub(lambda m: str(values[m.group(1)]), el))
-    return out
+def slug(model: str | None) -> str:
+    return re.sub(r"[^A-Za-z0-9.-]", "-", model or "default")
 
 
-def _t3_cli(t3: dict, env: Mapping[str, str]) -> str:
-    raw = t3.get("path", "$T3CODE_CLI_PATH")
-    cli = re.sub(r"\$(\w+)", lambda m: env.get(m.group(1), ""), raw)
-    return cli or str(Path.home() / ".t3" / "bin" / "t3")
+def report_base(report: Path) -> str:
+    return str(report)[:-3] if str(report).endswith(".md") else str(report)
 
 
-def t3_adapter(root: Path | None) -> dict:
-    """The t3 ADE file (docs/spec/ade.md). ponytail: only its [cli] thread start is wired here;
-    B2 replaces this with the generic ADE layer (exit-4 payloads)."""
-    return next((a["toml"] for a in ades(root) if a["name"] == "t3"), {})
+def report_path(report: Path, member: dict, n_members: int) -> Path:
+    """The member's report: `--report` itself alone, `<report_base>.<harness>-<model slug>.md` in a panel."""
+    return report if n_members == 1 else Path(f"{report_base(report)}.{member['harness']}-{slug(member['model'])}.md")
 
 
-def plan_member(cfg: dict, role: str, member: dict, env: Mapping[str, str], title: str,
-                t3: dict | None = None) -> dict:
-    t3 = t3 or {}
-    mode = {"ade-cli": "thread", "auto": "auto"}.get(cfg.get("dispatch", {}).get("via", "auto"), "headless")
-    cli, provider = t3.get("cli", {}), t3.get("providers", {}).get(member["harness"])
+def rel(root: Path, p) -> str:
+    p = Path(p).resolve()
+    return str(p.relative_to(root)) if p.is_relative_to(root) else str(p)
+
+
+def headless_argv(cfg: dict, role: str, member: dict, title: str) -> list[str]:
     h = cfg["harness"][member["harness"]]
-    readonly = role in READONLY_ROLES
-    in_t3 = any(v in env for v in t3.get("detect", {}).get("env", []))
-    notes: list[str] = []
-    values = {"model": member["model"], "effort": member["effort"], "title": title}
-
-    want_thread = mode in ("auto", "thread") and in_t3 and provider and "cmd" in cli
-    if mode == "thread" and not (in_t3 and provider and "cmd" in cli):
-        raise ConfigError(f"dispatch.via = ade-cli but T3 is unavailable for harness {member['harness']!r}")
-    if want_thread and readonly:
-        notes.append("read-only role: headless (T3 threads can't enforce read-only)")
-        want_thread = False
-    if want_thread:
-        if member["effort"]:
-            notes.append("effort dropped in T3 thread")
-        values.update(cli=_t3_cli(cli, env), provider=provider, effort=None)
-        return {"transport": "thread", "argv": fill(cli["cmd"], values), "notes": notes}
-    key = "headless_readonly" if readonly else "headless"
-    if key not in h:
+    k = "headless_readonly" if role in READONLY_ROLES else "headless"
+    if k not in h:
         raise ConfigError(f"role {role!r} is read-only but harness {member['harness']!r} has no headless_readonly")
-    return {"transport": "headless", "argv": fill(h[key], values), "notes": notes}
+    return fill(h[k], {"model": member["model"], "effort": member["effort"], "title": title})
 
 
-def _status(cwd: Path) -> set[str]:
-    r = subprocess.run(["git", "-C", str(cwd), "status", "--porcelain", "--untracked-files=all"],
-                       capture_output=True, text=True)
-    return set(r.stdout.splitlines()) if r.returncode == 0 else set()
-
-
-def run_member(argv: list[str], cwd: Path, brief: str, timeout_s: float, report: Path, transport: str) -> int:
+def run_member(argv: list[str], cwd: Path, brief: str, deadline: float, report: Path) -> int:
     report.parent.mkdir(parents=True, exist_ok=True)
     err = report.with_name(report.name + ".err")
     with open(report, "w") as out, open(err, "w") as errf:
@@ -92,19 +62,9 @@ def run_member(argv: list[str], cwd: Path, brief: str, timeout_s: float, report:
             errf.write(f"cannot start {argv[0]}: {e}\n")
             return 1
         try:
-            p.communicate(brief, timeout=timeout_s)
-        except subprocess.TimeoutExpired:
-            for sig in (signal.SIGTERM, signal.SIGKILL):
-                try:
-                    os.killpg(p.pid, sig)
-                except ProcessLookupError:
-                    break
-                try:
-                    p.wait(timeout=2)
-                    break
-                except subprocess.TimeoutExpired:
-                    continue
-            p.wait()
+            p.communicate(brief, timeout=A.left(deadline))
+        except (subprocess.TimeoutExpired, A.HookTimeout):
+            A.kill_group(p)
             return 2
     if err.stat().st_size == 0:
         err.unlink()
@@ -113,40 +73,273 @@ def run_member(argv: list[str], cwd: Path, brief: str, timeout_s: float, report:
     return 0 if report.stat().st_size > 0 else 1
 
 
-def report_path(base: Path, member: dict, n_members: int) -> Path:
-    if n_members == 1:
-        return base
-    slug = re.sub(r"[^A-Za-z0-9.-]", "-", member["model"] or "default")
-    return base.with_name(f"{base.stem}.{member['harness']}-{slug}{base.suffix}")
+# ---- run dir, read-only baseline, index ------------------------------------------------------
+
+def _git(root: Path, *a) -> str | None:
+    r = subprocess.run(["git", "-C", str(root), *a], capture_output=True, text=True)
+    return r.stdout if r.returncode == 0 else None
 
 
-def route_json(cfg: dict, role: str, route: str, members: list[dict] | None, t3: dict) -> str:
-    """The route as an orchestrator (T3 delegate_task) needs it: who runs it, and effort under
-    the provider's own option id."""
-    out = []
-    for m in members or []:
-        provider = t3.get("providers", {}).get(m["harness"], m["harness"])
-        opt = EFFORT_OPTION.get(provider)
-        out.append({"harness": m["harness"], "provider": provider, "model": m["model"],
-                    "effort": m["effort"], "options": {opt: m["effort"]} if opt and m["effort"] else {}})
-    return json.dumps({"role": role, "route": route, "readonly": role in READONLY_ROLES, "members": out},
-                      indent=2)
+def _entries(status: str) -> dict[str, str]:
+    """`git status --porcelain=v1 -z` → {path: XY}. A rename/copy entry is followed by its source path."""
+    out, fields = {}, iter(status.split("\0"))
+    for e in fields:
+        if e:
+            out[e[3:]] = e[:2]
+            if any(c in "RC" for c in e[:2]):  # staged or worktree rename/copy carries a source path
+                next(fields, None)
+    return out
 
 
-def append_run(root: Path, record: dict) -> None:
+def _sha(b: bytes) -> str:
+    return hashlib.sha256(b).hexdigest()
+
+
+def snapshot(root: Path) -> dict:
+    status = _git(root, "status", "--porcelain=v1", "-z", "--untracked-files=all") or ""
+    files = {p: _sha((root / p).read_bytes()) if (root / p).is_file() else None for p in _entries(status)}
+    idx = root / INDEX
+    data = idx.read_bytes() if idx.is_file() else None
+    return {"head": (_git(root, "rev-parse", "HEAD") or "").strip() or None, "status": status, "files": files,
+            "index": data and {"size": len(data), "sha256": _sha(data)}}
+
+
+def _appended(root: Path, base: dict) -> bool:
+    """index.jsonl only grew: its baseline content is a prefix of what is there now."""
+    old, idx = base.get("index"), root / INDEX
+    if not old:
+        return True
+    data = idx.read_bytes() if idx.is_file() else b""
+    return len(data) >= old["size"] and _sha(data[:old["size"]]) == old["sha256"]
+
+
+def tree_changes(root: Path, base: dict, skip: list[str]) -> list[str]:
+    """Paths changed since `base` (content hash, presence, status XY), minus `skip` (paths, or dirs
+    ending in "/"), and minus index.jsonl when it was only appended to; plus `HEAD old..new`."""
+    now = snapshot(root)
+    old_s, new_s = _entries(base["status"]), _entries(now["status"])
+    gone = object()
+    paths = set(old_s) | set(new_s) | set(base["files"]) | set(now["files"])
+    changed = sorted(p for p in paths
+                     if (old_s.get(p) != new_s.get(p) or base["files"].get(p, gone) != now["files"].get(p, gone))
+                     and not any(p == s or (s.endswith("/") and p.startswith(s)) for s in skip)
+                     and p != INDEX)
+    if not _appended(root, base):  # checked even when .sstack/runs/ is gitignored (not in status)
+        changed.append(INDEX)
+    if base["head"] != now["head"]:
+        changed.append(f"HEAD {base['head']}..{now['head']}")
+    return changed
+
+
+def readonly_check(root: Path, run_dir: Path, run: dict, report: Path) -> list[str]:
+    """The baseline check (docs/spec/dispatch.md): warn in the report, never fail."""
+    try:
+        base = json.loads((run_dir / "baseline.json").read_text())
+    except (OSError, ValueError):
+        return []
+    rb, n = run["report_base"], len(run["members"])
+    reports = [report, root / f"{rb}.failed.md"]  # .failed.md: the escalation moved a report aside
+    reports += [root / f"{rb}.{h}-{slug(m)}.md" for h, _, m in (x.partition("/") for x in run["members"])]
+    if run.get("panel_report"):
+        reports.append(root / run["panel_report"])
+    elif n == 1:
+        reports.append(root / f"{rb}.md")
+    # this run's dir and every other run dir under .sstack/runs/ are sstack's; index.jsonl is checked
+    # append-only in tree_changes
+    skip = [rel(root, run_dir) + "/"]
+    skip += [str(p.relative_to(root)) + "/" for p in (root / ".sstack" / "runs").glob("*/")]
+    skip += [rel(root, p) for r in reports for p in (r, Path(str(r) + ".err"))]
+    changed = tree_changes(root, base, skip)
+    if changed and report.exists():
+        with open(report, "a") as f:
+            f.write(WARNING + "\n".join(changed) + "\n")
+    return changed
+
+
+def new_run(root: Path, role: str, members: list[dict], report: Path, readonly: bool, extra: dict) -> Path:
+    runs = root / ".sstack" / "runs"
+    runs.mkdir(parents=True, exist_ok=True)
+    stem, n = f"{time.strftime('%Y%m%d-%H%M')}-{role}", 1
+    while True:
+        d = runs / (stem if n == 1 else f"{stem}-{n}")
+        try:
+            d.mkdir()
+            break
+        except FileExistsError:
+            n += 1
+    run = {"role": role, "members": [key(m) for m in members], "report_base": rel(root, report_base(report)),
+           "panel_report": rel(root, report) if len(members) > 1 else None, "started_at": time.time(),
+           "readonly": readonly, **extra}
+    write_run(d, run)
+    if readonly:
+        (d / "baseline.json").write_text(json.dumps(snapshot(root), indent=2) + "\n")
+    return d
+
+
+def write_run(d: Path, run: dict) -> None:
+    (d / "run.json").write_text(json.dumps(run, indent=2) + "\n")
+
+
+def append_index(root: Path, line: dict) -> None:
     p = root / ".sstack" / "runs" / "index.jsonl"
     p.parent.mkdir(parents=True, exist_ok=True)
     with open(p, "a") as f:
-        f.write(json.dumps(record) + "\n")
+        f.write(json.dumps(line) + "\n")
 
+
+def index_line(root: Path, run_dir: Path, run: dict, rec: dict) -> None:
+    """rec: member, exit, secs, report, ade, via, readonly_warning."""
+    h, _, m = rec["member"].partition("/")
+    append_index(root, {"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "task": run.get("title") or f"sstack {run['role']}",
+                        "role": run["role"], "ade": rec["ade"], "via": rec["via"], "harness": h, "model": m,
+                        "exit": rec["exit"], "secs": rec["secs"], "run_dir": rel(root, run_dir),
+                        "report": rel(root, rec["report"]), "route": run.get("route"),
+                        "readonly_warning": rec["readonly_warning"]})
+
+
+def panel_index(root: Path, run_dir: Path, run: dict) -> int | None:
+    """Once every member has an index line from this run dir, write the panel index (latest line
+    per member) at panel_report, once (run.json `panel_written`). Returns 0/1 (any member ok) when
+    written, else None."""
+    if not run.get("panel_report") or run.get("panel_written"):
+        return None
+    rd, latest = rel(root, run_dir), {}
+    p = root / ".sstack" / "runs" / "index.jsonl"
+    for l in p.read_text().splitlines() if p.exists() else []:
+        try:
+            rec = json.loads(l)
+        except ValueError:
+            continue
+        if rec.get("run_dir") == rd:
+            latest[f"{rec['harness']}/{rec['model']}"] = rec
+    if not all(m in latest for m in run["members"]):
+        return None
+    out = [f"# {run['role']} panel\n"]
+    for m in run["members"]:
+        r = latest[m]
+        out.append(f"- {m}: exit {r['exit']} → {r['report'] if r['exit'] == 0 else 'gap (no report)'}")
+    (root / run["panel_report"]).write_text("\n".join(out) + "\n")
+    run["panel_written"] = True
+    write_run(run_dir, run)
+    return 0 if any(latest[m]["exit"] == 0 for m in run["members"]) else 1
+
+
+# ---- exit-4 payload ----------------------------------------------------------------------------
+
+def payload(ade: dict, role: str, members: list[dict], run_dir: str, title: str, brief: str, report: Path) -> dict:
+    readonly = role in READONLY_ROLES
+    calls = []
+    for m in members:
+        rp = str(report_path(report, m, len(members)))
+        rec = " ".join(shlex.quote(x) for x in ("sstack-dispatch", "record", role, "--report", rp, "--member", key(m)))
+        rec += f" --exit {{exit}} --run-dir {shlex.quote(run_dir)}"
+        calls.append(A.tool_call(ade, role, readonly, m, title, brief, rp, rec))
+    return {"ade": ade["name"], "role": role, "readonly": readonly, "run_dir": run_dir, "calls": calls}
+
+
+def _escalate(root: Path, run_dir: Path, run: dict, failed: dict, report: Path, code: int, cfg: dict,
+              isolated: bool = False):
+    """Single-member run failed: (member one tier up, brief with a note), moving the failed report
+    aside; None when there is nowhere to go. Escalates once per run (run.json `escalated`).
+    `isolated`: the failed child worked in its own worktree, so its edits are not in this tree."""
+    if run.get("escalated") or len(run["members"]) != 1 or not cfg.get("rules", {}).get("auto_escalate", True):
+        return None
+    avoid = R.pick(cfg, "implement", run.get("hint"), [])[0] if run["role"] == "review" else None
+    up = R.escalation(cfg, failed, avoid)
+    if not up:
+        return None
+    gone = Path(f"{report_base(report)}.failed.md")
+    for src, dst in ((report, gone), (Path(str(report) + ".err"), Path(str(gone) + ".err"))):
+        if src.exists():
+            src.replace(dst)
+    print(f"sstack-dispatch: {key(failed)} exit {code}; escalating once to tier.{up[1]} ({key(up[0])})",
+          file=sys.stderr)
+    edits = ("Its partial edits, if any, are in its own worktree, not in this tree; start from this tree."
+             if isolated else "The working tree may hold its partial edits: read `git diff` first and keep "
+                              "only what is right.")
+    note = (f"\n\n---\nNote: a previous attempt on a cheaper model failed (exit {code}); its report is "
+            f"{gone}. {edits}\n")
+    bp = root / run["brief"] if run.get("brief") else None
+    brief = bp.read_text() if bp and bp.is_file() else ""
+    run.update(members=[key(up[0])], escalated=True, started_at=time.time(),
+               route=f"escalated from {run.get('route')} → tier.{up[1]}")
+    return up[0], brief + note
+
+
+def record(argv: list[str]) -> int:
+    ap = argparse.ArgumentParser(prog="sstack-dispatch record")
+    ap.add_argument("role")
+    ap.add_argument("--report", required=True)
+    ap.add_argument("--member", required=True, help="<harness>/<model>")
+    ap.add_argument("--exit", type=int, required=True)
+    ap.add_argument("--run-dir", required=True)
+    a = ap.parse_args(argv)
+    run_dir = Path(a.run_dir).resolve()
+    if run_dir.parent.name != "runs" or run_dir.parent.parent.name != ".sstack":
+        print(f"sstack-dispatch record: --run-dir {a.run_dir} is not a <repo>/.sstack/runs/<id> dir", file=sys.stderr)
+        return 1
+    root = run_dir.parents[2]
+    try:
+        lock = open(run_dir / "run.lock", "a")
+    except OSError as e:
+        print(f"sstack-dispatch record: {e}", file=sys.stderr)
+        return 1
+    with lock:  # members of one run record concurrently: one read-modify-write of run.json at a time
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        return _record(a, root, run_dir)
+
+
+def _record(a, root: Path, run_dir: Path) -> int:
+    try:
+        run = json.loads((run_dir / "run.json").read_text())
+    except (OSError, ValueError) as e:
+        print(f"sstack-dispatch record: {run_dir}/run.json: {e}", file=sys.stderr)
+        return 1
+    if a.member not in run["members"]:
+        print(f"sstack-dispatch record: {a.member} is not a member of this run ({', '.join(run['members'])})",
+              file=sys.stderr)
+        return 1
+    report = Path(a.report).resolve()
+    code = a.exit if a.exit != 0 else (0 if report.is_file() and report.stat().st_size > 0 else 1)
+    warning = readonly_check(root, run_dir, run, report) if run.get("readonly") else []
+    index_line(root, run_dir, run, {"member": a.member, "exit": code, "report": report, "ade": run.get("ade"),
+                                    "secs": round(time.time() - run.get("started_at", time.time()), 1),
+                                    "via": run.get("via", "auto"), "readonly_warning": warning})
+    if code != 0:
+        h, _, m = a.member.partition("/")
+        try:
+            cfg = load(git_root(root))
+            ade = next((x for x in ades(git_root(root)) if x["name"] == run.get("ade")), None)
+            isolated = not run["readonly"] and bool(ade and ade["toml"].get("delegate", {}).get("write_args", {}).get("isolation"))
+            up = _escalate(root, run_dir, run, {"harness": h, "model": None if m == "default" else m, "effort": None},
+                           report, code, cfg, isolated) if A.kind(ade) == "tool" else None
+        except ConfigError as e:
+            print(f"sstack-dispatch record: {e}", file=sys.stderr)
+            up = None
+        if up:
+            brief = run_dir / "brief.escalated.md"
+            brief.write_text(up[1])
+            run["brief"] = rel(root, brief)
+            write_run(run_dir, run)
+            print(json.dumps(payload(ade, run["role"], [up[0]], str(run_dir), run.get("title") or f"sstack {run['role']}",
+                                     str(brief), report), indent=2))
+            return 4
+    panel = panel_index(root, run_dir, run)
+    return code if panel is None else panel
+
+
+# ---- main --------------------------------------------------------------------------------------
 
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     cwd = Path.cwd()
-    root = git_root(cwd) or cwd
-    if argv[:1] == ["routes"]:
+    if argv[:1] == ["record"]:
+        return record(argv[1:])
+    if argv[:1] in (["routes"], ["ade"]):
         try:
-            print(R.routes_text(load(git_root(cwd))), end="")
+            cfg = load(git_root(cwd))
+            print(R.routes_text(cfg), end="") if argv[0] == "routes" else \
+                print(json.dumps(A.describe(*A.active(git_root(cwd), cfg, os.environ)), indent=2))
         except ConfigError as e:
             print(f"sstack-dispatch: {e}", file=sys.stderr)
             return 1
@@ -160,127 +353,153 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--files", nargs="*", help="files the work touches; review defaults to git diff")
     ap.add_argument("--base", default="HEAD", help="review: diff base for detection")
     ap.add_argument("--panel", action="store_true", help="review: force the full panel")
+    ap.add_argument("--via", choices=VIAS, help="beats [dispatch] via")
     ap.add_argument("--dry-run", action="store_true")
-    ap.add_argument("--route", action="store_true", help="print the resolved route as JSON; runs nothing")
+    ap.add_argument("--route", action="store_true", help="print the exit-4 payload shape; creates nothing")
     a = ap.parse_args(argv)
     if not a.route and not (a.brief and a.report):
         ap.error("--brief and --report are required unless --route is given")
     title = a.title or f"sstack {a.role}"
+    gr = git_root(cwd)
+    root = gr or cwd
+    readonly = a.role in READONLY_ROLES
     try:
-        cfg = load(git_root(cwd))
+        cfg = load(gr)
+        via = a.via or cfg.get("dispatch", {}).get("via", "auto")
+        cfg.setdefault("dispatch", {})["via"] = via  # route.pick / resolve read it (local → exit 3)
         rules = cfg.get("rules", {})
         files, lines = list(a.files or []), 0
         if a.role == "review":  # the diff size gates the panel even when --files names the scope
             detected, lines = R.changed(root, a.base)
             files = files if a.files is not None else detected
         member, route, notes = R.pick(cfg, a.role, a.hint, files)
-        t3 = t3_adapter(git_root(cwd))
-        if a.role == "review" and cfg.get("dispatch", {}).get("via") != "local":
+        if a.role == "review" and via != "local":
             members, route = _review_members(cfg, a, member, files, lines, rules)
         elif route == "panel":
-            if a.role not in READONLY_ROLES:
+            if not readonly:
                 raise ConfigError(f"panel is only for read-only roles ({', '.join(sorted(READONLY_ROLES))}); "
-                                  f"route {a.role} with [role.{a.role}.hint.*] or [tier.*]")
+                                  f"route {a.role} with roles/{a.role}.toml [hint.*] or tiers/*.toml")
             members = resolve(cfg, a.role)
         else:
             members = [member] if member else None
-        if a.route:  # before plan_member: --route runs nothing, and needs no headless command
-            print(route_json(cfg, a.role, route, members, t3))
+        ade, why = A.active(gr, cfg, os.environ) if via in ("auto", "ade-cli") else (None, f"via {via}")
+        # the whitelist: only via = ade-cli ever runs the adapter's [cli] (T3: a new top-level thread)
+        shape = {"tool": "tool", "hook": "hook", "none": "headless"}[A.kind(ade)] if via == "auto" else \
+            "ade-cli" if via == "ade-cli" else "headless"
+        if a.route:
+            report = Path(a.report).resolve() if a.report else Path("<REPORT>")
+            run_dir = str(root / ".sstack" / "runs" / f"{time.strftime('%Y%m%d-%H%M')}-{a.role}")
+            if shape == "tool" and members:
+                p = payload(ade, a.role, members, run_dir, title,
+                            str(Path(a.brief).resolve()) if a.brief else "<BRIEF>", report)
+            else:
+                p = {"ade": ade and ade["name"], "role": a.role, "readonly": readonly, "run_dir": run_dir,
+                     "calls": [{"member": key(m), "via": shape} for m in members or []]}
+            print(json.dumps({**p, "route": route}, indent=2))
             return 0 if members else 3
         if not members:
             print("local")
             return 3
-        plans = [plan_member(cfg, a.role, m, os.environ, title, t3) for m in members]
+
+        def plan(m: dict) -> list[str]:
+            return A.cli_argv(ade, m, title, os.environ) if shape == "ade-cli" else headless_argv(cfg, a.role, m, title)
+
+        # argv up front, once: config errors surface before anything runs
+        plans = {key(m): plan(m) for m in members} if shape in ("headless", "ade-cli") else {}
     except ConfigError as e:
         print(f"sstack-dispatch: {e}", file=sys.stderr)
         return 1
 
     if a.dry_run:
         print(f"route: {route}")
+        print(f"ade: {ade['name'] if ade else None} ({why})")
         for n in notes:
             print(f"  note: {n}")
-        for m, pl in zip(members, plans):
-            print(f"{pl['transport']}: {shlex.join(pl['argv'])}")
-            for n in pl["notes"]:
-                print(f"  note: {n}")
+        for m in members:
+            if shape == "tool":
+                c = A.tool_call(ade, a.role, readonly, m, title, str(Path(a.brief).resolve()),
+                                str(Path(a.report).resolve()), "")
+                print(f"tool {c['tool']}: {json.dumps(c['args'])}" + (f"\n  note: {c['note']}" if "note" in c else ""))
+            elif shape == "hook":
+                print(f"hook: {ade['hook_path']} delegate ({key(m)})")
+            else:
+                print(f"{shape}: {shlex.join(plans[key(m)])}")
         return 0
 
-    brief = Path(a.brief).read_text()
-    base = Path(a.report).resolve()
+    brief_p = Path(a.brief).resolve()
+    report = Path(a.report).resolve()
+    ade_name = ade["name"] if ade and shape != "headless" else None
+    run_dir = new_run(root, a.role, members, report, readonly,
+                      {"title": title, "brief": rel(root, brief_p), "route": route, "ade": ade_name,
+                       "via": "headless" if shape == "headless" else via, "hint": a.hint})
+    run = json.loads((run_dir / "run.json").read_text())
+    report.parent.mkdir(parents=True, exist_ok=True)  # ADE children write the report themselves
+    if shape == "tool":
+        print(json.dumps(payload(ade, a.role, members, str(run_dir), title, str(brief_p), report), indent=2))
+        return 4
+
+    brief = brief_p.read_text()
     timeout_s = float(cfg.get("dispatch", {}).get("timeout_min", 30)) * 60
-    readonly = a.role in READONLY_ROLES
 
-    def run(m, pl, rp, text, how):
-        code = _run(m, pl, rp, text, how)
-        err = rp.with_name(rp.name + ".err")
-        if (code == 1 and pl["transport"] == "thread" and err.exists()
-                and T3_NO_PROJECT in err.read_text()):
-            # a linked worktree isn't a T3 project; a thread in the primary checkout would edit
-            # the wrong tree, so run headless here instead. mode = "thread" set explicitly is honoured:
-            # plan_member raises and the original failure stands.
+    def member(m: dict, text: str, deadline: float, rp: Path) -> tuple[int, str | None, str]:
+        """(exit, ade used, via) for one member; one deadline across delegate → run → wait → collect."""
+        if shape != "hook":
+            return run_member(plans[key(m)], root, text, deadline, rp), ade_name, run["via"]
+        state = run_dir / f"hook.{m['harness']}-{slug(m['model'])}"
+        state.mkdir(exist_ok=True)
+        stdin = {"role": a.role, "readonly": readonly, "member": key(m), "brief": str(brief_p),
+                 "report": str(rp), "cwd": str(root), "title": title}
+        try:
+            act, note = A.delegate(ade, stdin, state, os.environ, deadline)
+        except A.HookTimeout:
+            return 2, ade_name, run["via"]
+        if act is None:
+            print(f"sstack-dispatch: note: {note}", file=sys.stderr)
             try:
-                pl2 = plan_member(cfg, a.role, m, {}, title, t3)
-            except ConfigError:
-                return code
-            print(f"sstack-dispatch: T3 can't resolve {root} as a project; "
-                  f"falling back to headless ({m['harness']}/{m['model']})", file=sys.stderr)
-            code = _run(m, pl2, rp, text, how)
-        return code
+                argv = headless_argv(cfg, a.role, m, title)
+            except ConfigError as e:
+                print(f"sstack-dispatch: {e}", file=sys.stderr)
+                return 1, None, "headless"
+            return run_member(argv, root, text, deadline, rp), None, "headless"
+        if act["action"] == "run":
+            return run_member(act["argv"], root, text, deadline, rp), ade_name, run["via"]
+        return A.run_async(ade, str(act["id"]), state, os.environ, deadline, rp), ade_name, run["via"]
 
-    def _run(m, pl, rp, text, how):
-        before = _status(root) if readonly else set()
+    def go(m: dict, text: str) -> int:
+        rp = report_path(report, m, len(run["members"]))
         t = time.monotonic()
-        code = run_member(pl["argv"], root, text, timeout_s, rp, pl["transport"])
-        secs = round(time.monotonic() - t, 1)
-        if code != 0 and len(members) > 1 and rp.exists() and rp.stat().st_size == 0:
+        try:
+            code, used, how = member(m, text, t + timeout_s, rp)
+        except Exception as e:  # one member's crash must not lose the others' records or the panel index
+            print(f"sstack-dispatch: {key(m)}: {type(e).__name__}: {e}", file=sys.stderr)
+            code, used, how = 1, ade_name, run["via"]
+        if code != 0 and len(run["members"]) > 1 and rp.exists() and rp.stat().st_size == 0:
             rp.unlink()
-        if readonly and rp.exists():
-            skip = [".sstack/"]
-            if base.parent.is_relative_to(root) and base.parent != root:
-                skip.append(f"{base.parent.relative_to(root)}/")
-            elif rp.is_relative_to(root):
-                skip += [str(r.relative_to(root)) for r in (rp, rp.with_name(rp.name + ".err"))]
-            changed = sorted(l for l in _status(root) - before if not any(l[3:].startswith(s) for s in skip))
-            if changed:
-                with open(rp, "a") as f:
-                    f.write("\n\nWARNING: read-only role changed the working tree:\n" + "\n".join(changed) + "\n")
-        append_run(root, {"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "task": title, "role": a.role,
-                          "harness": m["harness"], "model": m["model"], "transport": pl["transport"],
-                          "route": how, "exit": code, "secs": secs, "report": str(rp)})
+        warning = readonly_check(root, run_dir, run, rp) if readonly else []
+        index_line(root, run_dir, run, {"member": key(m), "exit": code, "secs": round(time.monotonic() - t, 1),
+                                        "report": rp, "ade": used, "via": how, "readonly_warning": warning})
         return code
 
     if len(members) == 1:
-        code = run(members[0], plans[0], base, brief, route)
-        avoid = R.pick(cfg, "implement", a.hint, files)[0] if a.role == "review" else None
-        up = R.escalation(cfg, members[0], avoid) if code != 0 and rules.get("auto_escalate", True) else None
-        if not up:
-            return code
-        m2, tier = up
-        failed = base.with_name(f"{base.stem}.failed{base.suffix}")
-        for src, dst in ((base, failed), (base.with_name(base.name + ".err"), failed.with_name(failed.name + ".err"))):
-            if src.exists():
-                src.replace(dst)
-        print(f"sstack-dispatch: {members[0]['harness']}/{members[0]['model']} exit {code}; "
-              f"escalating once to tier.{tier} ({m2['harness']}/{m2['model']})", file=sys.stderr)
-        note = (f"\n\n---\nNote: a previous attempt on a cheaper model failed (exit {code}); its report is "
-                f"{failed}. The working tree may hold its partial edits: read `git diff` first and keep "
-                f"only what is right.\n")
+        code = go(members[0], brief)
+        if code == 0:
+            return 0
         try:
-            pl2 = plan_member(cfg, a.role, m2, os.environ, title, t3)
+            up = _escalate(root, run_dir, run, members[0], report, code, cfg)
+            if up and shape in ("headless", "ade-cli"):
+                plans[key(up[0])] = plan(up[0])
         except ConfigError as e:
             print(f"sstack-dispatch: {e}", file=sys.stderr)
             return code
-        return run(m2, pl2, base, brief + note, f"escalated from {route} → tier.{tier}")
+        if not up:
+            return code
+        write_run(run_dir, run)
+        return go(up[0], up[1])
 
     with ThreadPoolExecutor(int(rules.get("max_parallel", 4))) as ex:
-        codes = list(ex.map(lambda mp: run(*mp, report_path(base, mp[0], len(members)), brief, route),
-                            zip(members, plans)))
-    lines_out = [f"# {a.role} panel\n"]
-    for m, code in zip(members, codes):
-        rp = report_path(base, m, len(members))
-        lines_out.append(f"- {m['harness']}/{m['model']}: exit {code} → {rp if code == 0 else 'gap (no report)'}")
-    base.write_text("\n".join(lines_out) + "\n")
-    return 0 if any(c == 0 for c in codes) else 1
+        codes = list(ex.map(lambda m: go(m, brief), members))
+    panel = panel_index(root, run_dir, run)
+    return panel if panel is not None else (0 if any(c == 0 for c in codes) else 1)
 
 
 def _review_members(cfg, a, picked, files, lines, rules):

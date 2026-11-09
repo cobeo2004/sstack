@@ -1,4 +1,4 @@
-# Conductor. Delegation via CLI/API (beta, needs CONDUCTOR_API_KEY): conductor.hook (B2).
+# Conductor. Delegation via CLI/API (beta, needs CONDUCTOR_API_KEY): conductor.hook.
 auto = true
 
 [detect]
@@ -7,6 +7,7 @@ env = ["CONDUCTOR_SESSION_ID"]
 [delegate]
 kind = "hook"
 readonly = "instructed"
+poll_s = 15
 
 [browser]
 kind = "none"

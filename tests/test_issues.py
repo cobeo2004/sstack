@@ -112,19 +112,27 @@ class Issue5Worktree(TempEnv):
 class Issue6Route(DispatchBase):
     def test_route_json(self):
         self.example()
-        code, out, err = self.run_main("review", "--route", "--panel", "--files", "src/x.ts")
+        # --route prints the exit-4 payload shape (docs/spec/dispatch.md); in T3 that carries the ids
+        code, out, err = self.run_main("review", "--route", "--panel", "--files", "src/x.ts",
+                                       env={"T3CODE_THREAD_ID": "x"})
         self.assertEqual(code, 0, err)
         d = json.loads(out)
         self.assertTrue(d["readonly"])
         self.assertIn("panel", d["route"])
-        codex = next(m for m in d["members"] if m["harness"] == "codex")
-        self.assertEqual((codex["provider"], codex["model"], codex["options"]),
+        codex = next(c for c in d["calls"] if c["member"] == "codex/gpt-6.1-sol")["args"]["target"]
+        self.assertEqual((codex["providerInstanceId"], codex["model"], codex["options"]),
                          ("codex", "gpt-6.1-sol", {"reasoningEffort": "high"}))
+        self.assertFalse((self.root / ".sstack").exists())  # --route creates nothing
+
+    def test_route_json_headless(self):
+        self.example()
+        code, out, _ = self.run_main("scout", "--route")
+        self.assertEqual((code, json.loads(out)["calls"]), (0, [{"member": "claude/haiku", "via": "headless"}]))
 
     def test_route_json_local(self):
         self.glob_cfg(FAKE)
         code, out, _ = self.run_main("investigate", "--route")
-        self.assertEqual((code, json.loads(out)["members"]), (3, []))
+        self.assertEqual((code, json.loads(out)["calls"]), (3, []))
 
     def test_cursor_has_readonly_command(self):
         import tomllib

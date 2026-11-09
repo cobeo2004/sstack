@@ -1,0 +1,53 @@
+#!/usr/bin/env python3
+"""Conductor adapter hook (docs/spec/ade.md). Needs the user's CONDUCTOR_API_KEY (beta API);
+without it (or without the `conductor` CLI) delegate says none and the member runs headless.
+delegate: `conductor workspace create` + `message create`; wait: `workspace status` (running → 10);
+collect: the report the agent wrote; cancel: `workspace archive`.
+ponytail: CLI flags follow Conductor's docs, unverified against a live install; tested with
+tests/fakes/conductor. State ($SSTACK_HOOK_STATE): report = the member's report path."""
+import json, os, shutil, subprocess, sys
+from pathlib import Path
+
+cap, d = sys.argv[1], json.loads(sys.stdin.read() or "{}")
+state = Path(os.environ.get("SSTACK_HOOK_STATE", "."))
+cond = lambda *a, **kw: subprocess.run(["conductor", *a], capture_output=True, text=True, **kw)
+none = lambda note: print(json.dumps({"action": "none", "note": note}))
+
+if cap == "detect":
+    sys.exit(0 if os.environ.get("CONDUCTOR_SESSION_ID") else 1)
+if cap == "delegate":
+    if not os.environ.get("CONDUCTOR_API_KEY"):
+        none("CONDUCTOR_API_KEY not set; running headless")
+    elif not shutil.which("conductor"):
+        none("conductor CLI not on PATH; running headless")
+    else:
+        agent, _, model = d["member"].partition("/")
+        # `--opt=value`: a user title starting with "-" stays a value, never a flag
+        r = cond("workspace", "create", f"--name={d['title']}", "--agent", agent,
+                 *(["--model", model] if model and model != "default" else []), "--json", check=True)
+        try:
+            job = json.loads(r.stdout)["id"]
+        except (ValueError, KeyError, TypeError):
+            job = r.stdout.split()[0]
+        mode = ["--plan"] if d["readonly"] else []
+        task = (f"Read the brief at {d['brief']} and do exactly what it says. Write your report to {d['report']}. "
+                "If you cannot write files, return the full report as your final message.")  # = sstack_ade.TASK
+        cond("message", "create", "--workspace", job, *mode, "--message", task, check=True)
+        (state / "report").write_text(d["report"])
+        print(json.dumps({"action": "async", "id": job}))
+elif cap == "wait":
+    r = cond("workspace", "status", "--workspace", d["id"], "--json")
+    try:
+        status = json.loads(r.stdout).get("status")
+    except (ValueError, AttributeError):
+        sys.exit(1)
+    sys.exit(10 if status in ("running", "working", "queued") else 0 if status in ("idle", "done", "completed") else 1)
+elif cap == "collect":
+    p = Path((state / "report").read_text()) if (state / "report").is_file() else None
+    text = p.read_text() if p and p.is_file() else ""
+    sys.stdout.write(text)
+    sys.exit(0 if text else 1)
+elif cap == "cancel":
+    cond("workspace", "archive", "--workspace", d["id"])
+else:
+    sys.exit(1)

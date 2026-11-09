@@ -72,7 +72,8 @@ def run(payload: dict) -> int:
     report = run_dir / "scout.report.md"
     os.environ["SSTACK_REFLECT"] = "1"  # the child's own session end must not reflect again
     os.chdir(root)
-    code = sstack_dispatch.main(["scout", "--brief", str(brief), "--report", str(report), "--title", "sstack reflect"])
+    code = sstack_dispatch.main(["scout", "--brief", str(brief), "--report", str(report), "--title", "sstack reflect",
+                                  "--via", "headless"])  # a hook has no agent to run an exit-4 payload
     if code != 0 or not report.exists():
         return 0  # offset not saved: the next session end retries these lines
     if total is not None:
