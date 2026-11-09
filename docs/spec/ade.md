@@ -36,7 +36,7 @@ poll_s = 15                     # hook: seconds between `wait` calls (default 15
 [delegate.args]                 # tool: args template. String placeholders: {title} {brief} {report}
 title = "{title}"               # {role} {ade_role} {provider} {model}; "{options}" as a whole
 role = "{ade_role}"             # value becomes the effort options object.
-task = "Read the brief at {brief} and do exactly what it says. Write your report to {report}."
+task = "Read the brief at {brief} and do exactly what it says. Write your report to {report}. If you cannot write files, return the full report as your final message."
 target = { providerInstanceId = "{provider}", model = "{model}", options = "{options}" }
 
 [delegate.readonly_args]        # merged over args for read-only roles

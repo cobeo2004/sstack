@@ -11,7 +11,7 @@
       "args": {
         "title": "sstack review",
         "role": "review",
-        "task": "Read the brief at <BRIEF> and do exactly what it says. Write your report to <REPORT_BASE>.codex-gpt-6.1-sol.md.",
+        "task": "Read the brief at <BRIEF> and do exactly what it says. Write your report to <REPORT_BASE>.codex-gpt-6.1-sol.md. If you cannot write files, return the full report as your final message.",
         "target": {
           "providerInstanceId": "codex",
           "model": "gpt-6.1-sol",
@@ -30,7 +30,7 @@
       "args": {
         "title": "sstack review",
         "role": "review",
-        "task": "Read the brief at <BRIEF> and do exactly what it says. Write your report to <REPORT_BASE>.claude-opus.md.",
+        "task": "Read the brief at <BRIEF> and do exactly what it says. Write your report to <REPORT_BASE>.claude-opus.md. If you cannot write files, return the full report as your final message.",
         "target": {
           "providerInstanceId": "claudeAgent",
           "model": "claude-opus-5-5",

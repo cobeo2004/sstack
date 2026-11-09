@@ -11,7 +11,7 @@
       "args": {
         "title": "sstack scout",
         "role": "research",
-        "task": "Read the brief at <BRIEF> and do exactly what it says. Write your report to <REPORT>.",
+        "task": "Read the brief at <BRIEF> and do exactly what it says. Write your report to <REPORT>. If you cannot write files, return the full report as your final message.",
         "target": {
           "providerInstanceId": "claudeAgent",
           "model": "claude-haiku-5-5",
