@@ -3,3 +3,4 @@ panel = [
   { harness = "codex",  model = "gpt-6.1-sol", effort = "high" },
   { harness = "claude", model = "opus" },
 ]
+# skills = []   # skill names every child of this role must use (none by default)

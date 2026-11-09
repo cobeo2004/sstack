@@ -13,6 +13,7 @@ from pathlib import Path
 
 import sstack_ade as A
 import sstack_dispatch as D
+import sstack_skills as S
 from sstack_config import READONLY_ROLES, ConfigError, ades, git_root, legacy, load, resolve
 
 DISPATCH = Path(__file__).resolve().parent.parent / "bin" / "sstack-dispatch"
@@ -114,9 +115,20 @@ def _pointers(_root):
     return f"ok: {', '.join(ok)}" if ok else "no agent instruction files"
 
 
+def _skills(root):
+    cfg = load(root)
+    # ponytail: any harness's dirs count; dispatch warns again when the member's harness lacks it
+    dirs = S.path(cfg, root or Path.cwd(), list(cfg.get("harness", {})))
+    names = S.configured(cfg)
+    if missing := [n for n in names if not S.find(n, dirs)]:
+        raise Warn(", ".join(missing))
+    return ", ".join(names) or "none configured"
+
+
 CHECKS = [("config loads", _loads), ("no legacy files", _legacy), ("roles resolve", _roles),
           ("harness CLIs", _clis), ("active ADE", _ade), ("hooks executable", _hooks),
-          ("entry pointers", _pointers)]
+          ("entry pointers", _pointers),
+          ("skills resolve", _skills)]
 
 
 def static(root) -> int:

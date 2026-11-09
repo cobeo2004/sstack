@@ -104,7 +104,8 @@ Dispatch a role; never pick a model by hand.
   - `0` — read the report, then verify it yourself.
   - `1` / `2` — stop at the next gate and report what failed; don't silently redo it
     here.
-  - `3` — the role is local: do it in this session.
+  - `3` — the role is local: do it in this session. On exit 3, read the printed skills
+    (`skills:` lines) before starting.
   - `4` — nothing started. Stdout is the payload `{ade, role, readonly, run_dir,
     calls}`:
     1. **Start** every call in `calls`, from that one payload: load its `tool` with

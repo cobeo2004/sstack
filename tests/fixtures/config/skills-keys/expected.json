@@ -1,0 +1,149 @@
+{
+  "ade": "auto",
+  "dispatch": {
+    "via": "auto",
+    "timeout_min": 30
+  },
+  "rules": {
+    "review_not_implementer": true,
+    "max_parallel": 4,
+    "loop_guard": 2,
+    "auto_escalate": true,
+    "tier_order": [
+      "cheap",
+      "standard",
+      "strong"
+    ],
+    "panel_diff_lines": 400
+  },
+  "reflect": {
+    "auto": false,
+    "encode_at": 2
+  },
+  "harness": {
+    "claude": {
+      "headless": [
+        "claude",
+        "-p",
+        "--model",
+        "{model}",
+        "--permission-mode",
+        "acceptEdits"
+      ],
+      "headless_readonly": [
+        "claude",
+        "-p",
+        "--model",
+        "{model}",
+        "--permission-mode",
+        "plan"
+      ]
+    },
+    "codex": {
+      "headless": [
+        "codex",
+        "exec",
+        "--sandbox",
+        "workspace-write",
+        "-m",
+        "{model}",
+        "-c",
+        "model_reasoning_effort={effort}",
+        "-"
+      ],
+      "headless_readonly": [
+        "codex",
+        "exec",
+        "--sandbox",
+        "read-only",
+        "-m",
+        "{model}",
+        "-c",
+        "model_reasoning_effort={effort}",
+        "-"
+      ]
+    },
+    "cursor": {
+      "headless": [
+        "cursor-agent",
+        "-p",
+        "--force",
+        "--model",
+        "{model}"
+      ],
+      "headless_readonly": [
+        "cursor-agent",
+        "-p",
+        "--trust",
+        "--mode",
+        "plan",
+        "--model",
+        "{model}"
+      ]
+    },
+    "pi": {
+      "headless": [
+        "pi",
+        "-p",
+        "--no-session",
+        "--model",
+        "{model}",
+        "--thinking",
+        "{effort}"
+      ],
+      "headless_readonly": [
+        "pi",
+        "-p",
+        "--no-session",
+        "--model",
+        "{model}",
+        "--thinking",
+        "{effort}",
+        "--tools",
+        "read,grep,find,ls"
+      ]
+    }
+  },
+  "role": {
+    "implement": {
+      "harness": "claude",
+      "model": "sonnet",
+      "skills": [
+        "tdd"
+      ]
+    },
+    "review": {
+      "mode": "auto",
+      "panel": [
+        {
+          "harness": "codex",
+          "model": "gpt-6.1-sol",
+          "effort": "high"
+        },
+        {
+          "harness": "claude",
+          "model": "opus"
+        }
+      ]
+    },
+    "scout": {
+      "harness": "claude",
+      "model": "haiku"
+    }
+  },
+  "skills": {
+    "kinds": {
+      "backend": [
+        "py-style"
+      ]
+    }
+  },
+  "project": {
+    "practices": {
+      "web/*": [
+        "react-way",
+        "docs/web.md"
+      ]
+    }
+  }
+}

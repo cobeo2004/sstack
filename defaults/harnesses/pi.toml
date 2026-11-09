@@ -1,3 +1,4 @@
 # Placeholders whose value is unset are dropped together with their flag.
 headless = ["pi", "-p", "--no-session", "--model", "{model}", "--thinking", "{effort}"]
 headless_readonly = ["pi", "-p", "--no-session", "--model", "{model}", "--thinking", "{effort}", "--tools", "read,grep,find,ls"]
+# skill_dirs = ["~/.pi/agent/skills", "~/.agents/skills"]   # built in (lib/sstack_skills.py); set to override

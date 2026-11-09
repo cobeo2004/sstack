@@ -8,7 +8,7 @@ from helpers import TempEnv, EXAMPLE, FIXTURES, REPO
 import sstack_config as C
 
 CONFIG_CASES = ["defaults-only", "home-override", "repo+local", "legacy-only", "legacy-local",
-                "mixed-legacy-split", "worktree-fallback", "worktree-local-fallback", "example-equivalent"]
+                "mixed-legacy-split", "worktree-fallback", "worktree-local-fallback", "example-equivalent", "skills-keys"]
 HOOK_CASES = ["hook-sync", "hook-async", "hook-fails", "hook-missing-creds", "hook-timeout",
               "hook-empty-collect", "hook-bad-json", "hook-wait-fails"]
 ADE_CASES = ["t3", "cursor-off", "user-overrides-builtin", *HOOK_CASES]

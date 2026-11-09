@@ -16,6 +16,7 @@ from pathlib import Path
 
 import sstack_ade as A
 import sstack_route as R
+import sstack_skills as S
 from sstack_config import READONLY_ROLES, ConfigError, ades, git_root, load, resolve
 
 VIAS = ("auto", "headless", "local", "ade-cli")
@@ -194,7 +195,8 @@ def index_line(root: Path, run_dir: Path, run: dict, rec: dict) -> None:
                         "role": run["role"], "ade": rec["ade"], "via": rec["via"], "harness": h, "model": m,
                         "exit": rec["exit"], "secs": rec["secs"], "run_dir": rel(root, run_dir),
                         "report": rel(root, rec["report"]), "route": run.get("route"),
-                        "readonly_warning": rec["readonly_warning"]})
+                        "readonly_warning": rec["readonly_warning"],
+                        **{k: run[k] for k in ("skills", "skills_missing") if k in run}})
 
 
 def panel_index(root: Path, run_dir: Path, run: dict) -> int | None:
@@ -398,8 +400,13 @@ def main(argv: list[str] | None = None) -> int:
                      "calls": [{"member": key(m), "via": shape} for m in members or []]}
             print(json.dumps({**p, "route": route}, indent=2))
             return 0 if members else 3
+        # the union: role + kind + [practices] by path; local work gets every harness's skill dirs
+        # ponytail: one brief per run, so a panel's members share the union of their harnesses' dirs
+        kind = a.hint if a.hint in {**R.kind_tiers(cfg), **cfg.get("skills", {}).get("kinds", {})} else R.classify(files)
+        harnesses = [m["harness"] for m in members] if members else list(cfg.get("harness", {}))
+        found, missing = S.resolve(cfg, root, a.role, kind, files, list(dict.fromkeys(harnesses)))
         if not members:
-            print("local")
+            print("\n".join(["local", *S.lines(found, missing)]))
             return 3
 
         def plan(m: dict) -> list[str]:
@@ -416,6 +423,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"ade: {ade['name'] if ade else None} ({why})")
         for n in notes:
             print(f"  note: {n}")
+        for l in S.lines(found, missing):
+            print(l)
         for m in members:
             if shape == "tool":
                 c = A.tool_call(ade, a.role, readonly, m, title, str(Path(a.brief).resolve()),
@@ -435,6 +444,13 @@ def main(argv: list[str] | None = None) -> int:
                        "via": "headless" if shape == "headless" else via, "hint": a.hint,
                        "no_escalate": a.no_escalate})
     run = json.loads((run_dir / "run.json").read_text())
+    if found or missing:  # a derived brief, like brief.escalated.md; escalation reuses run["brief"]
+        for n in missing:
+            print(f"sstack-dispatch: skill {n} not found", file=sys.stderr)
+        brief_p = run_dir / "brief.skills.md"
+        brief_p.write_text((root / run["brief"]).read_text() + S.section(found, missing))
+        run.update(brief=rel(root, brief_p), skills=[n for n, _ in found], skills_missing=missing)
+        write_run(run_dir, run)
     report.parent.mkdir(parents=True, exist_ok=True)  # ADE children write the report themselves
     if shape == "tool":
         print(json.dumps(payload(ade, a.role, members, str(run_dir), title, str(brief_p), report), indent=2))

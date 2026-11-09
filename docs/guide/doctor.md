@@ -34,6 +34,7 @@ PASS roles resolve: …
 PASS harness CLIs: claude, codex, pi
 PASS active ADE: …
 PASS hooks executable: ok
+PASS skills resolve: …
 ```
 
 Each check prints `PASS <check>: <detail>`, `WARN <check>: <detail>` or `FAIL <check>: <detail>`.
@@ -51,6 +52,7 @@ pointers` warns when an agent's global instruction file (`~/.claude/CLAUDE.md`,
 | `active ADE` | `sstack-dispatch ade` runs | fix the adapter file it names |
 | `hooks executable` | every `ades/*.hook` in use is executable | `chmod +x <hook>` |
 | `entry pointers` | read-only: each agent's global instruction file that exists carries the sstack pointer above any competing "… first" / "without asking" rule | run `setup` and pick its machine rows, or put the sstack rule above the one it names; `WARN` keeps the exit code |
+| `skills resolve` | every skill named in a role, `[skills.kinds]` or `[practices]` has a `SKILL.md` on the skill path (WARN, not FAIL) | install the skill, or drop the name |
 
 A failing check, for example a broken role file:
 

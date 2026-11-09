@@ -21,3 +21,7 @@ run       = ""       # e.g. "pnpm playwright test {path}"
 framework = ""       # e.g. "maestro, .maestro/*.yaml"
 build     = ""       # e.g. "npx expo run:ios"
 run       = ""       # e.g. "maestro test {path}"
+
+# Skills (or doc paths / URLs) a dispatched child must use when its --files match a glob.
+[practices]
+# "web/*" = ["react-way", "docs/web-conventions.md"]

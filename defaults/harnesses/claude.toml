@@ -1,2 +1,3 @@
 headless = ["claude", "-p", "--model", "{model}", "--permission-mode", "acceptEdits"]
 headless_readonly = ["claude", "-p", "--model", "{model}", "--permission-mode", "plan"]
+# skill_dirs = ["~/.claude/skills", "~/.agents/skills"]   # built in (lib/sstack_skills.py); set to override

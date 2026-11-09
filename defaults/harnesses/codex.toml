@@ -1,2 +1,3 @@
 headless = ["codex", "exec", "--sandbox", "workspace-write", "-m", "{model}", "-c", "model_reasoning_effort={effort}", "-"]
 headless_readonly = ["codex", "exec", "--sandbox", "read-only", "-m", "{model}", "-c", "model_reasoning_effort={effort}", "-"]
+# skill_dirs = ["~/.codex/skills", "~/.agents/skills"]   # built in (lib/sstack_skills.py); set to override

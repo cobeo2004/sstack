@@ -1,2 +1,3 @@
 headless = ["cursor-agent", "-p", "--force", "--model", "{model}"]
 headless_readonly = ["cursor-agent", "-p", "--trust", "--mode", "plan", "--model", "{model}"]
+# skill_dirs = ["~/.cursor/skills", "~/.agents/skills"]   # built in (lib/sstack_skills.py); set to override
