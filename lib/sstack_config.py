@@ -127,18 +127,19 @@ def _layer_data(name: str, d: Path) -> dict:
     return data
 
 
-def _layer_datas(root):
-    ls = layers(root)
+def _layer_datas(root, _ls: list | None = None):
+    ls = _ls or layers(root)
     if old := legacy(root, ls):  # hard cut: any legacy file, even beside split files
         raise ConfigError(f"legacy sstack config {', '.join(map(str, old))}: {MIGRATE}")
     return [(name, _layer_data(name, d)) for name, d in ls]
 
 
-def load(root: Path | None) -> dict:
+def load(root: Path | None, _ls: list | None = None) -> dict:
     """Effective config: {harness: {name: {...}}, role: {...}, tier: {...}, project: {...},
-    plus config.toml keys (ade, dispatch, rules, reflect, routing)}. ADEs: see ades()."""
+    plus config.toml keys (ade, dispatch, rules, reflect, routing)}. ADEs: see ades().
+    `_ls` reads a different [(name, dir)] stack, for validating a staged layer."""
     cfg: dict = {}
-    for _, data in _layer_datas(root):
+    for _, data in _layer_datas(root, _ls):
         cfg = merge(cfg, data)
     return cfg
 
@@ -161,11 +162,11 @@ def source(root: Path | None, kind: str, name: str | None, _ls: list | None = No
     return found
 
 
-def ades(root: Path | None) -> list[dict]:
+def ades(root: Path | None, _ls: list | None = None) -> list[dict]:
     """Adapters in detection order: user layers nearest first (local, repo, home), then defaults;
     alphabetical within a layer; a user file replaces the built-in of the same name whole.
     hook_path / note_path resolve per file (nearest layer that has one)."""
-    ls = layers(root)
+    ls = _ls or layers(root)
     out, seen = [], set()
     for layer, d in [*reversed(ls[1:]), ls[0]]:
         for p in sorted((d / "ades").glob("*.toml")):
@@ -179,10 +180,6 @@ def ades(root: Path | None) -> list[dict]:
                         "auto": toml.get("auto", True)})
     return out
 
-
-# ponytail: removed in B4 — sstack_ui still lists per-layer config.toml paths.
-def layer_paths(root: Path | None) -> list[tuple[str, Path]]:
-    return [(n, d / "config.toml") for n, d in layers(root)[1:]]
 
 
 def _member(cfg: dict, m: dict) -> dict | None:
