@@ -43,6 +43,17 @@ done
 for i in "${!pids[@]}"; do wait "${pids[$i]}"; echo "scout-$((i+1)) exit=$?"; done
 ```
 
+Inside T3 Code with the T3 tools loaded, don't run the loop: take the route
+once (`<sstack>/bin/sstack-dispatch scout --route`) and start one `delegate_task`
+per slice per member, with `interactionMode: "plan"` (read-only), as in
+`<sstack>/skills/sstack/harness-notes/ade.md` § Delegate a role. Write each
+child's summary to its own report yourself: `scout-<n>.report.md` for a
+single member, `scout-<n>.report.<harness>-<model>.md` per member of a panel
+(the names headless dispatch uses), so no member overwrites another.
+
+A `panel` on `scout` runs every member for every slice: N slices × M members
+children. For a partition, use a single-member scout; keep panels for races.
+
 Handle each child by its own exit: 0 → read the report; 3 → that slice is local;
 1/2 → a gap to report, never a silent pass.
 

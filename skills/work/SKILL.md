@@ -41,7 +41,12 @@ over memory.
    Otherwise clarify: one question at a time, only for things no command can
    answer. If running something would answer it (behaviour, output, timing), run
    it or build a throwaway prototype instead of asking.
-4. Fan out only for many-source questions: `swarm` with role `scout`. Use
+4. Route the recon reading: `<sstack>/bin/sstack-dispatch investigate --route
+   [--files <paths>...]`. Exit 3 (`members: []`) → read here. Exit 0 → write the
+   recon questions as an `investigate` brief and send it to each member (plain
+   `sstack-dispatch investigate --brief … --report …`, or one `delegate_task` per
+   member in T3 Code). Check each report's file pointers yourself; Gate 0 stays here.
+   Many independent sources → `swarm` with role `scout` instead. Use
    `code-graph` (`detect-changes` / impact) to find what the change reaches.
 5. Write `recon.md` with exactly these headings, then **stop and report it**:
    - **SYSTEM STATE** — what exists today, with file paths.
@@ -122,6 +127,8 @@ agreed out of lane by the user. Report commands + results, findings + outcome.
 
 ## Always
 
+- In T3 Code every dispatch here is `--route` + one `delegate_task` per member
+  (`harness-notes/ade.md`), so children show as threads; plain dispatch is headless.
 - A routed child never approves its own gate. Dispatch exit 1/2 → stop at the next
   gate and tell the user; don't quietly redo it here.
 - Verification gate from `sstack` before every claim.
