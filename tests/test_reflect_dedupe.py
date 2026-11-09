@@ -115,3 +115,14 @@ class ReflectDedupeTests(TempEnv):
         [report] = self.root.glob(".sstack/runs/reflect-*/scout.report.md")
         self.assertIn("NONE", report.read_text())
         self.assertEqual(json.loads((self.root / ".sstack/runs/reflect-state.json").read_text()), {"s1": 1})
+
+    def test_auto_lesson_records_head_commit(self):
+        g = ["git", "-C", str(self.root), "-c", "user.email=t@t", "-c", "user.name=t"]
+        subprocess.run(g + ["init", "-q"], check=True)
+        subprocess.run(g + ["commit", "-q", "--allow-empty", "-m", "i"], check=True)
+        sha = subprocess.run(g + ["rev-parse", "--short", "HEAD"], capture_output=True, text=True).stdout.strip()
+        self.setup_agent("LESSON: repo | use the api client | t.jsonl\nPASS")
+        t = self.root / "t.jsonl"; t.write_text("{}\n")
+        self.hook(t)
+        les = [i for i in L.parse((self.root / ".sstack/lessons.md").read_text()) if isinstance(i, L.Lesson)]
+        self.assertEqual(les[0].fields.get("commit"), sha)

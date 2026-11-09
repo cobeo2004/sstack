@@ -24,8 +24,12 @@ this file's resolved path (skills are symlinked; resolve the link, e.g.
    than a one-liner, say once that `setup` would create it, then carry on.
 4. Load accepted lessons from both scopes and follow them:
    `<sstack>/bin/sstack-lessons list --status accepted --scope repo` and
-   `... --scope global`. Repo scope in a linked worktree reads the primary's
-   `.sstack/lessons.md` unless this checkout has its own.
+   `... --scope global`. Once the task's files are known, add `--paths <file>...`
+   so a lesson pinned to other files does not load. A line ending `[stale]` was
+   learned at a commit that has changed those files since: re-check it against the
+   code before following it, and drop or re-`reflect` it if it no longer holds.
+   Repo scope in a linked worktree reads the primary's `.sstack/lessons.md` unless
+   this checkout has its own.
 5. Say back, in one or two sentences, the user's goal and the smallest change you
    expect to meet it. Don't wait for confirmation unless the evidence rules out
    what they asked for; then show it and stop.
