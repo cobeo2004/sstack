@@ -152,12 +152,16 @@ in `.sstack/runs/index.jsonl`. Details: [docs/guide/dispatch.md](docs/guide/disp
 
 ```sh
 bin/sstack-lessons add "Use pnpm, never npm" --evidence "user corrected npm install"
+bin/sstack-lessons add "Migrations need a rollback" --path "db/migrations/**"
 bin/sstack-lessons list --status accepted --scope repo
+bin/sstack-lessons list --status accepted --paths web/app.tsx lib/x.py
 bin/sstack-lessons accept L1
 bin/sstack-lessons encode L1 --target AGENTS.md
 ```
 
 Lessons live in `.sstack/lessons.md` (repo scope) and `~/.sstack/lessons.md` (global scope), one line each. The router follows only **accepted** lessons.
+
+A lesson can be pinned to path globs (`--path`, repeatable) and records the commit it was learned at. `list --paths <file>...` keeps the lessons about those files — a lesson with no `path` always applies — and marks `[stale]` a lesson whose paths changed since its commit, to re-check before following it.
 
 > [!TIP]
 > For automatic reflection, set `[reflect] auto = true` and add the `SessionEnd` hook that `sstack-install` prints. At the end of each session, a background scout reads the transcript and records new lessons as pending, for you to accept.

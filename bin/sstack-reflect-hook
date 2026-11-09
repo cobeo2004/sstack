@@ -100,7 +100,8 @@ def run(payload: dict) -> int:
             key = m and (m.group(1), sstack_lessons._norm(m.group(2)))
             if m and not m.group(2).startswith("<") and key not in done:
                 done.add(key)
-                sstack_lessons.add(sstack_lessons.lessons_path(m.group(1), root), m.group(2), m.group(3))
+                sstack_lessons.add(sstack_lessons.lessons_path(m.group(1), root), m.group(2), m.group(3),
+                                   commit=sstack_lessons.head_commit(root))
             s = SEEN.match(line)
             if not s or (s.group(1), s.group(2)) in bumped:
                 continue
