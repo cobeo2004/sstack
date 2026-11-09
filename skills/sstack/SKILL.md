@@ -15,11 +15,14 @@ this file's resolved path (skills are symlinked; resolve the link, e.g.
 ## Start of every task
 
 1. Read the repo's `AGENTS.md` and/or `CLAUDE.md`.
-2. Read `.sstack/product.md` if it exists. If it doesn't and the task is more than a
-   one-liner, say once that `setup` would create it, then carry on.
+2. Read `.sstack/product.md` if it exists. In a linked worktree with none, read the
+   primary checkout's (`git worktree list --porcelain`, first entry) — the same
+   fallback config and repo lessons use. If neither has one and the task is more
+   than a one-liner, say once that `setup` would create it, then carry on.
 3. Load accepted lessons from both scopes and follow them:
    `<sstack>/bin/sstack-lessons list --status accepted --scope repo` and
-   `... --scope global`.
+   `... --scope global`. Repo scope in a linked worktree reads the primary's
+   `.sstack/lessons.md` unless this checkout has its own.
 4. Say back, in one or two sentences, the user's goal and the smallest change you
    expect to meet it. Don't wait for confirmation unless the evidence rules out
    what they asked for; then show it and stop.
@@ -100,7 +103,10 @@ Report what you ran and what it printed. If a check could not run, say so plainl
 - `--dry-run` shows the resolved harness, model and transport without running.
 - Delegate reading by volume: fan out only when the question needs about five or
   more sources (files, PRs, logs). Fewer → read them here.
-- Inside T3 Code a non-read-only role becomes a visible thread automatically.
+- Inside T3 Code dispatch starts a top-level thread itself, but drops effort and
+  runs read-only roles headless, outside T3. With the T3 tools loaded, run
+  `sstack-dispatch <role> --route`, then one `delegate_task` per member
+  (`harness-notes/ade.md`); exit `3` → do the role here.
 
 ## Principles
 

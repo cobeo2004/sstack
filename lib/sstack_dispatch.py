@@ -16,6 +16,9 @@ import sstack_route as R
 from sstack_config import READONLY_ROLES, ConfigError, git_root, load, resolve
 
 PH = re.compile(r"\{(\w+)\}")
+# The option id a T3/provider child takes effort as (recon, 2026-11-09: they differ per provider).
+EFFORT_OPTION = {"codex": "reasoningEffort", "claudeAgent": "effort", "cursor": "reasoning_effort",
+                 "pi": "thinking"}
 
 
 def fill(template: list[str], values: dict[str, str | None]) -> list[str]:
@@ -109,6 +112,19 @@ def report_path(base: Path, member: dict, n_members: int) -> Path:
     return base.with_name(f"{base.stem}.{member['harness']}-{slug}{base.suffix}")
 
 
+def route_json(cfg: dict, role: str, route: str, members: list[dict] | None) -> str:
+    """The route as an orchestrator (T3 delegate_task) needs it: who runs it, and effort under
+    the provider's own option id."""
+    out = []
+    for m in members or []:
+        provider = cfg["harness"][m["harness"]].get("t3_provider", m["harness"])
+        opt = EFFORT_OPTION.get(provider)
+        out.append({"harness": m["harness"], "provider": provider, "model": m["model"],
+                    "effort": m["effort"], "options": {opt: m["effort"]} if opt and m["effort"] else {}})
+    return json.dumps({"role": role, "route": route, "readonly": role in READONLY_ROLES, "members": out},
+                      indent=2)
+
+
 def append_run(root: Path, record: dict) -> None:
     p = root / ".sstack" / "runs" / "index.jsonl"
     p.parent.mkdir(parents=True, exist_ok=True)
@@ -129,15 +145,18 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     ap = argparse.ArgumentParser(prog="sstack-dispatch")
     ap.add_argument("role")
-    ap.add_argument("--brief", required=True)
-    ap.add_argument("--report", required=True)
+    ap.add_argument("--brief")
+    ap.add_argument("--report")
     ap.add_argument("--title")
     ap.add_argument("--hint", help="a config hint or a built-in kind (sstack-dispatch routes)")
     ap.add_argument("--files", nargs="*", help="files the work touches; review defaults to git diff")
     ap.add_argument("--base", default="HEAD", help="review: diff base for detection")
     ap.add_argument("--panel", action="store_true", help="review: force the full panel")
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--route", action="store_true", help="print the resolved route as JSON; runs nothing")
     a = ap.parse_args(argv)
+    if not a.route and not (a.brief and a.report):
+        ap.error("--brief and --report are required unless --route is given")
     title = a.title or f"sstack {a.role}"
     try:
         cfg = load(git_root(cwd))
@@ -149,8 +168,16 @@ def main(argv: list[str] | None = None) -> int:
         member, route, notes = R.pick(cfg, a.role, a.hint, files)
         if a.role == "review" and cfg.get("transport", {}).get("mode") != "local":
             members, route = _review_members(cfg, a, member, files, lines, rules)
+        elif route == "panel":
+            if a.role not in READONLY_ROLES:
+                raise ConfigError(f"panel is only for read-only roles ({', '.join(sorted(READONLY_ROLES))}); "
+                                  f"route {a.role} with [role.{a.role}.hint.*] or [tier.*]")
+            members = resolve(cfg, a.role)
         else:
             members = [member] if member else None
+        if a.route:  # before plan_member: --route runs nothing, and needs no headless command
+            print(route_json(cfg, a.role, route, members))
+            return 0 if members else 3
         if not members:
             print("local")
             return 3

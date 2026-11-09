@@ -18,6 +18,8 @@ class ClassifyTests(TempEnv):
         self.assertEqual(c(["ios/App/View.swift"]), "mobile")
         self.assertEqual(c(["README.md", "docs/setup.md"]), "docs")
         self.assertEqual(c(["api/auth/session.py", "README.md"]), "security")
+        self.assertEqual(c(["docs/auth.py"]), "security")  # code under docs/ is not prose
+        self.assertEqual(c(["docs/diagram.png", "docs/billing.md"]), "docs")
         self.assertEqual(c(["web/Button.tsx", "server/user.go"]), "complex")
         self.assertEqual(c([f"server/m{i}.go" for i in range(25)]), "complex")
         self.assertIsNone(c(["Makefile"]))

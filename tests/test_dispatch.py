@@ -64,7 +64,9 @@ class DispatchTests(DispatchBase):
 
     def test_readonly_without_readonly_cmd_refused(self):
         self.example()
-        self.repo_cfg('[role.scout]\nharness="cursor"\nmodel="x"\n')
+        # the example config gives cursor a plan-mode read-only command; take it away again
+        self.repo_cfg('[harness.cursor]\nheadless=["cursor-agent"]\n'
+                      '[role.scout]\nharness="cursor"\nmodel="x"\n')
         code, _, err = self.run_main("scout", "--brief", self.brief(), "--report", str(self.report()), "--dry-run")
         self.assertEqual(code, 1)
         self.assertIn("headless_readonly", err)

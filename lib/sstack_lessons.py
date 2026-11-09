@@ -5,7 +5,7 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from sstack_config import ConfigError, git_root, load
+from sstack_config import ConfigError, git_root, load, repo_file
 
 LINE = re.compile(r"^- \[(pending|accepted|encoded)\] seen=(\d+) id=(\S+) \| (.*)$")
 STATUSES = ("pending", "accepted", "encoded")
@@ -49,7 +49,7 @@ def render(items: list["Lesson | str"]) -> str:
 def lessons_path(scope: str, root: Path | None) -> Path:
     if scope == "global":
         return Path.home() / ".sstack" / "lessons.md"
-    return (root or Path.cwd()) / ".sstack" / "lessons.md"
+    return repo_file(root or Path.cwd(), "lessons.md")
 
 
 def _read(path: Path) -> list:

@@ -43,9 +43,17 @@ def run(payload: dict) -> int:
     code = sstack_dispatch.main(["scout", "--brief", str(brief), "--report", str(report), "--title", "sstack reflect"])
     if code != 0 or not report.exists():
         return 0
-    for line in report.read_text().splitlines():
-        m = LESSON.match(line)
-        if m and not m.group(2).startswith("<"):
+    # A panel writes one report per member next to the index; every member's lessons count,
+    # but the same lesson from two members is one lesson.
+    done: set[tuple[str, str]] = set()
+    for path in sorted(run_dir.glob("scout.report*.md")):
+        if path.name.endswith(".failed.md"):
+            continue
+        for line in path.read_text().splitlines():
+            m = LESSON.match(line)
+            if not m or m.group(2).startswith("<") or (m.group(1), m.group(2)) in done:
+                continue
+            done.add((m.group(1), m.group(2)))
             sstack_lessons.add(sstack_lessons.lessons_path(m.group(1), root), m.group(2), m.group(3))
     return 0
 

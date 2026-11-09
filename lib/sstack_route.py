@@ -10,7 +10,7 @@ from pathlib import Path
 
 from sstack_config import ConfigError, _member
 
-KINDS = {  # checked by classify(); order of the checks lives there
+KINDS = {  # checked by _kind(); order of the checks lives there
     "security": ["*auth*", "*crypto*", "*payment*", "*billing*", "*secret*", "*permission*",
                  "*migrations/*", "*migration/*"],
     "mobile": ["ios/*", "*/ios/*", "android/*", "*/android/*", "*.swift", "*.kt", "*.dart"],
@@ -20,6 +20,9 @@ KINDS = {  # checked by classify(); order of the checks lives there
                 "api/*", "*/api/*", "server/*", "*/server/*", "db/*", "*/db/*"],
     "docs": ["*.md", "*.mdx", "*.rst", "*.txt", "docs/*"],
 }
+PROSE = [p for p in KINDS["docs"] if p.startswith("*.")]
+PLAIN_JS = ("*.ts", "*.js", "*.mjs", "*.cjs", "*.mts", "*.cts")  # no framework in the extension
+BACKEND_DIRS = {"functions", "supabase", "server", "api", "db"}
 KIND_TIER = {"security": "strong", "complex": "strong", "frontend": "standard", "backend": "standard",
              "mobile": "standard", "mechanical": "cheap", "docs": "cheap"}
 TIER_ORDER = ["cheap", "standard", "strong"]  # default escalation ladder (rules.tier_order)
@@ -30,15 +33,32 @@ def _match(f: str, pats: list[str]) -> bool:
     return any(fnmatch.fnmatch(f, p) for p in pats)
 
 
+def _kind(f: str) -> str | None:
+    """One kind per file, most specific first. A plain .ts/.js is backend under a server-ish
+    directory and frontend anywhere else."""
+    if _match(f, KINDS["security"]):
+        return "security"
+    if _match(f, KINDS["mobile"]):
+        return "mobile"
+    if _match(f, PLAIN_JS):
+        # ponytail: a directory name, not an import graph; [role.*.hint.*] overrides.
+        return "backend" if BACKEND_DIRS & set(Path(f).parts[:-1]) else "frontend"
+    for k in ("frontend", "backend"):
+        if _match(f, KINDS[k]):
+            return k
+    return "docs" if _match(f, KINDS["docs"]) else None
+
+
 def classify(files: list[str]) -> str | None:
     if not files:
         return None
-    hit = {k: [f for f in files if _match(f, p)] for k, p in KINDS.items()}
-    if hit["security"]:
-        return "security"
-    if len(hit["docs"]) == len(files):
+    # a prose-only change is not risky, even when it talks about auth; code under docs/ still is
+    if all(_match(f, PROSE) or (_match(f, KINDS["docs"]) and not _match(f, KINDS["security"])) for f in files):
         return "docs"
-    areas = [k for k in ("frontend", "backend", "mobile") if hit[k]]
+    kinds = [_kind(f) for f in files]
+    if "security" in kinds:
+        return "security"
+    areas = [k for k in ("frontend", "backend", "mobile") if k in kinds]
     # ponytail: "complex" = more than one area or a wide diff; a plan tag (--hint complex) covers the rest
     if len(areas) > 1 or len(files) > 20:
         return "complex"
@@ -50,7 +70,9 @@ def changed(root: Path, base: str = "HEAD") -> tuple[list[str], int]:
     def git(*a):
         r = subprocess.run(["git", "-C", str(root), *a], capture_output=True, text=True)
         return r.stdout.splitlines() if r.returncode == 0 else []
-    files = git("diff", "--name-only", base) + git("ls-files", "--others", "--exclude-standard")
+    untracked = [f for f in git("ls-files", "--others", "--exclude-standard")
+                 if not any(p.startswith(".") for p in Path(f).parts[:-1])]  # tool state, not work
+    files = git("diff", "--name-only", base) + untracked
     lines = 0
     for row in git("diff", "--numstat", base):
         add, rm, _ = row.split("\t", 2)
@@ -90,15 +112,21 @@ def pick(cfg: dict, role: str, hint: str | None, files: list[str]) -> tuple[dict
         return None, "local (transport.mode)", notes
     spec = cfg.get("role", {}).get(role) or {}
     hints = spec.get("hint", {})
+    kt = kind_tiers(cfg)
+    kind = hint if hint in kt else classify(files)
+    # A security change goes to its tier, not to a path hint: the hint's paths (an auth
+    # file, a migration) would quietly downgrade it. A named hint, or override_security, wins.
+    risky = role == "implement" and kind == "security" and kt["security"] in cfg.get("tier", {})
     if hint and hint in hints:
         return _hint_member(cfg, hints[hint]), f"hint {hint}", notes
     for name, h in hints.items():
         if h.get("paths") and any(_match(f, h["paths"]) for f in files):
+            if risky and not h.get("override_security"):
+                notes.append(f"hint {name} skipped: security change (add override_security = true to keep it)")
+                continue
             return _hint_member(cfg, h), f"hint {name} (paths)", notes
-    kt = kind_tiers(cfg)
     if hint and hint not in kt:
         notes.append(f"unknown hint {hint!r}; known: {', '.join([*hints, *kt])}")
-    kind = hint if hint in kt else classify(files)
     if role == "implement" and kind and cfg.get("tier"):
         remapped = kind in cfg.get("routing", {}).get("kinds", {})
         if (m := tier_member(cfg, kt[kind], strict=remapped)):  # a built-in default tier may be absent
