@@ -1,0 +1,16 @@
+# .sstack/config.toml — per-repo sstack config.
+# Personal overrides go in .sstack/config.local.toml (git-ignored).
+
+[project]
+brief  = ".sstack/product.md"
+docs   = [".docs/spec/functional-spec.md", ".docs/architecture/decisions.md", ".docs/ops/"]
+# Mirrors CI (lint-and-types.yml, tests.yml). `lint` is type-aware (oxlint + tsgolint).
+# Not listed: backend deno unit tests need deno 2.8.0 (local .dvmrc pins 2.1.4);
+# `pnpm build` needs app .env files; backend pgTAP needs a Supabase project.
+verify = [
+  "pnpm turbo run lint",
+  "pnpm turbo run check-types",
+  "node --test tools/prepare-marketing-production.test.mjs",
+  "pnpm turbo run test --filter='!backend'",
+]
+graph  = true

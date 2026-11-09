@@ -1,4 +1,4 @@
-import os, shutil, subprocess, sys
+import os, shutil, subprocess, sys, tomllib
 from pathlib import Path
 
 from helpers import TempEnv, REPO
@@ -74,3 +74,12 @@ class InstallTests(TempEnv):
         self.assertEqual(self.snapshot(), before)
         self.assertIn("link", out)
         self.assertIn("work.bak", out)
+
+    def test_setup_templates_are_split(self):
+        templates = REPO / "skills/setup/templates"
+        config = (templates / "config.toml").read_text()
+        project = tomllib.loads((templates / "project.toml").read_text())
+        self.assertNotIn("[project]", config)
+        self.assertIn(".sstack/local/", config)
+        self.assertIn("verify", project)
+        self.assertIn("test", project)
