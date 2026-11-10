@@ -254,6 +254,10 @@ def cmd_run(root: Path, run_dir: Path, step: str) -> int:
     if step not in wf["chain"]:
         print(f"sstack-workflow: {step} is disabled (sstack-workflow show)", file=sys.stderr)
         return 1
+    if wf["steps"][step]["source"].get("run") in ("repo", "local") and not C.trusted(root):
+        print(f"sstack-workflow: {root} is not in {C.home_dir() / 'repos.txt'}; a repo's run.sh runs only "
+              "in a trusted checkout (docs/spec/workflow.md)", file=sys.stderr)
+        return 1
     env = {**os.environ, "SSTACK_RUN": str(run_dir), "SSTACK_ROOT": str(root), "SSTACK_HOME_DIR": str(REPO)}
     try:
         code = subprocess.run([path], cwd=root, env=env).returncode

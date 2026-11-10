@@ -219,6 +219,19 @@ class ScoreTests(WorkflowBase):
 
 
 class RunTests(WorkflowBase):
+    def setUp(self):
+        super().setUp()
+        (self.home / ".sstack").mkdir(exist_ok=True)
+        (self.home / ".sstack" / "repos.txt").write_text(f"{self.root}\n")
+
+    def test_untrusted_checkout_refuses_a_repo_run_sh(self):
+        (self.home / ".sstack" / "repos.txt").unlink()
+        self.step(self.repo(), "gate", "", run_sh='#!/bin/sh\ntouch "$SSTACK_RUN/ran"\n')
+        code, _, err = self.wf("run", "gate", "--run", str(self.run_dir))
+        self.assertEqual(code, 1)
+        self.assertIn("repos.txt", err)
+        self.assertFalse((self.run_dir / "ran").exists())
+
     def test_failing_command_step_routes_to_on_fail(self):
         self.step(self.repo(), "dmm", 'after = "implement"\non_fail = "implement"\n', run_sh="#!/bin/sh\nexit 1\n")
         code, out, _ = self.wf("run", "dmm", "--run", str(self.run_dir))

@@ -100,9 +100,11 @@ chain: recon plan implement dmm gate review pr
 
 Tracking it is the same as any command step; `on_fail = "implement"` sends a
 failure back with the script's output, and `max_loops` (default `[rules]
-loop_guard`) stops after that many:
+loop_guard`) stops after that many. A `run.sh` from the repo or `local/` layer runs only
+in a checkout listed in `~/.sstack/repos.txt`, the same trust `sstack-gate` asks for:
 
 ```sh
+mkdir -p ~/.sstack && echo "$PWD" >> ~/.sstack/repos.txt
 run="$PWD/.sstack/runs/demo"
 mkdir -p .sstack/steps/dmm "$run"
 printf 'after = "implement"\non_fail = "implement"\n' > .sstack/steps/dmm/step.toml

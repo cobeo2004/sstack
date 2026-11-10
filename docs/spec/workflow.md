@@ -127,7 +127,9 @@ A run's last step is the last of `show`'s chain. `done` also releases this run's
 start.
 
 `run` executes the nearest `run.sh` for a command step with `cwd` = the repo root, whatever
-directory it is called from, and records its exit like `done` (exit 0 = pass). Its environment adds:
+directory it is called from, and records its exit like `done` (exit 0 = pass). A `run.sh` whose
+source is the `repo` or `local` layer runs only when the checkout is trusted (listed in
+`~/.sstack/repos.txt`, like `sstack-gate`); otherwise `run` exits 1 and nothing runs. Its environment adds:
 
 | var | value |
 |---|---|
