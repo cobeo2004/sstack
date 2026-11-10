@@ -37,6 +37,18 @@ class DoctorSymlinkTests(DoctorBase):
         self.assertFalse(Doc._cleanup(self.root, runs / "doctor/smoke-20260101-1200", []))
         self.assertTrue((victim / "keep.txt").exists())
 
+    def test_prune_refuses_a_symlinked_runs_dir(self):
+        outside = self.home / "outside"
+        victim = outside / "old-folder"
+        victim.mkdir(parents=True)
+        f = victim / "data.txt"
+        f.write_text("x")
+        os.utime(f, (0, 0))
+        (self.root / ".sstack").mkdir(exist_ok=True)
+        os.symlink(outside, self.root / ".sstack/runs")
+        self.assertEqual(Doc.prune(self.root, 14, True), 1)
+        self.assertTrue(f.exists())
+
 
 class ReflectMigrationTests(ReflectDedupeTests):
     def test_migration_keeps_other_sessions_offsets(self):
