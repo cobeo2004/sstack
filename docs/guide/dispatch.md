@@ -66,8 +66,8 @@ default reviewer(s). With `--report r.md`:
 | variant panel `review/ux` | `codex/x#review/ux` | `r-ux.codex-x.md` | as above |
 
 The panel index lists every member (at `r.md` when the default is a panel, else at
-`r.panel.md`). A run with a matching variant is multi-member, so it doesn't escalate; a failed
-variant shows as `gap (no report)`. `sstack-dispatch routes` lists each variant with its `when`,
+`r.panel.md`). A failing single default still escalates once with variants alongside; variants
+never escalate, and a failed variant shows as `gap (no report)`. `sstack-dispatch routes` lists each variant with its `when`,
 members and layer, e.g. `review/security: auth changes → claude/opus (repo)`.
 
 ## Flags

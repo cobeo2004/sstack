@@ -147,21 +147,21 @@ class ReportTests(VariantBase):
         self.assertIn("## Lens: review/security", variant)
         self.assertIn("SECURITY LENS", variant)
 
-    def test_t3d_escalation_is_unchanged_by_a_non_matching_variant_only(self):
+    def test_t3d_escalation_is_judged_on_the_default_only(self):
         self.cfg(review='[role.review]\nharness="fake"\nmodel="fail"\nmode="single"\n',
                  extra='[tier.strong]\nharness="fake"\nmodel="echo"\n')
-        self.variant("review", "security", 'harness = "fake"\nmodel = "echo"\npaths = ["auth/*"]\n')
+        self.variant("review", "security", 'harness = "fake"\nmodel = "other"\npaths = ["auth/*"]\n')
         code, _, err = self.go("review", "--files", "lib/a.py")  # does not touch auth/: default alone
         self.assertEqual(code, 0, err)
         self.assertIn("escalating once", err)
         self.assertTrue(self.out("r.failed.md").is_file(), err)
         self.assertIn("REPORT", self.out("r.md").read_text())
         self.assertFalse(self.out("r-security.md").exists())
-        # a matching variant makes the run a panel: the default's failure is not escalated
+        # a matching variant runs alongside; the default alone is judged for escalation, as before
         code, _, err = self.go("review", "--files", "auth/login.py", report=self.root / "out2/r.md")
         self.assertEqual(code, 0, err)
-        self.assertNotIn("escalating", err)
-        self.assertFalse((self.root / "out2/r.failed.md").exists())
+        self.assertIn("escalating once", err)  # its empty failed report was dropped, as in any panel
+        self.assertIn("REPORT", (self.root / "out2/r.md").read_text())
         self.assertTrue((self.root / "out2/r-security.md").is_file(), err)
 
 

@@ -88,20 +88,21 @@ Config: docs/spec/config.md (stage variants). For `investigate`, `plan` and `rev
 default members are chosen (review: by `mode`, unchanged), every enabled variant whose `paths` /
 `kinds` match the files adds its members after the default's. The role stays the stage
 (`--role review`; never `review/security`), so variant members run read-only and, for review, a
-member equal to `roles/implement.toml`'s implementer is dropped (a variant left with no member is
+member equal to the implementer (`roles/implement.toml`'s, or the one routed for these files) is dropped (a variant left with no member is
 skipped). With no dispatched default (local), variants don't run.
 
 | | default | variant `<stage>/<name>` |
 |---|---|---|
 | member key | `<harness>/<model>` | `<harness>/<model>#<stage>/<name>` |
 | report | `--report` (default panel: `<report_base>.<h>-<m>.md`) | `<report_base>-<name>.md` (variant panel: `<report_base>-<name>.<h>-<m>.md`) |
-| brief | the run's brief | `<run_dir>/brief.<name>.md` = the run's brief + the variant's `skills` + `## Lens: <stage>/<name>` and its `.md` |
+| brief | the run's brief | `<run_dir>/brief.variant-<name>.md` = the run's brief + the variant's `skills` + `## Lens: <stage>/<name>` and its `.md` |
 | hook state | `hook.<h>-<m slug>` | `hook.<h>-<m slug>-<name>` |
 | index line, hook stdin | no `variant` key | `"variant": "<stage>/<name>"`; `harness`/`model` stay clean |
 
 Order: default members first, then variants by stage and name. Headless runs every member on one
-pool of `rules.max_parallel` threads. Escalation applies only to a single-member run, so a run
-with a matching variant never escalates; a failed variant is a gap (`gap (no report)` in the panel
+pool of `rules.max_parallel` threads. Escalation is judged on the default members only: a run whose
+single default member fails escalates it once, variants or not. Variants never escalate; a failed
+variant is a gap (`gap (no report)` in the panel
 index). The panel index lists every member, variants included.
 
 `baseline.json` (read-only roles; written with `run.json`):
@@ -181,7 +182,7 @@ the agent.
 Unmapped model → passed through, `"note"` added to that call (fixture `t3-implement.json`).
 `max_parallel` = `rules.max_parallel` (default 4): the agent starts at most that many calls at once
 and starts the next as each is recorded. Each call carries its own report and brief (a stage
-variant's call names its `brief.<name>.md`).
+variant's call names its `brief.variant-<name>.md`).
 `--route` prints this shape, with the nested or flat `run_dir` it would use, and creates nothing (no
 run dir, no `run.json`, no baseline, no index line).
 

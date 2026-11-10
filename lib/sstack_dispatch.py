@@ -287,10 +287,12 @@ def payload(ade: dict, role: str, members: list[dict], run_dir: str, title: str,
 
 def _escalate(root: Path, run_dir: Path, run: dict, failed: dict, report: Path, code: int, cfg: dict,
               isolated: bool = False):
-    """Single-member run failed: (member one tier up, brief with a note), moving the failed report
-    aside; None when there is nowhere to go. Escalates once per run (run.json `escalated`).
+    """The run's single default member failed (stage variants don't count, and never escalate):
+    (member one tier up, brief with a note), moving the failed report aside; None when there is
+    nowhere to go. Escalates once per run (run.json `escalated`).
     `isolated`: the failed child worked in its own worktree, so its edits are not in this tree."""
-    if run.get("escalated") or run.get("no_escalate") or len(run["members"]) != 1 or not cfg.get("rules", {}).get("auto_escalate", True):
+    if run.get("escalated") or run.get("no_escalate") or failed.get("variant") or \
+            sum("#" not in k for k in run["members"]) != 1 or not cfg.get("rules", {}).get("auto_escalate", True):
         return None
     avoid = R.pick(cfg, "implement", run.get("hint"), [])[0] if run["role"] == "review" else None
     up = R.escalation(cfg, failed, avoid)
@@ -309,7 +311,7 @@ def _escalate(root: Path, run_dir: Path, run: dict, failed: dict, report: Path, 
             f"{gone}. {edits}\n")
     bp = root / run["brief"] if run.get("brief") else None
     brief = bp.read_text() if bp and bp.is_file() else ""
-    run.update(members=[key(up[0])], escalated=True, started_at=time.time(),
+    run.update(members=[key(up[0]) if k == key(failed) else k for k in run["members"]], escalated=True, started_at=time.time(),
                route=f"escalated from {run.get('route')} → tier.{up[1]}")
     return up[0], brief + note
 
@@ -511,7 +513,7 @@ def main(argv: list[str] | None = None) -> int:
             text += S.section(vf, vmiss)
         if v["lens_path"]:
             text += f"\n\n## Lens: {vid}\n\n{v['lens_path'].read_text()}"
-        bp = run_dir / f"brief.{v['name']}.md"
+        bp = run_dir / f"brief.variant-{v['name']}.md"
         bp.write_text(text)
         briefs.update({key(m): bp for m in vms})
     report.parent.mkdir(parents=True, exist_ok=True)  # ADE children write the report themselves
@@ -581,21 +583,35 @@ def main(argv: list[str] | None = None) -> int:
 
     with ThreadPoolExecutor(max_parallel(cfg)) as ex:  # variants count against the same cap
         codes = list(ex.map(lambda m: go(m, briefs[key(m)].read_text() if key(m) in briefs else brief), members))
+    defaults = [i for i, m in enumerate(members) if not m.get("variant")]
+    if len(defaults) == 1 and codes[defaults[0]] != 0:  # variants alongside: the default still escalates
+        i = defaults[0]
+        try:
+            up = _escalate(root, run_dir, run, members[i], report, codes[i], cfg)
+            if up and shape in ("headless", "ade-cli"):
+                plans[key(up[0])] = plan(up[0])
+        except ConfigError as e:
+            print(f"sstack-dispatch: {e}", file=sys.stderr)
+            up = None
+        if up:
+            write_run(run_dir, run)
+            members[i] = up[0]
+            codes[i] = go(up[0], up[1])
     panel = panel_index(root, run_dir, run)
     return panel if panel is not None else (0 if any(c == 0 for c in codes) else 1)
 
 
 def _add_variants(cfg, root, a, members, files, rules):
     """(default members + matching variants' members, {variant id: variant}). A review's variant
-    member equal to the implementer (roles/implement.toml, as resolve() filters a review panel) is
+    member equal to the implementer (roles/implement.toml, or the one routed for these files) is
     dropped."""
-    impl = None
+    impls = []
     if a.role == "review" and rules.get("review_not_implementer", True):
-        impl = (resolve(cfg, "implement") or [None])[0]
+        impls = [(resolve(cfg, "implement") or [None])[0], R.pick(cfg, "implement", a.hint, files)[0]]
     vs = {}
     for v in variants(root):
         if v["stage"] == a.role and R.matches(v, files):
-            vms = [m for m in R.variant_members(cfg, v) if not R.same(m, impl)]
+            vms = [m for m in R.variant_members(cfg, v) if not any(R.same(m, i) for i in impls)]
             if vms:
                 members, vs[v["id"]] = members + vms, v
     return members, vs
