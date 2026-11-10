@@ -7,11 +7,13 @@ nothing.
 ## CLI
 
 ```
-sstack-gate [--run <run-dir>] [--pr]
+sstack-gate [--run <run-dir>] [--pr] [--merge <pr>]
 ```
 
 - `--run` writes the verdict and full log into `<run-dir>/gate/`.
 - `--pr` also enforces before/after PR evidence from `<run-dir>/media/`; it requires `--run`.
+- `--merge <pr>` prints a merge verdict for one PR against the `[overnight]` policy; it requires
+  `--run` and cannot be combined with `--pr`.
 - Without `--run`, the verdict is printed to stdout and no file is written.
 
 The repo must be registered in `$SSTACK_HOME/repos.txt` (or `~/.sstack/repos.txt`). This is the same
@@ -75,6 +77,42 @@ waives a missing before and its reason is quoted in the verdict. `media/skip.md`
 evidence check: the verdict is PASS with `MEDIA WAIVED: <reason>` in the summary, while the normal
 `verify` and protected checks still run.
 
+## `--merge`: merge verdict
+
+`sstack-gate --merge <pr> --run <run-dir>` decides whether `overnight` may merge one PR. Exit 0
+prints `MERGE`; exit 1 prints `HOLD: <reason>; <reason>`; exit 2 is a setup error (no `gh`, a failed
+`gh` call, malformed JSON, or a repo missing from `repos.txt`) and nothing is written. The first
+stdout line is the verdict, followed by `## Summary` and, on a hold, `## HOLD`.
+
+The policy is the effective `[overnight]` table of `config.toml`, layered defaults → home → repo →
+local, with one difference from `load()`: the repo layer is `git show <base_ref()>:.sstack/config.toml`.
+When the base has no such file, the working-tree repo file is used if `HEAD` does not track
+`.sstack/config.toml`; a tracked-but-absent file is ignored. Either case is named on the verdict's
+`- Policy:` line. The local layer is read because it never reaches a PR, unless anything under
+`.sstack/local` is tracked in git or `.sstack` or `.sstack/local` is a symlink; then it is ignored and
+labelled.
+
+One `gh pr view <pr> --json headRefOid,isDraft,mergeable,baseRefName,statusCheckRollup,additions,deletions,files`
+call supplies the PR facts. `HOLD` reasons are collected in this order, and every reason is listed:
+
+| check | hold when |
+|---|---|
+| policy | `merge` is not `"policy"` |
+| gate | the run has no `<run-dir>/gate/<n>-pr.md`, or the highest `n` does not start `GATE: PASS` |
+| head | that verdict's `- Head: <sha>` line is missing, says `(dirty)`, or differs from `headRefOid` |
+| review | `<run-dir>/workflow.json` `steps.review.status` is not `pass`, or `steps.review.patch` is missing or differs from `fingerprint(headRefOid)`: sha256 of `git diff-tree -p --no-renames <merge-base> <headRefOid>^{tree}` without its `index` lines |
+| score | `steps.review.score` is below `merge_min_score` |
+| CI | `ci: failed` if a `COMPLETED` check run's conclusion is not `SUCCESS`/`NEUTRAL`/`SKIPPED` or a status context is not `SUCCESS`/`PENDING`/`EXPECTED`; else `ci: pending` if any check is unfinished; an empty rollup is green |
+| conflicts | `mergeable` is not `MERGEABLE` |
+| diff | `additions + deletions` exceeds `max_diff_lines` |
+| `never_merge` | a `files[].path` matches a glob |
+| draft | `isDraft` is true |
+| assumptions | `<run-dir>/assumptions.md` is non-empty and `merge_with_assumptions` is false |
+| base | `baseRefName` is not `base_ref()` with the remote prefix stripped |
+
+The verdict is written to `<run-dir>/gate/<n>-merge.md` sharing the gate's numbering; there is no
+`.log` file for a merge verdict. The command changes nothing in git and never merges.
+
 ## Verdict and log
 
 With `--run`, `<n>` starts at 1 and increments across all gate calls in that run:
@@ -83,8 +121,10 @@ With `--run`, `<n>` starts at 1 and increments across all gate calls in that run
 |---|---|---|
 | normal | `<run-dir>/gate/<n>.md` | `<run-dir>/gate/<n>.log` |
 | `--pr` | `<run-dir>/gate/<n>-pr.md` | `<run-dir>/gate/<n>-pr.log` |
+| `--merge` | `<run-dir>/gate/<n>-merge.md` | none |
 
-The verdict starts with `GATE: PASS` or `GATE: FAIL`, has `## Summary` with 3–5 bullets, lists every
+The verdict starts with `GATE: PASS` or `GATE: FAIL`, has `## Summary` with 4–6 bullets (one is `- Head: <sha>`, plus ` (dirty)` when `git status
+--porcelain` is non-empty), lists every
 failure under `## Details`, and ends with the log tail under `## Log`. A no-run verdict is the same
 text on stdout.
 

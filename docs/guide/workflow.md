@@ -195,7 +195,8 @@ sstack-workflow done review --run "$run" --findings "$run/review/findings.json"
 
 That one passes (`8` ≥ `min_score` 5, nothing `Important`), prints
 `GATE: wait for the user's yes` then `next: pr`, and stores `"score": 8` on the
-step in `workflow.json`.
+step in `workflow.json`, with `"patch"`: a sha256 fingerprint of the change it reviewed, which
+[`sstack-gate --merge`](overnight.md) checks against the PR.
 
 ## A role step of your own
 

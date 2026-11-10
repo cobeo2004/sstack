@@ -19,3 +19,14 @@ auto = false      # true: SessionEnd hook runs a background reflect pass
 encode_at = 2     # a lesson seen this many times is proposed as a structural edit
 
 # No tiers ship by default, so kind routing stays off. Add tiers/<name>.toml to turn it on.
+
+[overnight]
+merge = "never"                  # never | policy
+method = "merge"                 # merge | squash | rebase
+merge_min_score = 8              # policy merges only at or above this review score (1..10)
+max_diff_lines = 400             # additions + deletions allowed for a policy merge
+never_merge = []                 # globs; a PR touching one stays open
+merge_with_assumptions = false   # true: merge even when the run decided assumptions
+on_question = "decide"           # decide | park
+on_stuck = "draft"               # draft | park
+stop_at = ""                     # "" or local HH:MM; no new run starts after it

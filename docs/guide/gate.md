@@ -62,6 +62,45 @@ numbering and writes `<n>-pr.md` and `<n>-pr.log`.
 the whole evidence check with a reason; the verdict says `MEDIA WAIVED: <reason>` and still checks
 `verify` and protected files.
 
+## Merge verdict
+
+`sstack-gate --merge <pr> --run <run>` answers one question for `overnight`: may this PR be merged
+under the repo's `[overnight]` policy? It needs `--run`, because the verdict is written there, and
+cannot be combined with `--pr`. The first line is `MERGE` or `HOLD: <reason>; <reason>` and the exit
+code matches: 0 may merge, 1 stays open, 2 is a setup error (no `gh`, a failed call, an untrusted
+repo) with nothing written.
+
+The policy is layered like the rest of the config, with one difference: the repo layer comes from the
+base branch, so a branch cannot loosen the policy it is merged under. A repo `.sstack/config.toml`
+that the base branch does not have is used from the working tree and labelled; one this branch added
+(tracked in `HEAD`, absent from base) is ignored and labelled too. The local layer still counts,
+because it is machine-only, unless git tracks anything under `.sstack/local` or either `.sstack` or
+`.sstack/local` is a symlink: then a branch could carry it, so it is ignored.
+
+`HOLD` reasons, in the order they are printed:
+
+- `merge` is not `"policy"`, so the default `"never"` holds every PR.
+- the run has no `--pr` verdict, or its latest one is not `GATE: PASS`.
+- that verdict's `- Head:` line is not the PR's head commit, or says `(dirty)`. Every gate verdict
+  records the commit it checked, so an old run or a push after the gate cannot merge.
+- the review step is not `pass`, the PR head's change is not the one it recorded (`patch`, a
+  sha256 of the diff from the merge base; a rebase onto unrelated files keeps it, any edit including
+  whitespace does not), or its score is below `merge_min_score`.
+- CI is not green: `ci: failed` when a finished check run is not `SUCCESS`, `NEUTRAL` or
+  `SKIPPED` or a status context is not `SUCCESS`/`PENDING`/`EXPECTED`; otherwise `ci: pending` while
+  any check is unfinished. An empty rollup is green.
+- the PR does not merge cleanly with the base.
+- additions + deletions exceed `max_diff_lines`.
+- a changed file matches a `never_merge` glob.
+- the PR is a draft.
+- `<run>/assumptions.md` is not empty and `merge_with_assumptions` is false.
+- the PR targets a branch other than the repo's default branch.
+
+One `gh pr view` fills all of it: draft state, mergeability, base branch, checks and files. The
+command merges nothing and pushes nothing; `overnight` runs `gh pr merge` itself, and only on
+`MERGE`. The keys and their defaults are the `[overnight]` table in
+[configuration.md](configuration.md#file-schemas).
+
 ## In `work`
 
 The `gate` step is a command step: its `run.sh` is `sstack-gate --run "$SSTACK_RUN"`, so

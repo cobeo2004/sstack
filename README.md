@@ -6,7 +6,7 @@
 
 ![Python](https://img.shields.io/badge/python-%E2%89%A53.11-blue?logo=python&logoColor=white)
 ![Dependencies](https://img.shields.io/badge/dependencies-none-brightgreen)
-![Skills](https://img.shields.io/badge/skills-13-orange)
+![Skills](https://img.shields.io/badge/skills-15-orange)
 
 [Overview](#overview) • [Docs](#docs) • [Getting started](#getting-started) • [Agent prompts](#agent-prompts) • [Usage](#usage) • [Configuration](#configuration) • [Skills](#skills)
 
@@ -14,7 +14,7 @@
 
 ## Overview
 
-sstack is a set of 14 portable `SKILL.md` skills plus a small stdlib-Python toolkit. It takes an engineering task from "set up this repo" through recon, plan, implement, test, and PR, with a stop for your approval at each gate.
+sstack is a set of 15 portable `SKILL.md` skills plus a small stdlib-Python toolkit. It takes an engineering task from "set up this repo" through recon, plan, implement, test, and PR, with a stop for your approval at each gate.
 
 Any step can be delegated to another harness and model. For example, implement runs on pi + DeepSeek while review runs on a codex + claude panel. Small TOML files, one per role, harness, tier and ADE, control the routing.
 
@@ -51,6 +51,7 @@ section.
 - [Configuration](docs/guide/configuration.md): split layout, four layers, merge rules, migrate, `sstack-config show`.
 - [The workflow](docs/guide/workflow.md): step folders, a custom step, `min_score`, disabling a step.
 - [The gate](docs/guide/gate.md): deterministic `verify`, protected files, and PR evidence checks.
+- [Overnight](docs/guide/overnight.md): running the runs you list while you sleep, and the `[overnight]` merge policy.
 - [ADEs](docs/guide/ades.md): built-in adapters, detection order, `SSTACK_ADE`, capabilities.
 - [Writing an ADE adapter](docs/guide/writing-an-ade.md): TOML schema, hook JSON contract, worked examples.
 - [Dispatch](docs/guide/dispatch.md): roles, panels, `via`, exit codes 0–5, `record`, run records, the write lock.
@@ -246,6 +247,7 @@ proves each kind of check.
 | `grill` | Brainstorming a fuzzy idea or stress-testing a plan, ending in `decisions.md` that `work` runs from |
 | `review` | Adversarial review of a diff or PR by a different model family |
 | `babysit` | Getting a PR to merge-ready: CI, conflicts, review comments |
+| `overnight` | Running the runs you list at bedtime: gates answered for that session, PRs merged only where policy allows, a report in the morning |
 | `swarm` | Sending one question to many independent scouts, then combining their reports |
 | `how` | How code works, from source, with `file:line` citations |
 | `why` | Why code is this way, from history, with each claim tagged by confidence |
@@ -266,6 +268,7 @@ flowchart TD
     SS -->|answer only| ASK[how / why / diagram / swarm / code-graph]
     SS -->|review a diff or PR| REV
     SS -->|open PR needs care| BABY
+    SS -->|run my listed work while I sleep| OVN[overnight]
 
     GRILL -->|decisions.md| R0
 
@@ -286,6 +289,7 @@ flowchart TD
     REV -->|findings| R4
     R5 --> UN[unslop]
     G4 -->|push + PR| BABY[babysit]
+    OVN -.->|each listed run| R0
     WORK -.->|corrected / dead end| REFL[reflect]
     REFL -.->|accepted lessons| SS
 ```

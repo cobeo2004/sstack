@@ -104,6 +104,17 @@
       ]
     }
   },
+  "overnight": {
+    "max_diff_lines": 400,
+    "merge": "never",
+    "merge_min_score": 8,
+    "merge_with_assumptions": false,
+    "method": "merge",
+    "never_merge": [],
+    "on_question": "decide",
+    "on_stuck": "draft",
+    "stop_at": ""
+  },
   "role": {
     "implement": {
       "harness": "claude",
