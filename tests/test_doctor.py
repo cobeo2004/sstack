@@ -158,16 +158,22 @@ class SmokeTests(DoctorBase):
             S.smoke(self.root)
         self.assertEqual(list((self.root / ".sstack" / "runs").iterdir()), [])
 
-    def crafted(self, run_dirs, name="20260101-0000-smoke", lines=(), roles=None):
+    def crafted(self, run_dirs, name="smoke-20260101-0000", lines=(), roles=None):
         """A --check dir made by hand: smoke.json naming `run_dirs`, plus raw index lines."""
         runs = self.root / ".sstack" / "runs"
-        d = runs / name
+        d = runs / "doctor" / name
         d.mkdir(parents=True)
         for l in lines:
             D.append_index(self.root, l)
         (d / "smoke.json").write_text(json.dumps({"token": "t", "baseline": D.snapshot(self.root), "roles": roles or {},
                                                   "run_dirs": [str(x) for x in run_dirs], "errors": []}))
         return d
+
+    def set_run_dirs(self, d, run_dirs):
+        p = d / "smoke.json"
+        state = json.loads(p.read_text())
+        state["run_dirs"] = [str(x) for x in run_dirs]
+        p.write_text(json.dumps(state))
 
     def test_check_refuses_outside_run_dir(self):
         victim = self.home / "victim"
@@ -184,19 +190,23 @@ class SmokeTests(DoctorBase):
         victim = self.home / "victim"
         victim.mkdir()
         (victim / "keep.txt").write_text("x")
-        link = self.root / ".sstack" / "runs" / "20260101-0000-scout"
+        d = self.crafted([])
+        link = d / "dispatch" / "0000-scout"
         link.parent.mkdir(parents=True)
         link.symlink_to(victim)
-        code, out, _ = self.doctor("--smoke", "--check", str(self.crafted([link])))
+        self.set_run_dirs(d, [link])
+        code, out, _ = self.doctor("--smoke", "--check", str(d))
         self.assertEqual(code, 1, out)
         self.assertIn("FAIL cleanup: not a run of this smoke test", out)
         self.assertTrue((victim / "keep.txt").exists())
 
     def test_check_refuses_unrelated_run_inside_runs(self):
-        victim = self.root / ".sstack" / "runs" / "20260101-0000-scout"
+        victim = self.root / ".sstack" / "runs" / "other" / "dispatch" / "0000-scout"
         victim.mkdir(parents=True)
         (victim / "run.json").write_text(json.dumps({"report_base": ".sstack/runs/other/scout"}))
-        code, out, _ = self.doctor("--smoke", "--check", str(self.crafted([victim])))
+        d = self.crafted([])
+        self.set_run_dirs(d, [victim])
+        code, out, _ = self.doctor("--smoke", "--check", str(d))
         self.assertEqual(code, 1, out)
         self.assertIn("FAIL cleanup: not a run of this smoke test", out)
         self.assertTrue((victim / "run.json").exists())
@@ -209,8 +219,11 @@ class SmokeTests(DoctorBase):
         self.assertTrue(d.exists())
 
     def test_check_tolerates_foreign_index_line(self):
-        d = self.crafted([], lines=[{"report": ".sstack/runs/20260101-0000-smoke/scout.md"}],
-                         roles={"scout": ["fake/x"]})
+        d = self.crafted([], roles={"scout": ["fake/x"]})
+        report = (d / "scout.md").relative_to(self.root).as_posix()
+        self.set_run_dirs(d, [])
+        idx = d.parent.parent / "index.jsonl"
+        idx.write_text(json.dumps({"report": report}) + "\n")
         code, out, err = self.doctor("--smoke", "--check", str(d))
         self.assertEqual(code, 1, out + err)
         self.assertIn("FAIL scout fake/x: no index line", out)

@@ -162,14 +162,18 @@ class ServerTests(TempEnv):
         with mock.patch.dict(os.environ, {"T3CODE_THREAD_ID": "x", "SSTACK_ADE": "none"}):
             self.assertIsNone(self.get(f"/api/ade?repo={self.root}")["name"])
 
-    def test_runs_are_grouped_newest_first_with_readonly_warning(self):
+    def test_runs_are_grouped_by_task_newest_first_with_readonly_warning(self):
         shutil.copytree(FIXTURES / "runs", self.root / ".sstack/runs")
         runs = self.get(f"/api/runs?repo={self.root}")["runs"]
-        self.assertEqual([r["run_dir"] for r in runs],
-                         [".sstack/runs/20261109-1210-implement", ".sstack/runs/20261109-1200-review"])
-        self.assertEqual(runs[1]["run"]["members"], ["codex/gpt-6.1-sol", "claude/opus"])
-        self.assertEqual(runs[1]["readonly_warning"], ["lib/sstack_config.py", "scratch.txt"])
-        self.assertEqual([line["harness"] for line in runs[1]["lines"]], ["codex", "claude"])
+        self.assertEqual([r["task"] for r in runs],
+                         [".sstack/runs/task-implement", ".sstack/runs/task-review"])
+        self.assertEqual([c["run_dir"] for c in runs[0]["children"]],
+                         [".sstack/runs/task-implement/dispatch/1210-implement"])
+        review = runs[1]["children"][0]
+        self.assertEqual(review["run_dir"], ".sstack/runs/task-review/dispatch/1200-review")
+        self.assertEqual(review["run"]["members"], ["codex/gpt-6.1-sol", "claude/opus"])
+        self.assertEqual(review["readonly_warning"], ["lib/sstack_config.py", "scratch.txt"])
+        self.assertEqual([line["harness"] for line in review["lines"]], ["codex", "claude"])
 
     def test_lessons_accept_and_forget(self):
         p = self.write(self.root, ".sstack/lessons.md",

@@ -4,7 +4,7 @@ const { el, api, state } = ui;
 function pageHead() {
   return el("header", { class: "page-head" },
     el("h1", { text: "Runs" }),
-    el("p", { text: "The repository index, grouped by run directory. Failures and read-only warnings stay visible." }),
+    el("p", { text: "The repository index, grouped by task. Failures and read-only warnings stay visible." }),
   );
 }
 
@@ -56,9 +56,9 @@ function lineRow(line) {
 }
 
 function runGroup(group) {
-  const aside = el("section", { class: "run-group" },
+  const aside = el("section", { class: "run-group run-child" },
     el("div", { class: "run-head" },
-      el("h2", { text: runTitle(group) }),
+      el("h3", { text: runTitle(group) }),
       el("span", { class: "mono", text: `${group.lines.length} line${group.lines.length === 1 ? "" : "s"}` }),
     ),
     runMeta(group),
@@ -66,6 +66,20 @@ function runGroup(group) {
   const timeline = el("div", { class: "timeline" });
   for (const line of group.lines) timeline.append(lineRow(line));
   aside.append(timeline);
+  return aside;
+}
+
+function taskGroup(task) {
+  const lines = task.children.reduce((n, child) => n + child.lines.length, 0);
+  const aside = el("section", { class: "run-group task-group" },
+    el("div", { class: "run-head" },
+      el("h2", { text: task.task }),
+      el("span", { class: "mono", text: `${task.children.length} run${task.children.length === 1 ? "" : "s"} / ${lines} line${lines === 1 ? "" : "s"}` }),
+    ),
+  );
+  const children = el("div", { class: "run-children" });
+  for (const child of task.children) children.append(runGroup(child));
+  aside.append(children);
   return aside;
 }
 
@@ -83,7 +97,7 @@ export async function render(host) {
       return;
     }
     const runs = el("div", { class: "runs" });
-    for (const group of data.runs) runs.append(runGroup(group));
+    for (const task of data.runs) runs.append(taskGroup(task));
     host.append(runs);
   } catch (err) {
     host.append(el("div", { class: "empty" },

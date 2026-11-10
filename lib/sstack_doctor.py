@@ -147,7 +147,8 @@ def static(root) -> int:
 # ---- smoke test ------------------------------------------------------------------------------
 
 TITLE = "sstack smoke"  # the index lines' "task": smoke lines stay in the append-only index, tagged
-SMOKE_DIR = re.compile(r"-smoke(-\d+)?$")
+SMOKE_DIR = re.compile(r"^smoke-\d{8}-\d{4}(?:-\d+)?$")
+PRUNE_SKIP = {"index.jsonl", "reflect", "doctor"}
 
 
 def _brief(d: Path, role: str, token: str) -> str:
@@ -162,9 +163,17 @@ def _dispatch(root: Path, *args) -> subprocess.CompletedProcess:
 
 
 def _owned(root: Path, x) -> Path | None:
-    """x resolved, when it is a direct child of <root>/.sstack/runs/ and not a symlink; else None."""
+    """x resolved, when it is a direct child of <root>/.sstack/runs/doctor/ and not a symlink; else None."""
     p = Path(x)
-    return p.resolve() if not p.is_symlink() and p.resolve().parent == (root / RUNS).resolve() else None
+    doctor = root.resolve() / RUNS / "doctor"  # unresolved below root: a symlinked runs/ or doctor/ never matches
+    return p.resolve() if not p.is_symlink() and p.resolve().parent == doctor else None
+
+
+def _run_owned(d: Path, x) -> Path | None:
+    """x resolved, when it is inside smoke dir d and not a symlink; else None."""
+    p = Path(x)
+    r = p.resolve()
+    return r if not p.is_symlink() and r != d.resolve() and r.is_relative_to(d.resolve()) else None
 
 
 def _from_smoke(root: Path, d: Path, x: Path) -> bool:
@@ -177,25 +186,29 @@ def _from_smoke(root: Path, d: Path, x: Path) -> bool:
 
 
 def _cleanup(root: Path, d: Path, run_dirs: list[str]) -> bool:
-    """Remove the smoke dir and the run dirs its smoke.json names — all or nothing: any path that is
-    not a direct, non-symlink child of .sstack/runs/ → FAIL, nothing deleted. index.jsonl is never touched."""
-    bad = [str(x) for x in run_dirs if not _owned(root, x) or not _from_smoke(root, d, _owned(root, x))]
-    if bad:
-        print(f"FAIL cleanup: not a run of this smoke test under {root / RUNS}, nothing deleted: {', '.join(bad)}")
+    """Remove the smoke dir and the runs its smoke.json names — all or nothing: any path outside d
+    or from another run → FAIL, nothing deleted. index.jsonl is never touched."""
+    bad = [str(x) for x in run_dirs
+           if not _run_owned(d, x) or not _from_smoke(root, d, _run_owned(d, x))]
+    owned = _owned(root, d)
+    if not owned or bad:
+        print(f"FAIL cleanup: not a run of this smoke test under {root / RUNS / 'doctor'}, nothing deleted: "
+              f"{', '.join(bad or [str(d)])}")
         return False
-    for x in [*run_dirs, d]:
-        shutil.rmtree(_owned(root, x), ignore_errors=True)
+    shutil.rmtree(owned, ignore_errors=True)
+    if not any(owned.parent.iterdir()):
+        owned.parent.rmdir()
     return True
 
 
 def smoke(root: Path) -> int:
     cfg = load(root)
     base = D.snapshot(root)
-    runs = root / RUNS
-    runs.mkdir(parents=True, exist_ok=True)
-    stem, n = f"{time.strftime('%Y%m%d-%H%M')}-smoke", 1
+    doctor = root / RUNS / "doctor"
+    doctor.mkdir(parents=True, exist_ok=True)
+    stem, n = f"smoke-{time.strftime('%Y%m%d-%H%M')}", 1
     while True:
-        d = runs / (stem if n == 1 else f"{stem}-{n}")
+        d = doctor / (stem if n == 1 else f"{stem}-{n}")
         try:
             d.mkdir()
             break
@@ -261,8 +274,8 @@ def _mine(root: Path, d: Path, line: dict) -> bool:
 
 def check(root: Path, d: Path) -> int:
     owned = _owned(root, d)
-    if not owned or not SMOKE_DIR.search(owned.name):
-        print(f"FAIL check: {d} is not a {root / RUNS}<id>-smoke dir")
+    if not owned or not SMOKE_DIR.fullmatch(owned.name):
+        print(f"FAIL check: {d} is not a {root / RUNS / 'doctor'}/smoke-<YYYYMMDD-HHMM> dir")
         return 1
     d = owned
     state = json.loads((d / "smoke.json").read_text())
@@ -289,8 +302,8 @@ def check(root: Path, d: Path) -> int:
                     why = f"{cf.name} missing or wrong"
                 print(f"{'FAIL' if why else 'PASS'} {role} {m}" + (f": {why}" if why else ""))
                 ok = ok and not why
-        # this invocation's dirs only; index.jsonl is held to append-only by tree_changes
-        skip = [D.rel(root, x) + "/" for x in [d, *state["run_dirs"]] if _owned(root, x)]
+        # the smoke dir holds this invocation's runs; index.jsonl is held to append-only by tree_changes
+        skip = [D.rel(root, d) + "/"]
         changed = D.tree_changes(root, state["baseline"], skip)
         print(f"{'FAIL' if changed else 'PASS'} tree unchanged" + (f": {', '.join(changed)}" if changed else ""))
         ok = ok and not changed
@@ -299,13 +312,51 @@ def check(root: Path, d: Path) -> int:
     return 0 if ok else 1
 
 
+def prune(root: Path, days: int, yes: bool) -> int:
+    """List (and with --yes delete) top-level runs older than `days` and finished, finished meaning
+    progress.md has a line starting `done:` or does not exist."""
+    runs = root / RUNS
+    if not runs.is_dir():
+        return 0
+    if runs.resolve() != root.resolve() / RUNS:
+        print(f"FAIL prune: {runs} resolves outside the repo, nothing deleted")
+        return 1
+    cutoff = time.time() - days * 86400
+    for p in sorted(runs.iterdir(), key=lambda x: x.name):
+        if p.name in PRUNE_SKIP or p.is_symlink() or not p.is_dir():
+            continue
+        progress = p / "progress.md"
+        if progress.is_file():
+            try:
+                if not any(line.startswith("done:") for line in progress.read_text().splitlines()):
+                    continue
+            except OSError:
+                continue
+        stamps = [f.stat().st_mtime for f in p.rglob("*") if f.is_file()]
+        newest = max(stamps, default=p.stat().st_mtime)
+        if newest >= cutoff:
+            continue
+        print(D.rel(root, p))
+        if yes:
+            shutil.rmtree(p)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="sstack-doctor", description="Check the sstack config; --smoke runs "
                                  "one canary dispatch per routed member (ask the user first).")
     ap.add_argument("--smoke", action="store_true")
     ap.add_argument("--check", metavar="RUN_DIR", help="with --smoke: verify a tool-delegated smoke run")
+    ap.add_argument("--prune-runs", metavar="DAYS", type=int,
+                    help="list top-level runs older than DAYS; delete them with --yes")
+    ap.add_argument("--yes", action="store_true", help="with --prune-runs: delete the listed runs")
     a = ap.parse_args(argv)
     root = git_root(Path.cwd())
+    if a.prune_runs is not None:
+        if root is None:
+            print("FAIL prune: not in a git repo", file=sys.stderr)
+            return 1
+        return prune(root, a.prune_runs, a.yes)
     if not a.smoke:
         return static(root)
     if root is None:

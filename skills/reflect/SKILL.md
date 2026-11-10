@@ -82,7 +82,7 @@ an sstack skill, then mark it: `<sstack>/bin/sstack-lessons encode <id> --scope 
 With `[reflect] auto = true` and the end-of-session hook installed (see harness
 notes; the installer prints the snippet), `bin/sstack-reflect-hook` runs the
 `scout` role in the background over the transcript lines this session hasn't
-reflected on yet (offsets in `.sstack/runs/reflect-state.json`) using the capture
+reflected on yet (offsets in `.sstack/runs/reflect/state.json`) using the capture
 brief below plus the known lessons of both scopes. It records new lessons as
 `pending` and bumps `seen` for each `SEEN` line, so repeats reach `[reflect] encode_at`. It never accepts. Review
 pending lessons at the start of the next task or in the dashboard.

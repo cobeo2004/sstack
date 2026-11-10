@@ -1,0 +1,11 @@
+{
+  "role": "review",
+  "members": [
+    "codex/gpt-6.1-sol",
+    "claude/opus"
+  ],
+  "report_base": ".sstack/runs/task-review/dispatch/1200-review/r",
+  "panel_report": ".sstack/runs/task-review/dispatch/1200-review/r.md",
+  "started_at": 1794225600.0,
+  "readonly": true
+}

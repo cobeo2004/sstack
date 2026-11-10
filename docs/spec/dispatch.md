@@ -28,23 +28,40 @@ Owner: `lib/sstack_dispatch.py` (B2). Fixtures: `tests/fixtures/payloads/*.json`
 
 ```
 .sstack/runs/
-  index.jsonl                     one global index, every run, every member (append only)
-  <YYYYMMDD-HHMM>-<role>/         one dir per dispatch; taken → -2, -3 … appended
-    run.json                      written at start (below)
-    run.lock                      `record` holds an flock on it around its read-modify-write of run.json
-    baseline.json                 read-only roles only (below)
-    hook.<harness>-<model slug>/  $SSTACK_HOOK_STATE for hook ADEs
+  index.jsonl                         one global index, every run, every member (append only)
+  <task>/                             one top-level folder per task
+    dispatch/
+      <HHMM>-<role>/                  a dispatch whose --report folder is under this task
+        run.json                      written at start (below)
+        run.lock                      `record` holds an flock on it around its read-modify-write of run.json
+        baseline.json                 read-only roles only (below)
+        hook.<harness>-<model slug>/  $SSTACK_HOOK_STATE for hook ADEs
+  <YYYYMMDD-HHMM>-<role>/             flat run: --report directly in runs/ or outside it (legacy shape)
+  reflect/                            bin/sstack-reflect-hook
+    state.json
+    <YYYYMMDD-HHMMSS>/                one reflect pass; its dispatch nests in <pass>/dispatch/
+  doctor/                             sstack-doctor smoke runs
+    smoke-<YYYYMMDD-HHMM>/
+      dispatch/<HHMM>-<role>/
 ```
+
+When `--report`'s folder is **strictly below** `.sstack/runs/`, the dispatch folder is
+`<that folder>/dispatch/<HHMM>-<role>[-n]/`: one top-level run folder per task. A report at
+`.sstack/runs/<task>/reviews/r.md` nests at `.sstack/runs/<task>/reviews/dispatch/<HHMM>-review/`,
+still inside the task. A report directly in `runs/` or outside it creates the flat
+`<YYYYMMDD-HHMM>-<role>[-n]/` run dir as before. The `-2`, `-3` … collision counter is scoped to the
+dispatch folder, so concurrent dispatches of one task do not make new top-level entries.
 
 Every path stored in `run.json`, `index.jsonl` and the panel index is relative to the repo root when
 it is inside the repo, else absolute. Reports go wherever `--report` says (often the run dir).
-Runs are grouped by the index line's `run_dir`.
+`index.jsonl`'s `run_dir` holds the nested path (`.sstack/runs/<task>/dispatch/<HHMM>-<role>`), never just its task.
+Runs are grouped by that `run_dir`.
 
 `run.json` (dispatch writes it at start, before any member runs; `record` reads it):
 
 ```json
 {"role": "review", "members": ["codex/gpt-6.1-sol", "claude/opus"],
- "report_base": ".sstack/runs/20261109-1200-review/r", "panel_report": ".sstack/runs/20261109-1200-review/r.md",
+ "report_base": ".sstack/runs/task/dispatch/1200-review/r", "panel_report": ".sstack/runs/task/dispatch/1200-review/r.md",
  "started_at": 1794225600.0, "readonly": true, "title": "sstack review", "brief": "b.md",
  "route": "panel (--panel)", "ade": "t3", "via": "auto", "hint": null}
 ```
@@ -77,7 +94,8 @@ outside `A-Za-z0-9.-` → `-`).
 deleted). Check (`record`, and dispatch itself for headless runs): take the same snapshot again; a
 path is changed when its hash differs, it appears or disappears in `files`, or its status line
 differs; HEAD moving adds `HEAD <old>..<new>`. Excluded (sstack's own files, never the child's):
-this run dir, every other run dir under `.sstack/runs/`, every report path (each member report,
+this run dir, every other run dir under `.sstack/runs/` (for a nested run, its whole top-level task
+folder), every report path (each member report,
 `panel_report`, the escalation's `<report_base>.failed.md`) and each one's `.err`.
 `.sstack/runs/index.jsonl` may only grow: it counts as changed when its baseline content is no longer
 a prefix of what is there (truncated or replaced), not when lines were appended. Changed paths, sorted, go to
@@ -136,8 +154,8 @@ the agent.
 ```
 
 Unmapped model → passed through, `"note"` added to that call (fixture `t3-implement.json`).
-`--route` prints this shape, with the `run_dir` it would use, and creates nothing (no run dir, no
-`run.json`, no baseline, no index line).
+`--route` prints this shape, with the nested or flat `run_dir` it would use, and creates nothing (no
+run dir, no `run.json`, no baseline, no index line).
 
 ## `record`
 
@@ -145,7 +163,8 @@ Unmapped model → passed through, `"note"` added to that call (fixture `t3-impl
 sstack-dispatch record <role> --report <p> --member <harness>/<model> --exit <n> --run-dir <d>
 ```
 
-0. `<d>` must be `<repo>/.sstack/runs/<id>` and `--member` one of `run.json` `members`, else exit 1.
+0. `<d>` must be under `<repo>/.sstack/runs/` (flat or nested) and `--member` one of `run.json`
+   `members`, else exit 1. The repo root is the parent of the nearest ancestor named `.sstack`.
    Steps 1–4 run under an flock on `<d>/run.lock`.
 1. Reads `<d>/run.json`; appends one index line to `.sstack/runs/index.jsonl`, `secs` = now −
    `started_at`.
@@ -167,7 +186,7 @@ Index line (one JSON object per line):
 ```json
 {"ts": "2026-11-09T12:05:40", "task": "sstack review", "role": "review", "ade": "t3", "via": "auto",
  "harness": "claude", "model": "opus", "exit": 0, "secs": 340.0,
- "run_dir": ".sstack/runs/20261109-1200-review", "report": ".sstack/runs/20261109-1200-review/r.claude-opus.md",
+ "run_dir": ".sstack/runs/task/dispatch/1200-review", "report": ".sstack/runs/task/dispatch/1200-review/r.claude-opus.md",
  "route": "panel (--panel)", "readonly_warning": ["lib/sstack_config.py", "scratch.txt"]}
 ```
 
@@ -179,7 +198,7 @@ Panel index (`bin/sstack-reflect-hook` parses `: exit 0 → (.+)$`):
 ```
 # review panel
 
-- codex/gpt-6.1-sol: exit 0 → .sstack/runs/20261109-1200-review/r.codex-gpt-6.1-sol.md
+- codex/gpt-6.1-sol: exit 0 → .sstack/runs/task/dispatch/1200-review/r.codex-gpt-6.1-sol.md
 - claude/opus: exit 1 → gap (no report)
 ```
 

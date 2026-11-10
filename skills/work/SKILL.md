@@ -16,9 +16,11 @@ list verbatim; skipped steps stay, marked `skip: <reason>`.
 Create a run directory first: `.sstack/runs/<run-id>/` with `run-id` =
 `<ticket-or-slug>-<YYYYmmdd-HHMM>`. Everything that must survive a compaction or a
 new session goes there: `recon.md`, `plan.md`, `answer-key.md`, `protected/`,
-briefs, reports, `progress.md` (one line per finished step). If `grill` handed
-over a run directory, or `ls .sstack/runs/*/decisions.md` shows one for this task,
-use it instead: `decisions.md` is the ticket and everything else goes beside it.
+briefs, reports, `progress.md` (one line per finished step). Task scratch stays in
+that folder, never a new top-level folder under `.sstack/runs/`: a dispatch with a
+`--report` there nests under it. If `grill` handed over a run directory, or
+`ls .sstack/runs/*/decisions.md` shows one for this task, use it instead:
+`decisions.md` is the ticket and everything else goes beside it.
 
 **Resume:** if the user says "continue" or a run dir for this task exists, read
 its `progress.md`, `plan.md` and latest reports, check `git status` / `git log`
@@ -38,9 +40,8 @@ over memory.
    (`AGENTS.md`/`CLAUDE.md`), `.sstack/product.md`, the docs it links, and the ADRs
    and glossary covering this area: [traceability.md](traceability.md).
 3. No falsifiable definition of done and no `decisions.md` → run `grill` first.
-   Otherwise clarify: one question at a time, only for things no command can
-   answer. If running something would answer it (behaviour, output, timing), run
-   it or build a throwaway prototype instead of asking.
+   Otherwise clarify one question at a time, only where no command can answer;
+   where running something would answer it, run it or build a throwaway prototype.
 4. Route the recon reading: dispatch `investigate` with the recon questions as
    the brief and follow [sstack § Delegation](../sstack/SKILL.md#delegation).
    Exit 3 → read here. Check each report's file pointers yourself; Gate 0 stays
@@ -105,8 +106,7 @@ implemented before it.
 1. Restore protected files from `protected/` and confirm their hashes, then run
    every answer-key check on its surface per [testing.md](testing.md) and read the
    output. For changes a user can see, save before/after media per testing.md
-   (`<run>/media/`). A changed protected file is
-   reported, never accepted silently.
+   (`<run>/media/`). A changed protected file is reported, never accepted silently.
 2. Failures → back to Phase 2 with the failing commands and output added to the
    brief. **Loop guard** (`rules.loop_guard`, default 2): the same failure twice →
    change approach once and say how; if it fails again, stop and ask.
@@ -123,9 +123,10 @@ of lane by the user; nits listed. Report commands + results, findings + outcome.
 3. **Gate 4:** the user's explicit yes before commit, push or PR, and before
    publishing media. Then push, open the PR, and run
    `<sstack>/bin/sstack-pr-media <pr> <run>/media/* --edit-body` right after opening,
-   so the Before | After table lands in the PR description per
-   [testing.md](testing.md). PR comments are only for add-ons, never the main
-   evidence. Then hand off to `babysit`.
+   so the Before | After table lands in the PR description per [testing.md](testing.md).
+   PR comments are only for add-ons, never the main evidence. When the PR opens (or
+   the user stops the task), append `done: <PR url | reason>` as the last line of the
+   run's `progress.md`; `--prune-runs` reads it. Then hand off to `babysit`.
 
 ## Always
 

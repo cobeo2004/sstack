@@ -275,8 +275,22 @@ def _run_groups(root: Path | None) -> list[dict]:
             except (OSError, json.JSONDecodeError):
                 pass
         out.append(g)
-    out.sort(key=lambda g: g["ts"], reverse=True)
-    return out
+    tasks: dict[str, dict] = {}
+    for g in out:
+        path = Path(str(g["run_dir"] or "(unknown run)"))
+        try:
+            below = path.relative_to(".sstack/runs")
+        except ValueError:
+            task = str(g["run_dir"] or "(unknown run)")
+        else:
+            task = (Path(".sstack/runs") / below.parts[0]).as_posix() if len(below.parts) > 1 else \
+                str(g["run_dir"])
+        group = tasks.setdefault(task, {"task": task, "children": []})
+        group["children"].append(g)
+    for group in tasks.values():
+        group["children"].sort(key=lambda g: g["ts"], reverse=True)
+        group["ts"] = max((g["ts"] for g in group["children"]), default="")
+    return sorted(tasks.values(), key=lambda g: g["ts"], reverse=True)
 
 
 def _lessons(root: Path | None) -> list[dict]:

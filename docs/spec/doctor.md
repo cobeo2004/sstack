@@ -24,7 +24,7 @@ names, so a surprising WARN is a glance, not a broken config.
 Runs after setup, migrate, or an ADE/config change — **only after the agent asks the user and gets
 a yes**. One dispatch per routed role/member through the real path (`via` as configured):
 
-- smoke run dir: `.sstack/runs/<YYYYMMDD-HHMM>-smoke/` (docs/spec/dispatch.md run layout), holding a random token `T`.
+- smoke run dir: `.sstack/runs/doctor/smoke-<YYYYMMDD-HHMM>[-n]/` (docs/spec/dispatch.md run layout), holding a random token `T`. Each role's dispatch nests under it at `dispatch/<HHMM>-<role>/`.
 - read-only roles get the canary brief: "reply with the line `CANARY <T>` and change nothing".
 - implement gets: "write `<run dir>/canary.txt` containing `<T>`, then reply `CANARY <T>`".
 - tool delegation: doctor prints the exit-4 payloads; the agent makes the calls and the `record`s,
@@ -40,9 +40,22 @@ invocation's smoke and dispatch run dirs must be unchanged (index.jsonl may only
 gitignored files, and a child working in its own worktree (T3 implement) — its stray edits aren't in
 this tree.
 
-Cleanup removes the run dirs; index lines stay, tagged (index.jsonl is append-only). It also runs
-when the smoke body raises. `--check` accepts only a direct child of `<repo>/.sstack/runs/` named
-`*-smoke`, and deletes only run dirs its smoke.json names that are direct, non-symlink children of
-`.sstack/runs/`; anything else is a FAIL and nothing is deleted.
+Cleanup removes the smoke dir (including its nested dispatch run dirs) and then `doctor/` when it
+is empty; index lines stay, tagged (index.jsonl is append-only). It also runs when the smoke body
+raises. `--check` accepts only a direct child of `<repo>/.sstack/runs/doctor/` named
+`smoke-<YYYYMMDD-HHMM>[-n]`, and deletes only nested run dirs inside it that its smoke.json names;
+anything else is a FAIL and nothing is deleted.
+
+## Prune runs (`--prune-runs`)
+
+```
+sstack-doctor --prune-runs <days> [--yes]
+```
+
+Candidates are the top-level entries of `.sstack/runs/` other than `index.jsonl`, `reflect/` and
+`doctor/`. A candidate whose `progress.md` exists without a line starting `done:` is unfinished and
+is kept. Age is the newest mtime of any file inside the run folder; only runs older than `<days>`
+are listed, one per line as their repo-relative path (`.sstack/runs/<name>`). Nothing is deleted
+without `--yes`; with it, each listed candidate is removed. Exit 0 on success.
 
 Exit codes: 0 all PASS · 1 any FAIL · 4 payloads printed (tool delegation; agent continues).

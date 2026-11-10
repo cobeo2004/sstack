@@ -216,11 +216,13 @@ class Sandbox:
                               capture_output=True, text=True, timeout=120)
 
     def normalise(self, out: str) -> str:
-        """Sandbox paths → <sstack>, <repo>, <home>; run-dir stamps → YYYYMMDD-HHMM."""
+        """Sandbox paths → <sstack>, <repo>, <home>; run-dir stamps → YYYYMMDD-HHMM, nested dispatch
+        run dirs → HHMM."""
         for path, name in ((REPO.resolve(), "<sstack>"), (self.home / "sstack", "<sstack>"),
                            (self.repo, "<repo>"), (self.home, "<home>")):
             out = out.replace(str(path), name)
-        return re.sub(r"\b\d{8}-\d{4}\b", "YYYYMMDD-HHMM", out)
+        out = re.sub(r"\b\d{8}-\d{4}\b", "YYYYMMDD-HHMM", out)
+        return re.sub(r"(?<=dispatch/)\d{4}-", "HHMM-", out)
 
     def close(self):
         self._tmp.cleanup()

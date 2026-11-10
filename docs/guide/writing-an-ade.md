@@ -119,7 +119,7 @@ MYADE_SESSION=1 sstack-dispatch ade
 printf 'Find the bug.\n' > brief.md
 MYADE_SESSION=1 sstack-dispatch scout --brief brief.md --report my.md
 cat my.md
-cat .sstack/runs/*-scout/hook.claude-haiku/request.json; echo
+cat .sstack/runs/*-scout/hook.claude-haiku/request.json; echo   # flat run dir: my.md is in the repo root
 tail -n 1 .sstack/runs/index.jsonl
 sstack-doctor
 ```
@@ -207,7 +207,9 @@ Expected (abridged):
 
 Exit 4: the payload's one call names `spawn_child` with `args` filled from `[delegate.args]` plus
 `[delegate.readonly_args]`, a `"note"` (this adapter has no model map, so `haiku` passes through)
-and the `record` command to run afterwards. What the agent does next is in [dispatch.md](dispatch.md#exit-4-make-the-tool-calls).
+and the `record` command to run afterwards. `t.md` is in the repo root, so its run dir is flat; a
+report under `.sstack/runs/<task>/` instead gets `<task>/dispatch/<HHMM>-scout`. What the agent does
+next is in [dispatch.md](dispatch.md#exit-4-make-the-tool-calls).
 
 ## Write the note
 

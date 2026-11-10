@@ -93,8 +93,8 @@ PASS tree unchanged
 
 How it works:
 
-- it makes a smoke run dir `.sstack/runs/<YYYYMMDD-HHMM>-smoke/` holding a random token `T` and a
-  `smoke.json`;
+- it makes a smoke run dir `.sstack/runs/doctor/smoke-<YYYYMMDD-HHMM>/` holding a random token `T`
+  and a `smoke.json`; each role's dispatch nests under it at `dispatch/<HHMM>-<role>/`;
 - read-only roles get the brief "Reply with the line `CANARY <T>` and change nothing";
 - `implement` gets "Write `<smoke dir>/canary.txt` containing `<T>`, then reply `CANARY <T>`";
 - every dispatch is `sstack-dispatch <role> … --title "sstack smoke" --no-escalate`, so a failing
@@ -111,9 +111,9 @@ the smoke body fails.
 Inside T3 Code (or Cursor) doctor can't start children itself. It prints the payloads and exits 4:
 
 ```json
-{"smoke_run_dir": "<repo>/.sstack/runs/20261109-1200-smoke",
+{"smoke_run_dir": "<repo>/.sstack/runs/doctor/smoke-20261109-1200",
  "payloads": [{"ade": "t3", "role": "implement", "calls": [...]}, {"role": "review", ...}, {"role": "scout", ...}],
- "next": "make every call and its `record`, then: sstack-doctor --smoke --check <repo>/.sstack/runs/20261109-1200-smoke"}
+ "next": "make every call and its `record`, then: sstack-doctor --smoke --check <repo>/.sstack/runs/doctor/smoke-20261109-1200"}
 ```
 
 The agent makes every call in every payload, runs each call's `record` (see
@@ -158,18 +158,49 @@ PASS tree unchanged
 Keep the payload file outside the repo, as here; a
 file written into the tree during the run fails `tree unchanged`.
 
-`--check` accepts only a direct child of `<repo>/.sstack/runs/` named `*-smoke`. It deletes only the
-run dirs that its `smoke.json` names. Anything else is a FAIL and nothing is deleted.
+`--check` accepts only a direct child of `<repo>/.sstack/runs/doctor/` named
+`smoke-<YYYYMMDD-HHMM>[-n]`. It deletes only the run dirs inside it that its `smoke.json` names.
+Anything else is a FAIL and nothing is deleted.
 
 Out of scope: git-ignored files, and stray edits by a child that works in its own worktree (T3
 `implement` runs with `isolation = "worktree"`).
+
+## Prune old runs
+
+```
+sstack-doctor --prune-runs <days> [--yes]
+```
+
+Lists the top-level runs under `.sstack/runs/` older than `<days>`, one repo-relative path per line,
+and deletes nothing; with `--yes` it removes each listed run. Age is the newest mtime of any file in
+the run folder. A run whose `progress.md` has no `done:` line is unfinished and kept;
+`index.jsonl`, `reflect/` and `doctor/` are never candidates.
+
+```sh
+mkdir -p .sstack/runs/old-task .sstack/runs/open-task
+printf 'step 1\ndone: https://example.invalid/pr/1\n' > .sstack/runs/old-task/progress.md
+printf 'step 1\n' > .sstack/runs/open-task/progress.md
+touch -t 202001010000 .sstack/runs/old-task/progress.md .sstack/runs/open-task/progress.md
+sstack-doctor --prune-runs 1
+sstack-doctor --prune-runs 1 --yes
+ls .sstack/runs/
+```
+
+Expected: the first call prints `old-task`, the second deletes it, and `open-task` stays because its
+`progress.md` has no `done:` line:
+
+```text
+# expect
+.sstack/runs/old-task
+open-task
+```
 
 ## Exit codes
 
 | code | meaning |
 |---|---|
-| 0 | every check PASS |
-| 1 | any FAIL, or `--smoke` outside a git repo |
+| 0 | every check PASS; `--prune-runs` listed (and with `--yes` deleted) its runs |
+| 1 | any FAIL, or `--smoke` / `--prune-runs` outside a git repo |
 | 4 | `--smoke` in a tool ADE: payloads printed; make the calls, then `--smoke --check <dir>` |
 
 ## How to change this
