@@ -131,6 +131,7 @@ class Issue6Route(DispatchBase):
 
     def test_route_json_local(self):
         self.glob_cfg(FAKE)
+        (self.home / ".sstack/roles/investigate.toml").unlink()  # the template routes it
         code, out, _ = self.run_main("investigate", "--route")
         self.assertEqual((code, json.loads(out)["calls"]), (3, []))
 

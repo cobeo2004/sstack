@@ -12,11 +12,12 @@ import time
 from pathlib import Path
 
 import sstack_ade as A
+import sstack_configcli as CC
 import sstack_dispatch as D
 import sstack_skills as S
 import sstack_workflow as W
-from sstack_config import (READONLY_ROLES, ConfigError, ades, git_root, layers, legacy, load, resolve,
-                           steps as step_folders, variants)
+from sstack_config import (READONLY_ROLES, ConfigError, ades, git_root, home_dir, layers, legacy, load,
+                           require_profile, resolve, steps as step_folders, variants)
 import sstack_route as R
 
 DISPATCH = Path(__file__).resolve().parent.parent / "bin" / "sstack-dispatch"
@@ -27,6 +28,14 @@ class Warn(Exception):
     """Advice a static check prints as WARN: the exit code does not change."""
 
 # ---- static checks ---------------------------------------------------------------------------
+
+def _profile(root):
+    """FAIL without ~/.sstack/config.toml; WARN on template files or config.toml keys home lacks."""
+    require_profile(root, [("home", home_dir())])
+    if items := CC.drift(home_dir()):
+        raise Warn(f"drift: {', '.join(items)}; run sstack-config sync")
+    return f"{home_dir()} has every template file and key"
+
 
 def _loads(root):
     load(root), ades(root)
@@ -43,6 +52,7 @@ def _legacy(root):
 def _roles(root):
     cfg = load(root)
     out = [f"{r} → {', '.join(A.key(m) for m in resolve(cfg, r) or []) or 'local'}" for r in sorted(cfg.get("role", {}))]
+    out += [f"{r} → local (no roles/{r}.toml)" for r in sorted((READONLY_ROLES | {"implement"}) - set(cfg.get("role", {})))]
     out += [f"{v['id']} → {', '.join(A.key({**m, 'variant': None}) for m in R.variant_members(cfg, v)) or 'local'}"
             f" ({v['layer']})" for v in variants(root)]
     return "; ".join(out) or "no roles"
@@ -230,7 +240,7 @@ def _overnight(root):
     return "merge never"
 
 
-CHECKS = [("config loads", _loads), ("no legacy files", _legacy), ("roles resolve", _roles),
+CHECKS = [("profile", _profile), ("config loads", _loads), ("no legacy files", _legacy), ("roles resolve", _roles),
           ("stage variants", _variants), ("workflow", _workflow), ("overnight", _overnight),
           ("harness CLIs", _clis), ("active ADE", _ade), ("hooks executable", _hooks),
           ("entry pointers", _pointers),

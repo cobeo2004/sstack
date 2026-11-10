@@ -208,12 +208,11 @@ See [docs/guide/dashboard.md](docs/guide/dashboard.md).
 
 ## Configuration
 
-Config is split into one file per thing, in four layers. A later layer wins:
+Config is split into one file per thing, in three layers. A later layer wins:
 
 | Layer | Dir |
 |---|---|
-| defaults | [`<sstack>/defaults/`](defaults/) (built-in; don't edit) |
-| home | `~/.sstack/` (or `$SSTACK_HOME`) |
+| home | `~/.sstack/` (or `$SSTACK_HOME`): your profile, copied from the template [`<sstack>/defaults/`](defaults/) by `sstack-config sync` |
 | repo | `<repo>/.sstack/` |
 | local | `<repo>/.sstack/local/` (personal, git-ignored) |
 

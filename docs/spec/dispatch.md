@@ -293,10 +293,10 @@ Panel index (`bin/sstack-reflect-hook` parses `: exit 0 → (.+)$`):
 `sstack-dispatch ade` prints the active adapter:
 
 ```json
-{"name": "t3", "why": "env T3CODE_THREAD_ID", "layer": "defaults",
+{"name": "t3", "why": "env T3CODE_THREAD_ID", "layer": "home",
  "delegate": "tool delegate_task", "readonly": "instructed",
  "browser": "tool: preview_* tools (see t3.md)", "device": "tool: …", "capture": "tool: …",
- "note": "<sstack>/defaults/ades/t3.md"}
+ "note": "~/.sstack/ades/t3.md"}
 ```
 
 No ADE → `{"name": null, "why": "no adapter detected", …}` with the other fields null.

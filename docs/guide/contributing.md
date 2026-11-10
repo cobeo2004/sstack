@@ -13,6 +13,7 @@ Every block on this page assumes sstack's commands are on `PATH`, as after
 
 ```sh
 export PATH="$HOME/sstack/bin:$PATH"   # where getting-started.md cloned sstack
+sstack-config sync >/dev/null          # your ~/.sstack profile, as sstack-install creates it
 ```
 
 ## Repo layout
@@ -21,7 +22,7 @@ export PATH="$HOME/sstack/bin:$PATH"   # where getting-started.md cloned sstack
 |---|---|
 | `bin/` | entry points: `sstack-dispatch`, `sstack-config`, `sstack-doctor`, `sstack-ui`, `sstack-lessons`, `sstack-worktree`, `sstack-install`, `sstack-gate`, `sstack-pr-media`, `sstack-hook`, `sstack-reflect-hook`, `sstack-workflow` |
 | `lib/` | the code behind them: `sstack_config.py` (loader), `sstack_configcli.py`, `sstack_ade.py`, `sstack_dispatch.py`, `sstack_route.py`, `sstack_gate.py`, `sstack_doctor.py`, `sstack_ui.py`, `sstack_lessons.py`, `sstack_worktree.py`, `sstack_workflow.py` |
-| `defaults/` | the built-in config layer: `config.toml`, `harnesses/`, `roles/`, `ades/`, `steps/` (the built-in workflow, docs/spec/workflow.md); `hooks/pi-sstack.ts` (pi hook extension) |
+| `defaults/` | the profile template `sstack-config sync` copies into `~/.sstack`: `config.toml`, `harnesses/`, `roles/`, `ades/`, `steps/` (the built-in workflow, docs/spec/workflow.md); `hooks/pi-sstack.ts` (pi hook extension) |
 | `skills/<name>/SKILL.md` | the 15 skills; `skills/sstack/` is the router |
 | `ui/` | dashboard front end (`index.html`, `app.js`, `pages/*.js`, `tokens.css`) |
 | `docs/spec/` | contracts: `config.md`, `workflow.md`, `gate.md`, `ade.md`, `dispatch.md`, `doctor.md`, `hooks.md`, `ui.md` |
@@ -88,7 +89,7 @@ Block conventions:
 
 ```sh
 sstack-doctor                              # expected exit 0 (the default)
-sstack-dispatch plan --brief /dev/null --report /dev/null   # exit 3
+sstack-dispatch triage --brief /dev/null --report /dev/null   # exit 3
 git clone https://example.invalid/x.git    # needs: network (not run)
 ```
 

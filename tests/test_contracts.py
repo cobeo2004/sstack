@@ -25,7 +25,7 @@ class ConfigCases(TempEnv):
         a primary checkout and a linked worktree of it. Returns the root to load."""
         os.environ["SSTACK_HOME"] = str(self.home / ".sstack")
         if (case / "home").is_dir():
-            shutil.copytree(case / "home", self.home / ".sstack")
+            self.profile(self.home / ".sstack", case / "home")
         if (case / "repo").is_dir():
             shutil.copytree(case / "repo", self.root, dirs_exist_ok=True)
         if not (case / "primary").is_dir():
@@ -59,7 +59,7 @@ class ConfigCases(TempEnv):
                     self.assertEqual(C.load(root), want)
 
     def test_example_equivalent_keeps_old_example(self):
-        os.environ["SSTACK_HOME"] = str(EXAMPLE)
+        os.environ["SSTACK_HOME"] = str(self.profile(self.home / "example", EXAMPLE))
         cfg = C.load(None)
         self.assertEqual(sorted(cfg["tier"]), ["cheap", "standard", "strong"])
         self.assertEqual(cfg["role"]["implement"]["model"], "opencode-go/deepseek-v4.1-flash")
@@ -78,7 +78,8 @@ class AdeCases(TempEnv):
         for name in ADE_CASES:
             with self.subTest(name):
                 d, want = self.case(name)
-                with mock.patch.dict(os.environ, {"SSTACK_HOME": str(d / "home")}):
+                home = self.profile(self.home / name, d / "home" if (d / "home").is_dir() else None)
+                with mock.patch.dict(os.environ, {"SSTACK_HOME": str(home)}):
                     got = C.ades(None)
                 self.assertEqual([(a["name"], a["layer"]) for a in got], [tuple(x) for x in want["order"]])
                 for a in got:

@@ -111,6 +111,14 @@
       "harness": "codex",
       "model": "primary-local"
     },
+    "investigate": {
+      "harness": "claude",
+      "model": "sonnet"
+    },
+    "plan": {
+      "harness": "claude",
+      "model": "opus"
+    },
     "review": {
       "mode": "auto",
       "panel": [

@@ -140,6 +140,14 @@
     "scout": {
       "harness": "claude",
       "model": "haiku"
+    },
+    "investigate": {
+      "harness": "claude",
+      "model": "sonnet"
+    },
+    "plan": {
+      "harness": "claude",
+      "model": "opus"
     }
   },
   "skills": {

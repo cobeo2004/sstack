@@ -123,6 +123,14 @@
       "harness": "pi",
       "model": "opencode-go/deepseek-v4.1-flash"
     },
+    "investigate": {
+      "harness": "claude",
+      "model": "sonnet"
+    },
+    "plan": {
+      "harness": "claude",
+      "model": "opus"
+    },
     "review": {
       "effort": "low",
       "harness": "fake",

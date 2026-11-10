@@ -5,6 +5,10 @@ REPO = Path(__file__).resolve().parent.parent
 FIXTURES = REPO / "tests" / "fixtures"
 EXAMPLE = FIXTURES / "config" / "example-equivalent" / "home"  # the old single-file example, split
 sys.path.insert(0, str(REPO / "lib"))
+# Tests point HOME at a temp dir, so the user's git identity is gone; CI hosts can't guess one.
+for _k, _v in (("GIT_AUTHOR_NAME", "t"), ("GIT_AUTHOR_EMAIL", "t@t"),
+               ("GIT_COMMITTER_NAME", "t"), ("GIT_COMMITTER_EMAIL", "t@t")):
+    os.environ.setdefault(_k, _v)
 
 _HEADER = re.compile(r"^\[([A-Za-z0-9_.-]+)\]\s*(#.*)?$")
 _SPLIT = {"harness": "harnesses", "role": "roles", "tier": "tiers"}
@@ -44,9 +48,17 @@ class TempEnv(unittest.TestCase):
         self.home.mkdir()
         self.root.mkdir()
         subprocess.run(["git", "init", "-q", str(self.root)], check=True)
-        self._old = {k: os.environ.get(k) for k in ("HOME", "SSTACK_HOME")}
+        self._old = {k: os.environ.get(k) for k in ("HOME", "SSTACK_HOME", "PATH")}
         os.environ["HOME"] = str(self.home)
+        # The template routes investigate and plan to claude; a stub keeps doctor's CLI check
+        # independent of whether this host has claude installed.
+        stub = base / "stub-bin" / "claude"
+        stub.parent.mkdir()
+        stub.write_text("#!/bin/sh\nexit 0\n")
+        stub.chmod(0o755)
+        os.environ["PATH"] = f"{stub.parent}{os.pathsep}{os.environ.get('PATH', '')}"
         os.environ.pop("SSTACK_HOME", None)
+        self.profile(self.home / ".sstack")  # as sstack-install does
 
     def tearDown(self):
         for k, v in self._old.items():
@@ -55,6 +67,17 @@ class TempEnv(unittest.TestCase):
             else:
                 os.environ[k] = v
         self._tmp.cleanup()
+
+    def profile(self, dest: Path, overlay: Path | None = None) -> Path:
+        """A synced home profile at `dest`: `overlay` copied in first, then the template fills
+        only what it lacks, so an overrides-only fixture loads as it did over the defaults layer."""
+        import contextlib, io
+        import sstack_configcli
+        if overlay is not None:
+            shutil.copytree(overlay, dest, dirs_exist_ok=True)
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            sstack_configcli.sync(dest)  # a legacy or broken config.toml is left for the test to see
+        return dest
 
     def write(self, rel_base: Path, rel: str, text: str) -> Path:
         p = rel_base / rel
@@ -72,7 +95,10 @@ class TempEnv(unittest.TestCase):
         return layer / "config.toml" if "config.toml" in files else written[0]
 
     def glob_cfg(self, text):
-        return self.layer_cfg(self.home / ".sstack", text)
+        """Home's config is `text` over the synced template (the old defaults-under-home merge)."""
+        p = self.layer_cfg(self.home / ".sstack", text)
+        self.profile(self.home / ".sstack")
+        return p
 
     def repo_cfg(self, text):
         return self.layer_cfg(self.root / ".sstack", text)
@@ -82,4 +108,4 @@ class TempEnv(unittest.TestCase):
 
     def example(self):
         """The home layer equivalent to the old single-file example config."""
-        shutil.copytree(EXAMPLE, self.home / ".sstack", dirs_exist_ok=True)
+        self.profile(self.home / ".sstack", EXAMPLE)

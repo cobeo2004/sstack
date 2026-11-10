@@ -16,11 +16,13 @@ Every block on this page assumes sstack's commands are on `PATH`, as after
 
 ```sh
 export PATH="$HOME/sstack/bin:$PATH"   # where getting-started.md cloned sstack
+sstack-config sync >/dev/null          # your ~/.sstack profile, as sstack-install creates it
 ```
 
 ## Built-in adapters
 
-They live in `<sstack>/defaults/ades/`.
+They ship in the template `<sstack>/defaults/ades/`; `sstack-config sync` copies the `.toml` and
+`.md` files into `~/.sstack/ades/`, and a `.hook` resolves from the template.
 
 | name | detected by | delegate | read-only | browser / device / capture |
 |---|---|---|---|---|
@@ -42,8 +44,8 @@ The first rule that applies picks the ADE:
 2. config `ade = "<name>"` or `ade = "none"` in `config.toml` (forces, even an adapter with
    `auto = false`);
 3. `ade = "auto"` (the default): walk the adapters in order and take the first match. Order: the
-   `local` layer, then `repo`, then `home` (alphabetical within each), then `defaults`
-   (alphabetical). Adapters with `auto = false` are skipped. A match is any `[detect] env` variable
+   `local` layer, then `repo`, then `home`; within a layer your own adapters alphabetically, then
+   the built-ins (alphabetical). Adapters with `auto = false` are skipped. A match is any `[detect] env` variable
    being set, or `[detect] hook = true` and `<hook> detect` exiting 0.
 
 No match means no ADE: delegation runs the harness headless. A user `ades/t3.toml` replaces the
@@ -76,13 +78,13 @@ Expected, in order, all exit 0 (`<sstack>` is where sstack is cloned):
 {
   "name": "t3",
   "why": "env T3CODE_THREAD_ID",
-  "layer": "defaults",
+  "layer": "home",
   "delegate": "tool delegate_task",
   "readonly": "instructed",
   "browser": "tool: preview_* tools (see t3.md)",
   "device": "tool: device_* tools (see t3.md)",
   "capture": "tool: preview_recording_* tools (see t3.md)",
-  "note": "<sstack>/defaults/ades/t3.md"
+  "note": "<home>/.sstack/ades/t3.md"
 }
 {
   "name": null,
@@ -98,13 +100,13 @@ Expected, in order, all exit 0 (`<sstack>` is where sstack is cloned):
 {
   "name": "cursor",
   "why": "SSTACK_ADE=cursor",
-  "layer": "defaults",
+  "layer": "home",
   "delegate": "tool Task",
   "readonly": "instructed",
   "browser": "tool: Browser subagent (see cursor.md)",
   "device": "none",
   "capture": "none",
-  "note": "<sstack>/defaults/ades/cursor.md"
+  "note": "<home>/.sstack/ades/cursor.md"
 }
 ```
 

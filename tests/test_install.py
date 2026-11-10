@@ -9,9 +9,12 @@ MARK = "For engineering tasks, start with the sstack skill. <!-- sstack -->"
 class InstallTests(TempEnv):
     def setUp(self):
         super().setUp()
+        shutil.rmtree(self.home / ".sstack")  # a fresh machine: install creates the profile
         self.src = self.root / "sstack"
         (self.src / "bin").mkdir(parents=True)
         shutil.copy(REPO / "bin/sstack-install", self.src / "bin")
+        for d in ("lib", "defaults"):
+            (self.src / d).symlink_to(REPO / d)
         for s in ("sstack", "work"):
             (self.src / "skills" / s).mkdir(parents=True)
             (self.src / "skills" / s / "SKILL.md").write_text(f"---\nname: {s}\n---\n")
@@ -39,7 +42,21 @@ class InstallTests(TempEnv):
         self.assertFalse((self.home / ".agents").exists())
         self.assertFalse((self.home / ".cursor").exists())
         self.assertTrue((self.home / ".sstack").is_dir())
-        self.assertFalse((self.home / ".sstack/config.toml").exists())
+        self.assertEqual((self.home / ".sstack/config.toml").read_text(), (REPO / "defaults/config.toml").read_text())
+        self.assertTrue((self.home / ".sstack/roles/review.toml").is_file())
+        self.assertFalse((self.home / ".sstack/steps/gate/run.sh").exists())  # code stays in the template
+
+    def test_profile_is_never_overwritten_and_dry_run_writes_nothing(self):
+        out = self.install("--dry-run")
+        self.assertIn("would copy config.toml", out)
+        self.assertFalse((self.home / ".sstack").exists())
+        self.install()
+        pi = self.home / ".sstack/harnesses/pi.toml"
+        pi.write_text(pi.read_text() + "# mine\n")
+        before = pi.read_bytes()
+        out = self.install()
+        self.assertEqual(pi.read_bytes(), before)
+        self.assertIn("is in sync with", out)
 
     def test_clash_backed_up(self):
         out = self.install()

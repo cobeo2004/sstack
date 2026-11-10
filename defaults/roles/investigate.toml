@@ -1,0 +1,3 @@
+harness = "claude"
+model = "sonnet"
+# skills = []   # skill names every child of this role must use (none by default)

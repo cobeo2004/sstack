@@ -46,7 +46,7 @@ with neither is **inline**: the orchestrator runs it itself, as `pr` ("open the 
 role steps carry no `brief.md` — the orchestrator writes the task's brief, as before — so their
 `role` key is what makes them role steps.
 
-A step that does not ship in `defaults/steps/` (a custom step) needs exactly one of `brief.md`
+A step that does not ship in the template `defaults/steps/` (a custom step) needs exactly one of `brief.md`
 (plus `role`) or `run.sh`: that is a doctor FAIL, as is naming no `role` for a `brief.md`.
 
 ## Order
@@ -106,7 +106,7 @@ key and file, plus `disabled: …` for steps dropped by `enabled = false`. `--js
 {"chain": ["recon", "…"],
  "steps": {"recon": {"role": "investigate", "gate": true, "on_fail": null, "max_loops": 2,
                      "max_agents": 3, "min_score": null, "kind": "role", "brief": null, "run": null,
-                     "source": {"after": "defaults", "role": "defaults"}}}}
+                     "source": {"after": "home", "role": "home"}}}}
 ```
 
 `status` prints `at: <current step>` and one line per step with its status, loops and score.
@@ -181,7 +181,7 @@ stores `final` as the step's `score`, and `patch`: sha256 of the working tree's 
 steps(root) -> {name: {"spec": dict, "source": {key or file: layer}, "brief": Path | None,
                        "run": Path | None, "builtin": bool}}
 # steps/<name>/ of every layer; step.toml merged per key, brief.md and run.sh whole from the nearest
-# layer, builtin = ships in defaults/steps/. Read here, never in load(): load() output is unchanged.
+# layer (run.sh: else the template's), builtin = ships in the template's steps/. Read here, never in load(): load() output is unchanged.
 source(root, "steps", "<name>/brief.md") -> (layer, path) | None   # also step.toml, run.sh
 resolved(root) -> {"chain": [name], "steps": {name: {…show --json…}}}
 # the resolved chain and its steps, with `rules.loop_guard` applied as the default max_loops

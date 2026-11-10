@@ -14,6 +14,7 @@ Every block on this page assumes sstack's commands are on `PATH`, as after
 
 ```sh
 export PATH="$HOME/sstack/bin:$PATH"   # where getting-started.md cloned sstack
+sstack-config sync >/dev/null          # your ~/.sstack profile, as sstack-install creates it
 ```
 
 The repo must also be registered in `~/.sstack/repos.txt`; `setup` does that. An unregistered repo

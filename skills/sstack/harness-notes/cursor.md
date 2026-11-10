@@ -12,7 +12,7 @@
 | end-of-session hook | `sessionEnd` in `~/.cursor/hooks.json` → `<sstack>/bin/sstack-hook session-end --harness cursor`; no transcript → run `reflect` by hand (the installer prints the snippet) |
 
 - Headless child: `cursor-agent -p --force --model <m>`; read-only roles use
-  `--mode plan` (set in `<sstack>/defaults/harnesses/cursor.toml`).
+  `--mode plan` (set in `~/.sstack/harnesses/cursor.toml`, synced from the template).
 - Skills load from `~/.cursor/skills/` (`sstack-install` links it if it exists).
 - Capture a browser or device still/video: the active ADE's note, else
   [testing.md § Capture with the shell](../../work/testing.md#capture-with-the-shell).

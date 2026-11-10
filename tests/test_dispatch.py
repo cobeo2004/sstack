@@ -113,6 +113,7 @@ class DispatchTests(DispatchBase):
 
     def test_unconfigured_role_exit_3(self):
         self.example()
+        (self.home / ".sstack/roles/investigate.toml").unlink()  # a role with no file in any layer
         code, out, _ = self.run_main("investigate", "--brief", self.brief(), "--report", str(self.report()))
         self.assertEqual((code, out.strip()), (3, "local"))
 
@@ -381,7 +382,7 @@ class AnswerKeyShell(TempEnv):
     def test_plain_dispatch_in_t3_exits_4(self):
         import subprocess
         calls = self.root.parent / "calls.log"
-        env = {**NO_T3, "HOME": str(self.home), "SSTACK_HOME": str(FIXTURES / "config/example-equivalent/home"),
+        env = {**NO_T3, "HOME": str(self.home), "SSTACK_HOME": str(self.profile(self.home / "example", FIXTURES / "config/example-equivalent/home")),
                "T3CODE_THREAD_ID": "x", "PATH": f"{FAKES}:{os.environ['PATH']}", "FAKE_CALLS_LOG": str(calls)}
         r = subprocess.run([str(REPO / "bin/sstack-dispatch"), "scout", "--brief", "b.md", "--report", "r.md"],
                            cwd=self.root, env=env, capture_output=True, text=True)
