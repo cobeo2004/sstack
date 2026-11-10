@@ -131,8 +131,16 @@ def kind(a: dict | None) -> str:
 
 
 def key(m: dict) -> str:
-    """`<harness>/<model>`; no model → `default` (index, record and run.json use the same)."""
-    return f"{m['harness']}/{m['model'] or 'default'}"
+    """`<harness>/<model>`; no model → `default`; a stage variant's member adds `#<stage>/<name>`
+    (index, record and run.json use the same)."""
+    return f"{m['harness']}/{m['model'] or 'default'}" + (f"#{m['variant']}" if m.get("variant") else "")
+
+
+def unkey(k: str) -> dict:
+    """key() back to a member dict (effort is not in the key)."""
+    hm, _, v = k.partition("#")
+    h, _, m = hm.partition("/")
+    return {"harness": h, "model": None if m == "default" else m, "effort": None, "variant": v or None}
 
 
 def fill(v, values: dict):

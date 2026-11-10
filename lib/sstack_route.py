@@ -105,6 +105,20 @@ def _hint_member(cfg: dict, h: dict) -> dict | None:
     return tier_member(cfg, h["tier"], strict=True) if "tier" in h else _member(cfg, h)
 
 
+def variant_members(cfg: dict, v: dict) -> list[dict]:
+    """A stage variant's members (its `panel`, else itself; harness/model or tier), tagged `variant`."""
+    raw = v["spec"]["panel"] if "panel" in v["spec"] else [v["spec"]]
+    return [{**m, "variant": v["id"]} for m in (_hint_member(cfg, x) for x in raw) if m]
+
+
+def matches(v: dict, files: list[str]) -> bool:
+    """A variant runs when a file matches its `paths` globs or its `kinds`; neither set → always."""
+    paths, kinds = v["spec"].get("paths"), v["spec"].get("kinds")
+    if not paths and not kinds:
+        return True
+    return any((paths and _match(f, paths)) or (kinds and _kind(f) in kinds) for f in files)
+
+
 def pick(cfg: dict, role: str, hint: str | None, files: list[str]) -> tuple[dict | None, str, list[str]]:
     """(member or None for local, route label, notes)."""
     notes: list[str] = []
@@ -152,7 +166,7 @@ def escalation(cfg: dict, member: dict, avoid: dict | None = None) -> tuple[dict
     return None
 
 
-def routes_text(cfg: dict) -> str:
+def routes_text(cfg: dict, variants: list[dict] = ()) -> str:
     fmt = lambda m: f"{m['harness']}/{m['model'] or 'default'}" if m else "local"
     out = ["tiers:"]
     out += [f"  tier.{t} → {fmt(tier_member(cfg, t))}" for t in cfg.get("tier", {})] or ["  (none: kinds off)"]
@@ -166,4 +180,8 @@ def routes_text(cfg: dict) -> str:
     for role, spec in cfg.get("role", {}).items():
         for name, h in (spec.get("hint") or {}).items():
             out.append(f"  {role}.{name}: {h.get('when', '')} → {fmt(_hint_member(cfg, h))}")
+    out.append("variants (run beside the stage default; roles/<stage>/<name>.toml):")
+    for v in variants:
+        ms = ", ".join(map(fmt, variant_members(cfg, v))) or "local"
+        out.append(f"  {v['id']}: {v['spec'].get('when', '')} → {ms} ({v['layer']})")
     return "\n".join(out) + "\n"

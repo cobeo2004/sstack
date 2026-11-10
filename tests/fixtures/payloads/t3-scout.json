@@ -3,6 +3,7 @@
   "role": "scout",
   "readonly": true,
   "run_dir": "<RUN_DIR>",
+  "max_parallel": 4,
   "calls": [
     {
       "member": "claude/haiku",

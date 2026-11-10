@@ -12,6 +12,7 @@ from sstack_worktree import primary_of
 
 DEFAULTS = Path(__file__).resolve().parent.parent / "defaults"
 READONLY_ROLES = {"scout", "investigate", "plan", "review"}
+VARIANT_STAGES = ("investigate", "plan", "review")  # stages that take roles/<stage>/<name>.toml
 WHOLE = {"role", "harness", "tier"}  # tables whose children are replaced whole
 KINDS = {"harnesses": "harness", "roles": "role", "tiers": "tier"}  # dir → load() table
 LAYOUT = ("config.toml", "project.toml", "harnesses", "roles", "tiers", "ades")
@@ -52,8 +53,9 @@ def repo_file(root: Path, name: str) -> Path:
 
 
 def _has_config(d: Path) -> bool:
-    """A file of the layout, or a layout dir holding at least one file; empty dirs don't count."""
-    return any((d / n).is_file() or ((d / n).is_dir() and any(c.is_file() for c in (d / n).iterdir()))
+    """A file of the layout, or a layout dir holding at least one file (a variant's roles/<stage>/
+    file counts); empty dirs don't count."""
+    return any((d / n).is_file() or ((d / n).is_dir() and any(c.is_file() for c in (d / n).rglob("*")))
                for n in LAYOUT + ("config.local.toml",))
 
 
@@ -157,17 +159,22 @@ def load(root: Path | None, _ls: list | None = None) -> dict:
 
 def source(root: Path | None, kind: str, name: str | None, _ls: list | None = None) -> tuple[str, Path] | None:
     """(layer, path) of the file that wins for one thing: kind = config | project | harnesses |
-    roles | tiers | ades (name = the file stem, dots allowed; ades also takes "t3.md" / "t3.hook").
+    roles | tiers | ades (name = the file stem, dots allowed; ades also takes "t3.md" / "t3.hook";
+    roles also takes a variant "<stage>/<name>" or "<stage>/<name>.md").
     Only names listed in the kind's dir match, so a name can't climb out of it."""
     found = None
+    sub, _, name = (name or "").rpartition("/")
+    if sub and (kind != "roles" or sub not in VARIANT_STAGES):
+        return None
     for layer, d in _ls or layers(root):
         if kind == "project" and layer not in ("repo", "local"):
             continue
         if kind in ("config", "project"):
             p = d / f"{kind}.toml"
         else:
-            have = {e.name for e in (d / kind).iterdir()} if (d / kind).is_dir() else set()
-            p = next((d / kind / n for n in (f"{name}.toml", name) if n in have), None)
+            where = d / kind / sub if sub else d / kind
+            have = {e.name for e in where.iterdir()} if where.is_dir() else set()
+            p = next((where / n for n in (f"{name}.toml", name) if n in have), None)
         if p is not None and p.is_file():
             found = (layer, p)
     return found
@@ -191,6 +198,22 @@ def ades(root: Path | None, _ls: list | None = None) -> list[dict]:
                         "auto": toml.get("auto", True)})
     return out
 
+
+def variants(root: Path | None, _ls: list | None = None) -> list[dict]:
+    """Stage variants (roles/<stage>/<name>.toml + .md), by stage then name. The .toml and the .md
+    each come from the nearest layer that has one; `enabled = false` there drops the variant."""
+    ls = _ls or layers(root)
+    out = []
+    for stage in VARIANT_STAGES:
+        for n in sorted({p.stem for _, d in ls for p in (d / "roles" / stage).glob("*.toml")}):
+            layer, path = source(root, "roles", f"{stage}/{n}", ls)
+            spec = _read(path)
+            if spec.get("enabled", True) is False:
+                continue
+            lens = source(root, "roles", f"{stage}/{n}.md", ls)
+            out.append({"id": f"{stage}/{n}", "stage": stage, "name": n, "layer": layer, "path": path,
+                        "spec": spec, "lens_path": lens[1] if lens else None})
+    return out
 
 
 def _member(cfg: dict, m: dict) -> dict | None:

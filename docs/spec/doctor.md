@@ -12,7 +12,8 @@ names, so a surprising WARN is a glance, not a broken config.
 |---|---|
 | config loads | `load(root)` and `ades(root)` raise nothing (every layer's `ades/*.toml` parses) |
 | no legacy files | `legacy(root) == []` (else names `sstack-config migrate`) |
-| roles resolve | `resolve()` succeeds for every role in `roles/` |
+| roles resolve | `resolve()` succeeds for every role in `roles/`; the PASS line also lists each stage variant as `<stage>/<name> → <members> (<layer>)` |
+| stage variants | no layer has a `roles/implement/` folder (FAIL: implement has no variants; use `[hint.*]`); every variant `.toml` has a `.md` lens, else `WARN stage variants: review/security has no roles/review/security.md lens (variant still runs)` |
 | harness CLIs | argv[0] of every used harness's `headless`/`headless_readonly` is on `PATH` |
 | active ADE | `sstack-dispatch ade` runs; prints name, why, delegate, capabilities, note path |
 | hooks executable | every `ades/*.hook` that `ades()` returns is executable |

@@ -3,6 +3,7 @@
   "role": "implement",
   "readonly": false,
   "run_dir": "<RUN_DIR>",
+  "max_parallel": 4,
   "calls": [
     {
       "member": "pi/opencode-go/deepseek-v4.1-flash",

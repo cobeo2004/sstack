@@ -54,12 +54,13 @@ Keys sstack reads. Every key is optional; `[delegate] kind` defaults to `"none"`
 
 sstack calls the hook once per member as `<hook> <capability>`, with the dispatch cwd, JSON on
 stdin, and env `SSTACK_HOOK_STATE` set to a per-member dir inside the run dir
-(`<run_dir>/hook.<harness>-<model slug>/`). Keep state there, never in the cwd.
+(`<run_dir>/hook.<harness>-<model slug>/`, plus `-<name>` for a stage variant's member). Keep
+state there, never in the cwd.
 
 | call | stdin | expected result |
 |---|---|---|
 | `detect` | `{}` | exit 0 = match (only with `[detect] hook = true`) |
-| `delegate` | `{"role", "readonly", "member", "brief", "report", "cwd", "title"}` | one JSON object on stdout (below) |
+| `delegate` | `{"role", "readonly", "member", "brief", "report", "cwd", "title"}`; a stage variant's member adds `"variant": "review/security"` and has its own `brief` | one JSON object on stdout (below) |
 | `wait` | `{"id"}` | exit 0 done; 10 still running; anything else failed → dispatch exit 1 |
 | `collect` | `{"id"}` | stdout is the report; exit 1 = no report → dispatch exit 1 |
 | `cancel` | `{"id"}` | called on timeout; best effort |

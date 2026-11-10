@@ -17,12 +17,12 @@ from pathlib import Path
 import sstack_ade as A
 import sstack_route as R
 import sstack_skills as S
-from sstack_config import READONLY_ROLES, ConfigError, ades, git_root, load, resolve
+from sstack_config import READONLY_ROLES, VARIANT_STAGES, ConfigError, ades, git_root, load, resolve, variants
 
 VIAS = ("auto", "headless", "local", "ade-cli")
 WARNING = "\n\nWARNING: read-only role changed the working tree:\n"
 INDEX = ".sstack/runs/index.jsonl"
-fill, key = A.fill, A.key
+fill, key, unkey = A.fill, A.key, A.unkey
 
 
 def slug(model: str | None) -> str:
@@ -33,9 +33,19 @@ def report_base(report: Path) -> str:
     return str(report)[:-3] if str(report).endswith(".md") else str(report)
 
 
-def report_path(report: Path, member: dict, n_members: int) -> Path:
-    """The member's report: `--report` itself alone, `<report_base>.<harness>-<model slug>.md` in a panel."""
-    return report if n_members == 1 else Path(f"{report_base(report)}.{member['harness']}-{slug(member['model'])}.md")
+def report_path(report: Path, member: dict, members: list[dict]) -> Path:
+    """The member's report: `--report` itself alone, `<report_base>.<harness>-<model slug>.md` in a panel.
+    A stage variant's member writes `<report_base>-<name>.md` (`…-<name>.<harness>-<model slug>.md` in
+    a variant panel); only members of the same variant (or the default) count as its panel."""
+    v = member.get("variant")
+    base = report_base(report) + (f"-{v.partition('/')[2]}" if v else "")
+    if sum(m.get("variant") == v for m in members) == 1:
+        return Path(base + ".md") if v else report
+    return Path(f"{base}.{member['harness']}-{slug(member['model'])}.md")
+
+
+def max_parallel(cfg: dict) -> int:
+    return int(cfg.get("rules", {}).get("max_parallel", 4))
 
 
 def rel(root: Path, p) -> str:
@@ -139,8 +149,10 @@ def readonly_check(root: Path, run_dir: Path, run: dict, report: Path) -> list[s
     except (OSError, ValueError):
         return []
     rb, n = run["report_base"], len(run["members"])
+    ms = [unkey(k) for k in run["members"]]
     reports = [report, root / f"{rb}.failed.md"]  # .failed.md: the escalation moved a report aside
-    reports += [root / f"{rb}.{h}-{slug(m)}.md" for h, _, m in (x.partition("/") for x in run["members"])]
+    reports += [root / f"{rb}.{m['harness']}-{slug(m['model'])}.md" for m in ms]
+    reports += [report_path(root / f"{rb}.md", m, ms) for m in ms]  # variant reports
     if run.get("panel_report"):
         reports.append(root / run["panel_report"])
     elif n == 1:
@@ -194,8 +206,11 @@ def new_run(root: Path, role: str, members: list[dict], report: Path, readonly: 
             break
         except FileExistsError:
             n += 1
+    # the panel index sits at --report for a default panel; beside it when only variants made a panel
+    plain = sum(not m.get("variant") for m in members)
+    panel = report if plain > 1 else Path(f"{report_base(report)}.panel.md") if len(members) > 1 else None
     run = {"role": role, "members": [key(m) for m in members], "report_base": rel(root, report_base(report)),
-           "panel_report": rel(root, report) if len(members) > 1 else None, "started_at": time.time(),
+           "panel_report": rel(root, panel) if panel else None, "started_at": time.time(),
            "readonly": readonly, **extra}
     write_run(d, run)
     if readonly:
@@ -216,9 +231,11 @@ def append_index(root: Path, line: dict) -> None:
 
 def index_line(root: Path, run_dir: Path, run: dict, rec: dict) -> None:
     """rec: member, exit, secs, report, ade, via, readonly_warning."""
-    h, _, m = rec["member"].partition("/")
+    hm, _, v = rec["member"].partition("#")
+    h, _, m = hm.partition("/")
     append_index(root, {"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "task": run.get("title") or f"sstack {run['role']}",
                         "role": run["role"], "ade": rec["ade"], "via": rec["via"], "harness": h, "model": m,
+                        **({"variant": v} if v else {}),
                         "exit": rec["exit"], "secs": rec["secs"], "run_dir": rel(root, run_dir),
                         "report": rel(root, rec["report"]), "route": run.get("route"),
                         "readonly_warning": rec["readonly_warning"],
@@ -239,7 +256,7 @@ def panel_index(root: Path, run_dir: Path, run: dict) -> int | None:
         except ValueError:
             continue
         if rec.get("run_dir") == rd:
-            latest[f"{rec['harness']}/{rec['model']}"] = rec
+            latest[f"{rec['harness']}/{rec['model']}" + (f"#{rec['variant']}" if rec.get("variant") else "")] = rec
     if not all(m in latest for m in run["members"]):
         return None
     out = [f"# {run['role']} panel\n"]
@@ -254,15 +271,18 @@ def panel_index(root: Path, run_dir: Path, run: dict) -> int | None:
 
 # ---- exit-4 payload ----------------------------------------------------------------------------
 
-def payload(ade: dict, role: str, members: list[dict], run_dir: str, title: str, brief: str, report: Path) -> dict:
+def payload(ade: dict, role: str, members: list[dict], run_dir: str, title: str, brief: str, report: Path,
+            cap: int, briefs: dict | None = None) -> dict:
+    """`briefs`: member key → its own brief (a stage variant's, with its lens); `cap`: max_parallel."""
     readonly = role in READONLY_ROLES
     calls = []
     for m in members:
-        rp = str(report_path(report, m, len(members)))
+        rp = str(report_path(report, m, members))
         rec = " ".join(shlex.quote(x) for x in ("sstack-dispatch", "record", role, "--report", rp, "--member", key(m)))
         rec += f" --exit {{exit}} --run-dir {shlex.quote(run_dir)}"
-        calls.append(A.tool_call(ade, role, readonly, m, title, brief, rp, rec))
-    return {"ade": ade["name"], "role": role, "readonly": readonly, "run_dir": run_dir, "calls": calls}
+        calls.append(A.tool_call(ade, role, readonly, m, title, str((briefs or {}).get(key(m), brief)), rp, rec))
+    return {"ade": ade["name"], "role": role, "readonly": readonly, "run_dir": run_dir, "max_parallel": cap,
+            "calls": calls}
 
 
 def _escalate(root: Path, run_dir: Path, run: dict, failed: dict, report: Path, code: int, cfg: dict,
@@ -336,13 +356,12 @@ def _record(a, root: Path, run_dir: Path) -> int:
                                     "secs": round(time.time() - run.get("started_at", time.time()), 1),
                                     "via": run.get("via", "auto"), "readonly_warning": warning})
     if code != 0:
-        h, _, m = a.member.partition("/")
+        failed = unkey(a.member)
         try:
             cfg = load(git_root(root))
             ade = next((x for x in ades(git_root(root)) if x["name"] == run.get("ade")), None)
             isolated = not run["readonly"] and bool(ade and ade["toml"].get("delegate", {}).get("write_args", {}).get("isolation"))
-            up = _escalate(root, run_dir, run, {"harness": h, "model": None if m == "default" else m, "effort": None},
-                           report, code, cfg, isolated) if A.kind(ade) == "tool" else None
+            up = _escalate(root, run_dir, run, failed, report, code, cfg, isolated) if A.kind(ade) == "tool" else None
         except ConfigError as e:
             print(f"sstack-dispatch record: {e}", file=sys.stderr)
             up = None
@@ -352,7 +371,7 @@ def _record(a, root: Path, run_dir: Path) -> int:
             run["brief"] = rel(root, brief)
             write_run(run_dir, run)
             print(json.dumps(payload(ade, run["role"], [up[0]], str(run_dir), run.get("title") or f"sstack {run['role']}",
-                                     str(brief), report), indent=2))
+                                     str(brief), report, max_parallel(cfg)), indent=2))
             return 4
     panel = panel_index(root, run_dir, run)
     return code if panel is None else panel
@@ -368,7 +387,7 @@ def main(argv: list[str] | None = None) -> int:
     if argv[:1] in (["routes"], ["ade"]):
         try:
             cfg = load(git_root(cwd))
-            print(R.routes_text(cfg), end="") if argv[0] == "routes" else \
+            print(R.routes_text(cfg, variants(git_root(cwd))), end="") if argv[0] == "routes" else \
                 print(json.dumps(A.describe(*A.active(git_root(cwd), cfg, os.environ)), indent=2))
         except ConfigError as e:
             print(f"sstack-dispatch: {e}", file=sys.stderr)
@@ -413,6 +432,9 @@ def main(argv: list[str] | None = None) -> int:
             members = resolve(cfg, a.role)
         else:
             members = [member] if member else None
+        vs = {}  # variant id → variant, for the ones that matched and kept a member
+        if members and a.role in VARIANT_STAGES:
+            members, vs = _add_variants(cfg, gr, a, members, files, rules)
         ade, why = A.active(gr, cfg, os.environ) if via in ("auto", "ade-cli") else (None, f"via {via}")
         # the whitelist: only via = ade-cli ever runs the adapter's [cli] (T3: a new top-level thread)
         shape = {"tool": "tool", "hook": "hook", "none": "headless"}[A.kind(ade)] if via == "auto" else \
@@ -423,7 +445,7 @@ def main(argv: list[str] | None = None) -> int:
                           root / ".sstack" / "runs" / f"{time.strftime('%Y%m%d-%H%M')}-{a.role}")
             if shape == "tool" and members:
                 p = payload(ade, a.role, members, run_dir, title,
-                            str(Path(a.brief).resolve()) if a.brief else "<BRIEF>", report)
+                            str(Path(a.brief).resolve()) if a.brief else "<BRIEF>", report, max_parallel(cfg))
             else:
                 p = {"ade": ade and ade["name"], "role": a.role, "readonly": readonly, "run_dir": run_dir,
                      "calls": [{"member": key(m), "via": shape} for m in members or []]}
@@ -480,9 +502,22 @@ def main(argv: list[str] | None = None) -> int:
         brief_p.write_text((root / run["brief"]).read_text() + S.section(found, missing))
         run.update(brief=rel(root, brief_p), skills=[n for n, _ in found], skills_missing=missing)
         write_run(run_dir, run)
+    briefs = {}  # member key → a variant's own brief: the run's brief + its skills + its lens
+    for vid, v in vs.items():
+        vms = [m for m in members if m.get("variant") == vid]
+        text = brief_p.read_text()
+        if v["spec"].get("skills"):
+            vf, vmiss = S.resolve(cfg, root, a.role, None, files, [m["harness"] for m in vms], v["spec"]["skills"])
+            text += S.section(vf, vmiss)
+        if v["lens_path"]:
+            text += f"\n\n## Lens: {vid}\n\n{v['lens_path'].read_text()}"
+        bp = run_dir / f"brief.{v['name']}.md"
+        bp.write_text(text)
+        briefs.update({key(m): bp for m in vms})
     report.parent.mkdir(parents=True, exist_ok=True)  # ADE children write the report themselves
     if shape == "tool":
-        print(json.dumps(payload(ade, a.role, members, str(run_dir), title, str(brief_p), report), indent=2))
+        print(json.dumps(payload(ade, a.role, members, str(run_dir), title, str(brief_p), report, max_parallel(cfg),
+                                 briefs), indent=2))
         return 4
 
     brief = brief_p.read_text()
@@ -492,10 +527,11 @@ def main(argv: list[str] | None = None) -> int:
         """(exit, ade used, via) for one member; one deadline across delegate → run → wait → collect."""
         if shape != "hook":
             return run_member(plans[key(m)], root, text, deadline, rp), ade_name, run["via"]
-        state = run_dir / f"hook.{m['harness']}-{slug(m['model'])}"
+        v = m.get("variant")
+        state = run_dir / (f"hook.{m['harness']}-{slug(m['model'])}" + (f"-{v.partition('/')[2]}" if v else ""))
         state.mkdir(exist_ok=True)
-        stdin = {"role": a.role, "readonly": readonly, "member": key(m), "brief": str(brief_p),
-                 "report": str(rp), "cwd": str(root), "title": title}
+        stdin = {"role": a.role, "readonly": readonly, "member": key(m), "brief": str(briefs.get(key(m), brief_p)),
+                 "report": str(rp), "cwd": str(root), "title": title, **({"variant": v} if v else {})}
         try:
             act, note = A.delegate(ade, stdin, state, os.environ, deadline)
         except A.HookTimeout:
@@ -513,7 +549,7 @@ def main(argv: list[str] | None = None) -> int:
         return A.run_async(ade, str(act["id"]), state, os.environ, deadline, rp), ade_name, run["via"]
 
     def go(m: dict, text: str) -> int:
-        rp = report_path(report, m, len(run["members"]))
+        rp = report_path(report, m, members)
         t = time.monotonic()
         try:
             code, used, how = member(m, text, t + timeout_s, rp)
@@ -543,10 +579,26 @@ def main(argv: list[str] | None = None) -> int:
         write_run(run_dir, run)
         return go(up[0], up[1])
 
-    with ThreadPoolExecutor(int(rules.get("max_parallel", 4))) as ex:
-        codes = list(ex.map(lambda m: go(m, brief), members))
+    with ThreadPoolExecutor(max_parallel(cfg)) as ex:  # variants count against the same cap
+        codes = list(ex.map(lambda m: go(m, briefs[key(m)].read_text() if key(m) in briefs else brief), members))
     panel = panel_index(root, run_dir, run)
     return panel if panel is not None else (0 if any(c == 0 for c in codes) else 1)
+
+
+def _add_variants(cfg, root, a, members, files, rules):
+    """(default members + matching variants' members, {variant id: variant}). A review's variant
+    member equal to the implementer (roles/implement.toml, as resolve() filters a review panel) is
+    dropped."""
+    impl = None
+    if a.role == "review" and rules.get("review_not_implementer", True):
+        impl = (resolve(cfg, "implement") or [None])[0]
+    vs = {}
+    for v in variants(root):
+        if v["stage"] == a.role and R.matches(v, files):
+            vms = [m for m in R.variant_members(cfg, v) if not R.same(m, impl)]
+            if vms:
+                members, vs[v["id"]] = members + vms, v
+    return members, vs
 
 
 def _review_members(cfg, a, picked, files, lines, rules):

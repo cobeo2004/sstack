@@ -114,9 +114,10 @@ Dispatch a role; never pick a model by hand.
   - `3` — the role is local: do it in this session. On exit 3, read the printed skills
     (`skills:` lines) before starting.
   - `4` — nothing started. Stdout is the payload `{ade, role, readonly, run_dir,
-    calls}`:
-    1. **Start** every call in `calls`, from that one payload: load its `tool` with
-       `load_hint`, then call it with `args` unchanged.
+    max_parallel, calls}`:
+    1. **Start** the calls in `calls`, from that one payload: load its `tool` with
+       `load_hint`, then call it with `args` unchanged. Start at most
+       `max_parallel` at once; start the next as each one is recorded.
     2. **Wait** for each child's own completion signal. Never poll.
     3. **Collect**: a read-only child usually runs in a mode that can't write files.
        If its report file is missing once it finishes, write the child's final

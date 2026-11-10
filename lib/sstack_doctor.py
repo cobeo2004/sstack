@@ -14,7 +14,8 @@ from pathlib import Path
 import sstack_ade as A
 import sstack_dispatch as D
 import sstack_skills as S
-from sstack_config import READONLY_ROLES, ConfigError, ades, git_root, legacy, load, resolve
+from sstack_config import READONLY_ROLES, ConfigError, ades, git_root, layers, legacy, load, resolve, variants
+import sstack_route as R
 
 DISPATCH = Path(__file__).resolve().parent.parent / "bin" / "sstack-dispatch"
 RUNS = ".sstack/runs/"
@@ -40,7 +41,21 @@ def _legacy(root):
 def _roles(root):
     cfg = load(root)
     out = [f"{r} → {', '.join(A.key(m) for m in resolve(cfg, r) or []) or 'local'}" for r in sorted(cfg.get("role", {}))]
+    out += [f"{v['id']} → {', '.join(A.key({**m, 'variant': None}) for m in R.variant_members(cfg, v)) or 'local'}"
+            f" ({v['layer']})" for v in variants(root)]
     return "; ".join(out) or "no roles"
+
+
+def _variants(root):
+    """Stage variants: FAIL on a roles/implement/ folder (implement routes by [hint.*]); WARN on a
+    variant .toml without its .md lens."""
+    if bad := [str(d / "roles" / "implement") for _, d in layers(root) if (d / "roles" / "implement").is_dir()]:
+        raise ConfigError(f"{', '.join(bad)}: implement has no variants; roles/implement/ is not read "
+                          "(route implement with roles/implement.toml [hint.*])")
+    vs = variants(root)
+    if bare := [v["id"] for v in vs if not v["lens_path"]]:
+        raise Warn("; ".join(f"{i} has no roles/{i}.md lens (variant still runs)" for i in bare))
+    return f"{len(vs)}, each with a lens" if vs else "none"
 
 
 def _used(cfg) -> set[str]:
@@ -126,6 +141,7 @@ def _skills(root):
 
 
 CHECKS = [("config loads", _loads), ("no legacy files", _legacy), ("roles resolve", _roles),
+          ("stage variants", _variants),
           ("harness CLIs", _clis), ("active ADE", _ade), ("hooks executable", _hooks),
           ("entry pointers", _pointers),
           ("skills resolve", _skills)]
@@ -289,9 +305,10 @@ def check(root: Path, d: Path) -> int:
         mine = [l for l in _lines(root) if _mine(root, d, l)]
         for role, members in state["roles"].items():
             report = d / f"{role}.md"
-            for m in members:
+            ms = [A.unkey(m) for m in members]
+            for m, um in zip(members, ms):
                 h, _, model = m.partition("/")
-                rp = D.report_path(report, {"harness": h, "model": None if model == "default" else model}, len(members))
+                rp = D.report_path(report, um, ms)
                 hit = [l for l in mine if l.get("harness") == h and l.get("model") == model
                        and (root / l["report"]).resolve() == rp]
                 why = ("no index line" if not hit else f"exit {hit[-1].get('exit')}" if hit[-1].get("exit") != 0 else

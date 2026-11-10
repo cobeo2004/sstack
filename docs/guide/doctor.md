@@ -31,6 +31,7 @@ Expected, exit 0:
 PASS config loads: config and ADEs parse
 PASS no legacy files: none
 PASS roles resolve: …
+PASS stage variants: …
 PASS harness CLIs: claude, codex, pi
 PASS active ADE: …
 PASS hooks executable: ok
@@ -47,7 +48,8 @@ pointers` warns when an agent's global instruction file (`~/.claude/CLAUDE.md`,
 |---|---|---|
 | `config loads` | every layer's config and every `ades/*.toml` parses | fix the TOML file the message names |
 | `no legacy files` | no old single-file config in any layer | `sstack-config migrate` ([configuration.md](configuration.md#migrate-an-old-config)) |
-| `roles resolve` | every role in `roles/` resolves to members | fix the role file; a hint naming an undefined tier is an error |
+| `roles resolve` | every role in `roles/` resolves to members; stage variants are listed as `review/security → claude/opus (repo)` | fix the role file; a hint naming an undefined tier is an error |
+| `stage variants` | no `roles/implement/` folder in any layer; every variant `.toml` has its `.md` lens (WARN, not FAIL) | move implement routing to `roles/implement.toml` `[hint.*]`; write the `.md` |
 | `harness CLIs` | argv[0] of each used harness's `headless` / `headless_readonly` is on `PATH` | install that CLI or route the role elsewhere |
 | `active ADE` | `sstack-dispatch ade` runs | fix the adapter file it names |
 | `hooks executable` | every `ades/*.hook` in use is executable | `chmod +x <hook>` |

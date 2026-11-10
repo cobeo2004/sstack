@@ -51,6 +51,25 @@ A failed single-member run is retried once, one tier up `[rules] tier_order`, an
 implementer's model for a review (`[rules] auto_escalate`). The failed report is kept as
 `<report minus .md>.failed.md`.
 
+## Stage variants
+
+`roles/<stage>/<name>.toml` adds a member to `investigate`, `plan` or `review`
+([configuration.md](configuration.md#add-a-stage-variant)). When its `paths` or `kinds` match
+the files (or it has neither), it runs beside the default, read-only, never as the implementer's
+model for a review, in the same pool of `[rules] max_parallel`. Review `mode` still picks only the
+default reviewer(s). With `--report r.md`:
+
+| member | key | report | brief |
+|---|---|---|---|
+| default | `claude/opus` | `r.md` | the brief |
+| variant `review/security` | `claude/opus#review/security` | `r-security.md` | the brief + `## Lens: review/security` + its `.md` |
+| variant panel `review/ux` | `codex/x#review/ux` | `r-ux.codex-x.md` | as above |
+
+The panel index lists every member (at `r.md` when the default is a panel, else at
+`r.panel.md`). A run with a matching variant is multi-member, so it doesn't escalate; a failed
+variant shows as `gap (no report)`. `sstack-dispatch routes` lists each variant with its `when`,
+members and layer, e.g. `review/security: auth changes → claude/opus (repo)`.
+
 ## Flags
 
 | flag | meaning |

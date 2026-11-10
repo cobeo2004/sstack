@@ -1,11 +1,12 @@
-"""Stand-in harness. argv[1] = mode: echo | empty | fail | sleep | touch <file> | canary[-wrong|-dirty|-nofile|-stray]."""
+"""Stand-in harness. argv[1] = mode: echo | empty | fail | sleep | touch <file> | canary[-wrong|-dirty|-nofile|-stray];
+any other mode echoes like `echo` (a model name such as p1 or other is just another echoing agent)."""
 import re, subprocess, sys, os, time
 from pathlib import Path
 
 mode = sys.argv[1]
 brief = sys.stdin.read()
-if mode == "echo":
-    print("REPORT\n" + brief)
+if mode == "empty":
+    pass
 elif mode == "fail":
     sys.exit(1)
 elif mode == "sleep":
@@ -32,4 +33,5 @@ elif mode.startswith("canary"):  # sstack-doctor smoke brief: write the canary f
     if mode == "canary-stray":  # a stray file under .sstack/runs/, outside every run dir
         Path(".sstack/runs/stray.txt").write_text("x\n")
     print(f"CANARY {'wrong' if mode == 'canary-wrong' else tok}")
-# empty: print nothing
+else:  # echo, and any model name without a mode of its own
+    print("REPORT\n" + brief)
