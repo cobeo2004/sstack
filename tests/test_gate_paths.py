@@ -31,6 +31,10 @@ class GatePathTests(GateTests):
         self.gated(self.gate("--run", str(run)))
         self.expect(self.verdict(run), "FAIL", "alias")
 
+    def test_verify_that_edits_a_protected_file_fails(self):
+        self.base(verify="echo changed > tests/key.txt", protected=["tests/*"], files={"tests/key.txt": "orig\n"})
+        self.gated(self.gate())
+
 
 def load_tests(loader, tests, pattern):
     return unittest.TestSuite(GatePathTests(n) for n in sorted(GatePathTests.__dict__) if n.startswith("test_"))
