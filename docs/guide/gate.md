@@ -65,7 +65,7 @@ the whole evidence check with a reason; the verdict says `MEDIA WAIVED: <reason>
 ## In `work`
 
 `work` Phase 3 runs `sstack-gate --run <run>`. A FAIL goes back to Phase 2 with the verdict file; no
-review is dispatched on a failing gate. Phase 4 rebases, then runs
+review is dispatched on a failing gate. Phase 4 rebases, re-runs the answer key (the gate runs only `verify`), then runs
 `sstack-gate --run <run> --pr` and does not ask for Gate 4 until it passes. If it prints a
 `MEDIA WAIVED` line, show that line to the user at Gate 4.
 
