@@ -99,7 +99,7 @@ class ReflectDedupeTests(TempEnv):
         self.assertEqual(len(self.briefs()), 2)
 
     def test_overlapping_session_offsets_survive(self):
-        state = self.root / ".sstack/runs/reflect-state.json"
+        state = self.root / ".sstack/runs/reflect/state.json"
         # while this hook's scout runs, another session's hook saves its offset
         self.setup_agent("NONE\nPASS", extra=f"pathlib.Path({str(state)!r}).write_text('{{\"other\": 5}}')\n")
         t = self.root / "t.jsonl"; t.write_text('{"n":1}\n')
@@ -112,9 +112,9 @@ class ReflectDedupeTests(TempEnv):
         t = self.root / "t.jsonl"; t.write_text("{}\n")
         self.hook(t, env={"T3CODE_THREAD_ID": "x"})
         self.assertEqual(len(self.briefs()), 1)
-        [report] = self.root.glob(".sstack/runs/reflect-*/scout.report.md")
+        [report] = self.root.glob(".sstack/runs/reflect/*/scout.report.md")
         self.assertIn("NONE", report.read_text())
-        self.assertEqual(json.loads((self.root / ".sstack/runs/reflect-state.json").read_text()), {"s1": 1})
+        self.assertEqual(json.loads((self.root / ".sstack/runs/reflect/state.json").read_text()), {"s1": 1})
 
     def test_auto_lesson_records_head_commit(self):
         g = ["git", "-C", str(self.root), "-c", "user.email=t@t", "-c", "user.name=t"]

@@ -119,7 +119,7 @@ class ReflectHookTests(TempEnv):
         self.assertIn("- [pending] seen=1 id=L1 | run pnpm, not npm | evidence: user said so at turn 4", text)
         self.assertNotIn("accepted", text)
         self.assertFalse((self.home / ".sstack/lessons.md").exists())  # placeholder + bad scope skipped
-        brief = next((self.root / ".sstack/runs").glob("reflect-*/scout.brief.md")).read_text()
+        brief = next((self.root / ".sstack/runs").glob("reflect/*/scout.brief.md")).read_text()
         self.assertIn("transcript.jsonl", brief)
         self.assertIn("LESSON:", brief)
 

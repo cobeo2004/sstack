@@ -11,7 +11,10 @@ token (`?t=<token>`); POST/PUT/DELETE also need `Content-Type: application/json`
 | `DELETE /api/config/<layer>/<kind>/<name>` | "reset to inherited": deletes the layer file |
 | `GET /api/config` | effective config + per thing `source()` layer (docs/spec/config.md) |
 | `GET /api/ade` | `sstack-dispatch ade` output (docs/spec/dispatch.md) |
-| `GET /api/runs` | `index.jsonl` lines grouped by `run_dir`, newest first, each with its `run.json` |
+| `GET /api/runs` | `{"runs": [{"task", "ts", "children"}]}`: index lines grouped by task (the top-level run folder), tasks newest first; each child is the old per-`run_dir` group object (`run_dir`, `lines`, `run`, `readonly_warning`, `ts`) with its `run.json`; a flat legacy run is a task with itself as its only child |
+
+A nested `run_dir` such as `.sstack/runs/<task>/dispatch/<HHMM>-<role>` belongs to task
+`.sstack/runs/<task>`; a flat `.sstack/runs/<YYYYMMDD-HHMM>-<role>` is its own task.
 
 `<layer>` is `home`, `repo` or `local`, never `defaults`. `<kind>/<name>` as in `source()`:
 `config`, `project`, `harnesses/<n>`, `roles/<n>`, `tiers/<n>`, `ades/<n>` (TOML only; hooks and

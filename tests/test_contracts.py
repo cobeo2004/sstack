@@ -156,10 +156,13 @@ class PayloadAndRunCases(TempEnv):
             self.assertEqual(set(rec), INDEX_KEYS)
             self.assertTrue(at(rec["report"]).is_file(), rec["report"])
             self.assertTrue(Path(rec["report"]).is_relative_to(rec["run_dir"]))
-            self.assertRegex(Path(rec["run_dir"]).name, rf"^\d{{8}}-\d{{4}}-{rec['role']}$")
+            self.assertRegex(rec["run_dir"], rf"^\.sstack/runs/[^/]+/dispatch/\d{{4}}-{rec['role']}$")
         self.assertTrue(any(r["readonly_warning"] for r in lines))
         dirs = {r["run_dir"] for r in lines}
-        self.assertEqual({f".sstack/runs/{d.name}" for d in RUNS.iterdir() if d.is_dir()}, dirs)
+        self.assertEqual({(Path(".sstack/runs") / p.parent.relative_to(RUNS)).as_posix()
+                          for p in RUNS.rglob("run.json")}, dirs)
+        self.assertEqual({p.name for p in RUNS.iterdir() if p.is_dir()},
+                         {Path(r["run_dir"]).parts[2] for r in lines})
         for rd in dirs:
             run = json.loads((at(rd) / "run.json").read_text())
             self.assertEqual(set(run), RUN_KEYS)

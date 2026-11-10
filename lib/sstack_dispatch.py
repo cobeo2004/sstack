@@ -157,12 +157,36 @@ def readonly_check(root: Path, run_dir: Path, run: dict, report: Path) -> list[s
     return changed
 
 
-def new_run(root: Path, role: str, members: list[dict], report: Path, readonly: bool, extra: dict) -> Path:
-    runs = root / ".sstack" / "runs"
-    runs.mkdir(parents=True, exist_ok=True)
-    stem, n = f"{time.strftime('%Y%m%d-%H%M')}-{role}", 1
+def _run_parent(root: Path, report: Path) -> tuple[Path, bool]:
+    """The dispatch parent: <report folder>/dispatch for a report strictly under runs/, else runs/."""
+    runs = (root / ".sstack" / "runs").resolve()
+    parent = report.resolve().parent
+    if parent == runs or not parent.is_relative_to(runs):
+        return runs, False
+    return parent / "dispatch", True
+
+
+def _run_candidate(parent: Path, role: str, stamp: str, n: int) -> Path:
+    return parent / (f"{stamp}-{role}" if n == 1 else f"{stamp}-{role}-{n}")
+
+
+def planned_run_dir(root: Path, role: str, report: Path) -> Path:
+    """The run dir dispatch would create, without creating anything (--route)."""
+    parent, nested = _run_parent(root, report)
+    stamp, n = time.strftime("%H%M" if nested else "%Y%m%d-%H%M"), 1
     while True:
-        d = runs / (stem if n == 1 else f"{stem}-{n}")
+        d = _run_candidate(parent, role, stamp, n)
+        if not d.exists():
+            return d
+        n += 1
+
+
+def new_run(root: Path, role: str, members: list[dict], report: Path, readonly: bool, extra: dict) -> Path:
+    parent, nested = _run_parent(root, report)
+    parent.mkdir(parents=True, exist_ok=True)
+    stamp, n = time.strftime("%H%M" if nested else "%Y%m%d-%H%M"), 1
+    while True:
+        d = _run_candidate(parent, role, stamp, n)
         try:
             d.mkdir()
             break
@@ -277,10 +301,12 @@ def record(argv: list[str]) -> int:
     ap.add_argument("--run-dir", required=True)
     a = ap.parse_args(argv)
     run_dir = Path(a.run_dir).resolve()
-    if run_dir.parent.name != "runs" or run_dir.parent.parent.name != ".sstack":
-        print(f"sstack-dispatch record: --run-dir {a.run_dir} is not a <repo>/.sstack/runs/<id> dir", file=sys.stderr)
+    ss = next((p for p in run_dir.parents if p.name == ".sstack"), None)
+    runs = ss / "runs" if ss else None
+    if runs is None or run_dir == runs or not run_dir.is_relative_to(runs):
+        print(f"sstack-dispatch record: --run-dir {a.run_dir} is not under <repo>/.sstack/runs/", file=sys.stderr)
         return 1
-    root = run_dir.parents[2]
+    root = ss.parent
     try:
         lock = open(run_dir / "run.lock", "a")
     except OSError as e:
@@ -391,7 +417,8 @@ def main(argv: list[str] | None = None) -> int:
             "ade-cli" if via == "ade-cli" else "headless"
         if a.route:
             report = Path(a.report).resolve() if a.report else Path("<REPORT>")
-            run_dir = str(root / ".sstack" / "runs" / f"{time.strftime('%Y%m%d-%H%M')}-{a.role}")
+            run_dir = str(planned_run_dir(root, a.role, report) if a.report else
+                          root / ".sstack" / "runs" / f"{time.strftime('%Y%m%d-%H%M')}-{a.role}")
             if shape == "tool" and members:
                 p = payload(ade, a.role, members, run_dir, title,
                             str(Path(a.brief).resolve()) if a.brief else "<BRIEF>", report)

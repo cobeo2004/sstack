@@ -44,7 +44,10 @@ def run(payload: dict) -> int:
         return 0
     if os.environ.get("SSTACK_REFLECT") or not cfg.get("reflect", {}).get("auto") or root is None:
         return 0
-    state_path = root / ".sstack" / "runs" / "reflect-state.json"
+    runs = root / ".sstack" / "runs"
+    state_path = runs / "reflect" / "state.json"
+    legacy_state = runs / "reflect-state.json"
+    old_state = state_path if state_path.is_file() else legacy_state
     session, src = payload.get("session_id"), payload.get("transcript_path")
     state, total, new = {}, None, None
     if session and src:
@@ -54,7 +57,7 @@ def run(payload: dict) -> int:
             lines = None  # transcript gone: point the brief at the path we were given, as before
         if lines is not None:
             try:
-                state = json.loads(state_path.read_text())
+                state = json.loads(old_state.read_text())
             except (OSError, ValueError):
                 state = {}
             start = state.get(session, 0) if isinstance(state, dict) else 0
@@ -62,8 +65,16 @@ def run(payload: dict) -> int:
             total, new = len(lines), lines[start:]
             if not new:
                 return 0  # nothing new since this session last reflected: no run dir, no dispatch
-    run_dir = root / ".sstack" / "runs" / f"reflect-{time.strftime('%Y%m%d-%H%M%S')}"
-    run_dir.mkdir(parents=True, exist_ok=True)
+    reflect = runs / "reflect"
+    reflect.mkdir(parents=True, exist_ok=True)
+    stem, n = time.strftime("%Y%m%d-%H%M%S"), 1
+    while True:
+        run_dir = reflect / (stem if n == 1 else f"{stem}-{n}")
+        try:
+            run_dir.mkdir()
+            break
+        except FileExistsError:
+            n += 1
     if new is not None:
         src = run_dir / "transcript.jsonl"
         src.write_text("".join(new))

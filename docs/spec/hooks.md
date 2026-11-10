@@ -65,8 +65,11 @@ No transcript → stderr `reflect: skipped (no transcript)`, exit 0. Otherwise r
 `bin/sstack-reflect-hook` with `{"cwd", "session_id", "transcript_path"}` on stdin
 (`session_id` = the payload's `session_id`, else the transcript path) and exits 0;
 `sstack-reflect-hook` detaches its background pass at once and does nothing unless
-`[reflect] auto = true`. `sstack-reflect-hook` also stays a Claude `SessionEnd` entry point of its
-own: it reads Claude's payload as is.
+`[reflect] auto = true`. Each pass writes `.sstack/runs/reflect/<YYYYMMDD-HHMMSS>/`; its dispatch
+nests at `dispatch/<HHMM>-<role>/`, and the per-session offsets live in
+`.sstack/runs/reflect/state.json`. When that file is missing, the old
+`.sstack/runs/reflect-state.json` is read once. `sstack-reflect-hook` also stays a Claude
+`SessionEnd` entry point of its own: it reads Claude's payload as is.
 
 ## Hook snippets
 
