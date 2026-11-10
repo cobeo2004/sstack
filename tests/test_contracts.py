@@ -131,7 +131,7 @@ class PayloadAndRunCases(TempEnv):
                                        ("t3-implement", "implement", False, ["opencode-go/deepseek-v4.1-flash"])):
             with self.subTest(name):
                 p = json.loads((FIXTURES / "payloads" / f"{name}.json").read_text())
-                self.assertEqual(set(p), {"ade", "role", "readonly", "run_dir", "calls"})
+                self.assertEqual(set(p), {"ade", "role", "readonly", "run_dir", "max_parallel", "calls"})
                 self.assertEqual((p["ade"], p["role"], p["readonly"]), ("t3", role, ro))
                 self.assertEqual([c["args"]["target"]["model"] for c in p["calls"]], models)
                 for c in p["calls"]:

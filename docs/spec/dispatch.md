@@ -35,7 +35,8 @@ Owner: `lib/sstack_dispatch.py` (B2). Fixtures: `tests/fixtures/payloads/*.json`
         run.json                      written at start (below)
         run.lock                      `record` holds an flock on it around its read-modify-write of run.json
         baseline.json                 read-only roles only (below)
-        hook.<harness>-<model slug>/  $SSTACK_HOOK_STATE for hook ADEs
+        hook.<harness>-<model slug>[-<variant name>]/  $SSTACK_HOOK_STATE for hook ADEs
+        brief.<variant name>.md       a stage variant's brief (below)
   <YYYYMMDD-HHMM>-<role>/             flat run: --report directly in runs/ or outside it (legacy shape)
   reflect/                            bin/sstack-reflect-hook
     state.json
@@ -74,10 +75,35 @@ none was used), `via` (`auto` | `headless` | `ade-cli`), `hint` (`--hint` or nul
 `escalated` (true once `record` or dispatch escalated; never twice) and `panel_written` (true once
 the panel index was written; never rewritten).
 
-`report_base` = `--report` minus `.md`; `panel_report` = `--report` when there are 2+ members, else
-null; `started_at` = Unix seconds. A member is `<harness>/<model>`, `<harness>/default` when no model
-is configured (the ADE call then omits `model`); split on the first `/` (models may hold `/`). Panel members report to `<report_base>.<harness>-<model slug>.md` (slug: every char
-outside `A-Za-z0-9.-` → `-`).
+`report_base` = `--report` minus `.md`; `panel_report` = `--report` when the default has 2+ members,
+`<report_base>.panel.md` when only stage variants made the run multi-member, else null;
+`started_at` = Unix seconds. A member is `<harness>/<model>`, `<harness>/default` when no model
+is configured (the ADE call then omits `model`); split on the first `/` (models may hold `/`); a
+stage variant's member adds `#<stage>/<name>`. Panel members report to
+`<report_base>.<harness>-<model slug>.md` (slug: every char outside `A-Za-z0-9.-` → `-`).
+
+## Stage variants
+
+Config: docs/spec/config.md (stage variants). For `investigate`, `plan` and `review`, once the
+default members are chosen (review: by `mode`, unchanged), every enabled variant whose `paths` /
+`kinds` match the files adds its members after the default's. The role stays the stage
+(`--role review`; never `review/security`), so variant members run read-only and, for review, a
+member equal to the implementer (`roles/implement.toml`'s, or the one routed for these files) is dropped (a variant left with no member is
+skipped). With no dispatched default (local), variants don't run.
+
+| | default | variant `<stage>/<name>` |
+|---|---|---|
+| member key | `<harness>/<model>` | `<harness>/<model>#<stage>/<name>` |
+| report | `--report` (default panel: `<report_base>.<h>-<m>.md`) | `<report_base>-<name>.md` (variant panel: `<report_base>-<name>.<h>-<m>.md`) |
+| brief | the run's brief | `<run_dir>/brief.variant-<name>.md` = the run's brief + the variant's `skills` + `## Lens: <stage>/<name>` and its `.md` |
+| hook state | `hook.<h>-<m slug>` | `hook.<h>-<m slug>-<name>` |
+| index line, hook stdin | no `variant` key | `"variant": "<stage>/<name>"`; `harness`/`model` stay clean |
+
+Order: default members first, then variants by stage and name. Headless runs every member on one
+pool of `rules.max_parallel` threads. Escalation is judged on the default members only: a run whose
+single default member fails escalates it once, variants or not. Variants never escalate; a failed
+variant is a gap (`gap (no report)` in the panel
+index). The panel index lists every member, variants included.
 
 `baseline.json` (read-only roles; written with `run.json`):
 
@@ -144,7 +170,7 @@ sentence). Placeholders in fixtures: `<RUN_DIR>`,
 the agent.
 
 ```json
-{"ade": "t3", "role": "scout", "readonly": true, "run_dir": "<RUN_DIR>",
+{"ade": "t3", "role": "scout", "readonly": true, "run_dir": "<RUN_DIR>", "max_parallel": 4,
  "calls": [{"member": "claude/haiku", "tool": "delegate_task",
             "load_hint": "ToolSearch select:mcp__t3-code__delegate_task",
             "args": {"title": "sstack scout", "role": "research", "interactionMode": "plan",
@@ -154,13 +180,16 @@ the agent.
 ```
 
 Unmapped model → passed through, `"note"` added to that call (fixture `t3-implement.json`).
+`max_parallel` = `rules.max_parallel` (default 4): the agent starts at most that many calls at once
+and starts the next as each is recorded. Each call carries its own report and brief (a stage
+variant's call names its `brief.variant-<name>.md`).
 `--route` prints this shape, with the nested or flat `run_dir` it would use, and creates nothing (no
 run dir, no `run.json`, no baseline, no index line).
 
 ## `record`
 
 ```
-sstack-dispatch record <role> --report <p> --member <harness>/<model> --exit <n> --run-dir <d>
+sstack-dispatch record <role> --report <p> --member <harness>/<model>[#<stage>/<name>] --exit <n> --run-dir <d>
 ```
 
 0. `<d>` must be under `<repo>/.sstack/runs/` (flat or nested) and `--member` one of `run.json`
@@ -191,7 +220,8 @@ Index line (one JSON object per line):
 ```
 
 `ts` = local time when the line is written; `ade` null when none was used; `skills` and
-`skills_missing` are added when the run has skills.
+`skills_missing` are added when the run has skills; `variant` (`"<stage>/<name>"`) only on a stage
+variant member's line.
 
 Panel index (`bin/sstack-reflect-hook` parses `: exit 0 → (.+)$`):
 

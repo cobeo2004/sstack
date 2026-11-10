@@ -82,13 +82,13 @@ holding that file wins. A user `ades/t3.toml` without `t3.md` keeps the built-in
 
 Called once per member as `<hook> <capability>`, cwd = the dispatch cwd, JSON on stdin, JSON on
 stdout. One mechanism for async; there is no start/wait/collect in TOML. Env `SSTACK_HOOK_STATE` =
-`<run_dir>/hook.<harness>-<model slug>/` (dispatch creates it, per member): hooks keep state there,
+`<run_dir>/hook.<harness>-<model slug>/` (`…-<name>/` for a stage variant's member; dispatch creates it, per member): hooks keep state there,
 never in the cwd.
 
 | call | stdin | result |
 |---|---|---|
 | `detect` | `{}` | exit 0 = match |
-| `delegate` | `{role, readonly, member, brief, report, cwd, title}` | stdout one of below |
+| `delegate` | `{role, readonly, member, brief, report, cwd, title}`, plus `variant` (`"<stage>/<name>"`) for a stage variant's member (`member` then ends `#<stage>/<name>`, `brief` is its own) | stdout one of below |
 | `wait` | `{id}` | exit 0 done · 10 still running (re-polled every `[delegate] poll_s`) · other = failed → dispatch exit 1, no collect |
 | `collect` | `{id}` | stdout = report; no report → exit 1 → dispatch exit 1 |
 | `cancel` | `{id}` | called on timeout; best effort (fake hooks touch `$SSTACK_HOOK_STATE/cancelled`) |

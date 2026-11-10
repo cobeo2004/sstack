@@ -44,8 +44,8 @@ over memory.
    where running something would answer it, run it or build a throwaway prototype.
 4. Route the recon reading: dispatch `investigate` with the recon questions as
    the brief and follow [sstack § Delegation](../sstack/SKILL.md#delegation).
-   Exit 3 → read here. Check each report's file pointers yourself; Gate 0 stays
-   here. Many independent sources → `swarm` with role `scout` instead. Use
+   Exit 3 → read here. Read every report, stage variants' `<report>-<name>.md`
+   too, and check their file pointers yourself; Gate 0 stays here. Many independent sources → `swarm` with role `scout` instead. Use
    `code-graph` (`detect-changes` / impact) to find what the change reaches.
 5. Write `recon.md` with exactly these headings, then **stop and report it**:
    - **SYSTEM STATE** — what exists today, with file paths.
@@ -79,7 +79,7 @@ over memory.
      paths) and `protected/mode` (`restore`, or `strict` when editing the test is
      forbidden); note the base commit in `progress.md`.
    The implementer's brief names the outcome, not the key.
-3. Role `plan` may draft the plan if routed; the gate stays here.
+3. Role `plan` may draft the plan if routed (merge any variant reports); the gate stays here.
 
 **Gate 1:** the harness's plan approval (see harness notes), or an explicit "yes"
 in chat where there is none, and no requirement left without a check. Nothing gets
@@ -110,7 +110,7 @@ implemented before it.
    brief. **Loop guard** (`rules.loop_guard`, default 2): the same failure twice →
    change approach once and say how; if it fails again, stop and ask.
 3. Run `review` on the diff (role `review`, ideally a different model family from
-   the implementer). Re-check every finding yourself before acting on it.
+   the implementer). Its result merges variant reports; re-check every finding.
 
 **Gate 3:** all checks green **and** every Important finding fixed or agreed out
 of lane by the user; nits listed. Report commands + results, findings + outcome.

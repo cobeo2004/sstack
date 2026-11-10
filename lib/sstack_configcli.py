@@ -529,6 +529,8 @@ def _list(root: Path | None) -> int:
             p = d / kind
             if p.is_dir():
                 names.update(x.stem for x in p.glob("*.toml"))
+                if kind == "roles":  # stage variants: roles/<stage>/<name>
+                    names.update(f"{st}/{x.stem}" for st in C.VARIANT_STAGES for x in (p / st).glob("*.toml"))
         for name in sorted(names):
             found = C.source(root, kind, name)
             if found:

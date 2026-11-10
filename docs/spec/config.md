@@ -11,6 +11,8 @@ Owner: `lib/sstack_config.py`. Fixtures: `tests/fixtures/config/<case>/` (each w
   project.toml           repo layers only (repo, local); replaced whole      — was [project]
   harnesses/<name>.toml  one harness                                         — replaced whole
   roles/<role>.toml      one role (sub-tables like [hint.ui] allowed)        — replaced whole
+  roles/<stage>/<name>.toml  a stage variant (investigate, plan, review)     — replaced whole
+  roles/<stage>/<name>.md    the variant's lens, appended to its brief       — per file
   tiers/<tier>.toml      one tier                                            — replaced whole
   ades/<name>.toml       one ADE adapter (docs/spec/ade.md)                  — replaced whole
   ades/<name>.hook       optional executable; ades/<name>.md optional note   — per file
@@ -67,6 +69,29 @@ Skill keys (R19–R21; read by `lib/sstack_skills.py`, never validated by the lo
 The built-in `skill_dirs` live in code, not in `defaults/harnesses/*.toml`, so `load()` output is
 unchanged for configs without skill keys. Fixture: `skills-keys`.
 
+## Stage variants
+
+A stage variant is an extra member for `investigate`, `plan` or `review`, next to the stage's
+default (`roles/<stage>.toml`). `roles/<stage>/<name>.toml` holds:
+
+| key | meaning |
+|---|---|
+| `harness`, `model`, `effort` or `tier` | the member, as in a role or a `[hint.*]` |
+| `panel = [{harness, model}, …]` | a variant panel instead: one member and one report each |
+| `paths = ["<glob>"]` | run when a `--files` path matches a glob (`fnmatch`, the path as passed) |
+| `kinds = ["backend"]` | run when a `--files` path has that kind (`sstack_route._kind`) |
+| `when = "<text>"` | what it is for; shown by `sstack-dispatch routes` |
+| `skills = []` | skill names added to this variant's brief only |
+| `enabled = false` | switch it off (usually in a nearer layer) |
+
+Matching: a variant runs when any file matches `paths` or `kinds`; with neither it always runs.
+Review's files are `--files`, else the detected diff. Each `.toml` and `.md` resolves per file
+through the layers, nearest wins, so a `local` `security.toml` with `enabled = false` turns off a
+repo variant, and a repo `security.md` re-lenses a home variant. The `.md` is appended to the
+variant's brief under `## Lens: <stage>/<name>`; without one the variant runs on the plain brief
+(`sstack-doctor` WARNs). There are no `implement` variants: `roles/implement/` is never read and
+`sstack-doctor` FAILs on it; route implement with `[hint.*]`. How variants run: docs/spec/dispatch.md.
+
 `[transport]` is gone: `[dispatch] via = "local"` replaces `mode = "local"`, `via = "ade-cli"`
 replaces `mode = "thread"`, `[dispatch] timeout_min` replaces transport's. `t3_provider` leaves
 harness files for the ADE file's `[providers]`; `[transport.t3]` becomes the ADE file's `[cli]`.
@@ -110,12 +135,15 @@ layers(root) -> [(name, dir)]            # [("defaults", …), ("home", …), ("
 trusted(root) -> bool                     # root or its primary is listed in ~/.sstack/repos.txt
 source(root, kind, name) -> (layer, path) | None
 # kind: config | project | harnesses | roles | tiers | ades; name = file stem, dots allowed ("ui.fast")
-# or, for ades, a file name ("t3.md" / "t3.hook"). Only names listed in that dir match (no "../").
+# or, for ades, a file name ("t3.md" / "t3.hook"); for roles, a variant "review/security" or its lens
+# "review/security.md" (stages investigate | plan | review only). Only names listed in that dir match.
 # e.g. source(root, "roles", "review") -> ("local", <root>/.sstack/local/roles/review.toml)
 legacy(root) -> [Path]                   # legacy files, any layer
 ades(root) -> [{"name", "layer", "toml", "hook_path" | None, "note_path" | None, "auto"}]
 # detection order: local, repo, home (alphabetical within each), then defaults (alphabetical);
 # a user file shadows the built-in of the same name; hook/note resolve per file (nearest layer).
+variants(root) -> [{"id", "stage", "name", "layer", "path", "spec", "lens_path" | None}]
+# enabled stage variants, by stage then name; layer/path = the winning .toml, lens_path = nearest .md
 resolve(cfg, role) -> [{"harness", "model", "effort"}] | None   # None = run locally
 # None when dispatch.via == "local", the role is unset, or every member is harness "local".
 ```
@@ -154,7 +182,7 @@ migrated, dry run, or nothing to migrate (`no legacy config`); 1 = error (bad TO
 
 ```
 sstack-config show                    # every thing: `<kind>/<name>  <layer>  <path>`, one per line
-sstack-config show <kind>/<name>      # roles/review, harnesses/pi, tiers/strong, ades/t3, ades/t3.md
+sstack-config show <kind>/<name>      # roles/review, roles/review/security, harnesses/pi, tiers/strong, ades/t3, ades/t3.md
 sstack-config show config | project
 ```
 

@@ -28,6 +28,8 @@ Every layer dir may hold any of these. A file's top level is the table itself:
 | `project.toml` | repo facts: `verify`, `protected`, `[test.<surface>]`, `graph` (repo and local layers only) | replaced whole |
 | `harnesses/<name>.toml` | `headless`, `headless_readonly` argv templates | replaced whole |
 | `roles/<role>.toml` | `harness`, `model`, `effort`, `mode`, `panel`, `[hint.<name>]` | replaced whole |
+| `roles/<stage>/<name>.toml` | a stage variant for `investigate`, `plan` or `review` ([below](#add-a-stage-variant)) | replaced whole |
+| `roles/<stage>/<name>.md` | that variant's lens | nearest layer per file |
 | `tiers/<tier>.toml` | `harness`, `model`, `effort` | replaced whole |
 | `ades/<name>.toml` | one ADE adapter ([ades.md](ades.md)) | replaced whole |
 | `ades/<name>.hook`, `ades/<name>.md` | optional hook and agent note | nearest layer per file |
@@ -163,6 +165,40 @@ headless: claude -p --model sonnet --permission-mode acceptEdits
 ```
 
 To return to the inherited file, delete the layer file (`rm .sstack/roles/implement.toml`).
+
+## Add a stage variant
+
+A stage variant is an extra member for `investigate`, `plan` or `review` that runs beside the
+stage's default, with its own lens (focus) and its own report. This adds a security reviewer for
+auth code in this repo:
+
+```sh
+mkdir -p .sstack/roles/review
+printf 'harness = "claude"\nmodel = "opus"\nwhen = "auth changes"\npaths = ["auth/*"]\n' \
+  > .sstack/roles/review/security.toml
+printf 'Look only for authentication and authorisation flaws.\n' > .sstack/roles/review/security.md
+sstack-config show roles/review/security
+```
+
+Expected:
+
+```text
+# expect
+# repo: <repo>/.sstack/roles/review/security.toml
+harness = "claude"
+model = "opus"
+when = "auth changes"
+paths = ["auth/*"]
+```
+
+Keys: the member (`harness`/`model`/`effort`, or `tier`), or `panel = [...]`; `paths` (globs on
+the files the work touches) and `kinds` (work kinds like `backend`) choose when it runs, and with neither it always
+runs; `when` is a label for the routes listing; `skills` adds skills to its brief only. The
+`.md` is appended to its brief under `## Lens: review/security`. Each file resolves on its own, so
+`printf 'enabled = false\n' > .sstack/local/roles/review/security.toml` turns it off for you only,
+and a nearer `.md` re-lenses a variant defined in your home layer. There are no implement
+variants: route implement with `[hint.*]` (`sstack-doctor` fails on a `roles/implement/` folder).
+What dispatch does with variants: [dispatch.md](dispatch.md#stage-variants).
 
 ## Turn on kind routing with tiers
 

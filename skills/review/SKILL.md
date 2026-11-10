@@ -42,11 +42,15 @@ Dispatch `review` (see [sstack § Delegation](../sstack/SKILL.md#delegation)) wi
 this brief, the report path, and `--files` for a PR or committed range
 (`git diff --name-only <base>...<head>`; the working diff is detected). Add
 `--panel` when the user asked "are we sure?". By default one reviewer runs,
-never the implementer's model. The full panel runs in parallel, one report each,
+never the implementer's model. Stage variants (`roles/review/<name>.toml`) whose
+`paths`/`kinds` match run beside it, each with its own lens and report
+`<report-base>-<name>.md`; the panel index lists every member. The full panel runs in parallel, one report each,
 only for `security`/`complex` changes, diffs over `rules.panel_diff_lines`, or
 `--panel`. Exit 3 → review here yourself with the same brief, as a separate pass
 after re-reading the diff fresh. Exit 1/2, or a member line ending in `gap (no
 report)` → report that reviewer as a gap to the user; don't treat it as "no findings".
+Read the default's report and every variant's, and merge them: a variant's
+findings are weighed like any reviewer's, and a missing variant report is a gap.
 
 ## 3. Verify every finding
 
@@ -73,7 +77,7 @@ say they came from that reviewer.
   At most 5 nits; only an `Important` blocks the caller's gate. "No verified
   findings" when none survive.
 - **Dropped** — per reviewer, how many findings were dropped and why.
-- **Gaps** — panel members that failed or timed out (from the dispatch index).
+- **Gaps** — panel members and variants that failed or timed out (from the dispatch index).
 
 ---
 Adapted from pstack `interrogate`, `thermo-nuclear-review` and `blast-radius`

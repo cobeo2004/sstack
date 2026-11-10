@@ -46,10 +46,11 @@ def find(name: str, dirs: list[Path]) -> str | None:
 
 
 def resolve(cfg: dict, root: Path, role: str, kind: str | None, files: list[str],
-            harnesses: list[str]) -> tuple[list[tuple[str, str]], list[str]]:
-    """([(name, absolute SKILL.md or doc link)], [missing names]) in union order."""
+            harnesses: list[str], only: list[str] | None = None) -> tuple[list[tuple[str, str]], list[str]]:
+    """([(name, absolute SKILL.md or doc link)], [missing names]) in union order. `only`: resolve
+    these names instead of the union (a stage variant's own `skills`)."""
     dirs, found, missing = path(cfg, root, harnesses), [], []
-    for n in names(cfg, role, kind, files):
+    for n in names(cfg, role, kind, files) if only is None else only:
         if is_doc(n):
             found.append((n, n if "://" in n or Path(n).is_absolute() else str(root / n)))
         elif (p := find(n, dirs)):
