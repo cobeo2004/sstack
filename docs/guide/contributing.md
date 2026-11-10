@@ -92,8 +92,9 @@ git clone https://example.invalid/x.git    # needs: network (not run)
 
 - A `text` block right after a command block (prose between is fine) whose first line is
   `# expect` is checked: each following line must match a stdout line, in order, after the test
-  writes paths as `<sstack>`, `<repo>` and `<home>` and run-dir stamps as `YYYYMMDD-HHMM`. `…` matches
-  anything. Any other `text` block is for readers only:
+  writes paths as `<sstack>`, `<repo>` and `<home>`, flat run-dir stamps as `YYYYMMDD-HHMM` and a
+  nested `dispatch/<HHMM>-<role>` stamp as `HHMM`. `…` matches anything. Any other `text` block is
+  for readers only:
 
 ```text
 # expect

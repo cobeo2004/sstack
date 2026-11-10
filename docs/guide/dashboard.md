@@ -35,7 +35,7 @@ the repo there. `repo=global` means no repo layers (home and defaults only).
 |---|---|---|
 | Config | every thing (`config`, `project`, `harnesses/*`, `roles/*`, `tiers/*`, `ades/*`) with its winning layer | save to `home`, `repo` or `local`; reset to inherited (deletes that layer's file) |
 | ADE | the `sstack-dispatch ade` output and the note text | nothing |
-| Runs | `index.jsonl` grouped by run dir, newest first, each with its `run.json` | nothing |
+| Runs | `index.jsonl` grouped by top-level task, newest first; each task lists its dispatch runs with their `run.json` | nothing |
 | Lessons | `.sstack/lessons.md` and `~/.sstack/lessons.md` | accept, forget |
 | Graph | code graph status | rebuild (runs `code-review-graph build` or `update`) |
 
@@ -109,7 +109,7 @@ Endpoints (all need `?t=<token>`; `PUT`, `POST` and `DELETE` also need
 | `PUT /api/config/<layer>/<kind>/<name>` | body `{"text": "<TOML>"}`; validated, then written |
 | `DELETE /api/config/<layer>/<kind>/<name>` | reset to inherited: deletes the layer file |
 | `GET /api/ade` | `sstack-dispatch ade` output plus `note_text` |
-| `GET /api/runs` | run groups: `run_dir`, its index `lines`, its `run.json` |
+| `GET /api/runs` | tasks newest first, each with its dispatch run groups: `run_dir`, its index `lines`, its `run.json` |
 | `GET /api/lessons`, `POST /api/lessons/accept`, `POST /api/lessons/forget` | lessons |
 | `GET /api/graph`, `POST /api/graph/rebuild` | code graph |
 

@@ -101,7 +101,9 @@ Dispatch a role; never pick a model by hand.
 - Write the brief from [brief-template.md](../work/brief-template.md), then run
   `<sstack>/bin/sstack-dispatch <role> --brief <file> --report <file> [--title <t>]
   [--hint <kind>] [--files <paths>...]`. Roles: `scout`, `investigate`, `plan`,
-  `implement`, `review`. Put briefs and reports under `.sstack/runs/<run-id>/`.
+  `implement`, `review`. Task scratch (briefs, reports, logs, notes) goes inside the
+  task's run folder, never a new top-level folder under `.sstack/runs/`; dispatches
+  whose `--report` sits there nest under it automatically.
 - Routing maps the kind (`--hint` or detected from `--files`) to a tier, then to a
   harness and model. `<sstack>/bin/sstack-dispatch routes` lists the routes;
   `--dry-run` prints the resolved one. Pass the kind from the plan.

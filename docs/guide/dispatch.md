@@ -177,7 +177,7 @@ Expected: `record` exits 0 and appends an index line:
 
 What `record` does, in order (under a lock on `<run_dir>/run.lock`):
 
-1. checks `--run-dir` is `<repo>/.sstack/runs/<id>` and `--member` is in its `run.json`, else exit 1;
+1. checks `--run-dir` is under `<repo>/.sstack/runs/` and `--member` is in its `run.json`, else exit 1;
 2. appends one line to `.sstack/runs/index.jsonl`;
 3. read-only role: compares the tree with `baseline.json`; changed paths go to `readonly_warning`
    and a `WARNING: read-only role changed the working tree:` block appended to the report (it warns,
@@ -232,18 +232,30 @@ those skills before doing the work yourself. Contract: docs/spec/dispatch.md (Sk
 
 ## Run dir and index
 
-Every dispatch (except `--dry-run`, `--route` and exit 3) creates one dir:
+Every dispatch (except `--dry-run`, `--route` and exit 3) creates one dir. A report under a
+task folder nests inside it; a report in `runs/` itself or outside it gets a flat run dir.
 
 ```text
 .sstack/runs/
   index.jsonl                      one JSON line per member per run, append only
-  <YYYYMMDD-HHMM>-<role>/          taken → -2, -3 … appended
-    run.json                       role, members, report_base, panel_report, started_at, readonly,
-                                   title, brief, route, ade, via, hint, no_escalate
-    run.lock                       held by `record`
-    baseline.json                  read-only roles: HEAD, git status, file hashes, index size
-    hook.<harness>-<model slug>/   $SSTACK_HOOK_STATE for hook ADEs
+  <task>/                          one folder per task: briefs, reports, progress.md
+    dispatch/
+      <HHMM>-<role>/               taken → -2, -3 … appended
+        run.json                   role, members, report_base, panel_report, started_at,
+                                   readonly, title, brief, route, ade, via, hint, no_escalate
+        run.lock                   held by `record`
+        baseline.json              read-only roles: HEAD, git status, file hashes, index size
+        hook.<harness>-<model slug>/   $SSTACK_HOOK_STATE for hook ADEs
+  <YYYYMMDD-HHMM>-<role>/          flat run: --report directly in runs/ or outside it
+    …                              the same files
 ```
+
+When `--report`'s folder is strictly below `.sstack/runs/`, the run dir is
+`<that folder>/dispatch/<HHMM>-<role>[-n]`: a report at `.sstack/runs/my-task/scout.md` nests at
+`.sstack/runs/my-task/dispatch/<HHMM>-scout`. A report directly in `runs/` or outside it (as below,
+`scout.md` in the repo root) creates the flat `<YYYYMMDD-HHMM>-<role>[-n]` as before. The `-2`,
+`-3` counter is scoped to the dispatch folder, and `record` accepts any run dir under
+`<repo>/.sstack/runs/`.
 
 Index line keys: `ts`, `task`, `role`, `ade`, `via`, `harness`, `model`, `exit`, `secs`, `run_dir`,
 `report`, `route`, `readonly_warning`, plus `skills` and `skills_missing` when the run has
@@ -253,16 +265,24 @@ skills. Paths are repo-relative when inside the repo. Add
 ```sh
 printf 'List the files.\n' > brief.md
 sstack-dispatch scout --brief brief.md --report scout.md
-ls .sstack/runs/
+mkdir -p .sstack/runs/my-task
+printf 'List the files.\n' > .sstack/runs/my-task/brief.md
+sstack-dispatch scout --brief .sstack/runs/my-task/brief.md --report .sstack/runs/my-task/scout.md
+find .sstack/runs -type d | sort
 python3 -c 'import json; [print(json.loads(l)["role"], json.loads(l)["exit"]) for l in open(".sstack/runs/index.jsonl")]'
 ```
 
-Expected: one `<YYYYMMDD-HHMM>-scout/` dir beside `index.jsonl`, and one index line:
+Expected: a flat `<YYYYMMDD-HHMM>-scout/` beside `index.jsonl`, a `my-task/dispatch/<HHMM>-scout/`,
+and one index line per run:
 
 ```text
 # expect
-YYYYMMDD-HHMM-scout
-index.jsonl
+.sstack/runs
+.sstack/runs/YYYYMMDD-HHMM-scout
+.sstack/runs/my-task
+.sstack/runs/my-task/dispatch
+.sstack/runs/my-task/dispatch/HHMM-scout
+scout 0
 scout 0
 ```
 
