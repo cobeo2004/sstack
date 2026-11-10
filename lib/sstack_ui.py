@@ -43,7 +43,7 @@ def _root(q) -> Path | None:
 
 
 def _layer_map(root: Path | None) -> dict[str, Path]:
-    return {name: d for name, d in layers(root)[1:]}
+    return dict(layers(root))
 
 
 def _check_layer(root: Path | None, layer: str) -> Path:

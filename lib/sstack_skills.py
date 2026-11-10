@@ -6,7 +6,7 @@ from pathlib import Path
 
 SSTACK_SKILLS = Path(__file__).resolve().parent.parent / "skills"
 # Harness skill dirs; a harness file's `skill_dirs` replaces its entry. Kept here, not in
-# defaults/harnesses/*.toml, so the frozen load() fixtures stay valid.
+# the template's harnesses/*.toml, so the frozen load() fixtures stay valid.
 SKILL_DIRS = {"claude": ["~/.claude/skills", "~/.agents/skills"], "codex": ["~/.codex/skills", "~/.agents/skills"],
               "cursor": ["~/.cursor/skills", "~/.agents/skills"], "pi": ["~/.pi/agent/skills", "~/.agents/skills"]}
 REPO_DIRS = (".agents/skills", ".claude/skills", ".pi/skills")

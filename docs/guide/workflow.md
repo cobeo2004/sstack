@@ -23,11 +23,12 @@ Every block on this page assumes sstack's commands are on `PATH`, as after
 
 ```sh
 export PATH="$HOME/sstack/bin:$PATH"   # where getting-started.md cloned sstack
+sstack-config sync >/dev/null          # your ~/.sstack profile, as sstack-install creates it
 ```
 
 ## The built-in chain
 
-`defaults/steps/<name>/step.toml` ships this. A repo with no `steps/` of its own
+The template `defaults/steps/<name>/step.toml` ships this (synced into `~/.sstack/steps/`). A repo with no `steps/` of its own
 runs exactly this order:
 
 | step | after | kind | gate | on_fail | max_agents | other |
@@ -66,12 +67,13 @@ runs it inline in this session, `1` means no concurrency, `N` is a cap that
 
 How the layers combine:
 
-- `step.toml` merges per key across `defaults/`, `~/.sstack/`, `.sstack/`,
+- `step.toml` merges per key across `~/.sstack/`, `.sstack/`,
   `.sstack/local/`. A repo file with only `min_score = 7` keeps the built-in `role`
   and `on_fail`.
 - `brief.md` and `run.sh` each come whole from the nearest layer that has one, so a
-  repo can replace a home layer's brief without merging its text.
-- The file present decides the kind. A step not in `defaults/steps/` needs exactly
+  repo can replace a home layer's brief without merging its text. A `run.sh` no layer
+  has comes from the template (`gate/run.sh`).
+- The file present decides the kind. A step the template does not ship needs exactly
   one of them; a role step also needs `role`.
 - A disabled step is bypassed: a step whose `after` names it takes that step's
   `after`, transitively. Disabling `plan` gives `recon implement gate review pr`.
@@ -136,7 +138,7 @@ chain: recon implement gate review pr
 review min_score: 7 from repo
 ```
 
-Only `min_score` moved: `role` and `on_fail` still say `defaults` in `source`.
+Only `min_score` moved: `role` and `on_fail` still say `home` in `source`.
 Disabling a step is the same shape — `enabled = false` in any layer's
 `steps/<name>/step.toml` — and a `local/` file can turn off what the repo committed.
 
@@ -241,7 +243,7 @@ anything.
 
 - Contract: [docs/spec/workflow.md](../spec/workflow.md) (steps, `workflow.json`, the CLI). The folder
   layout and merge rule are in [docs/spec/config.md](../spec/config.md).
-- Built-in steps: `defaults/steps/<name>/step.toml` (plus `gate/run.sh`).
+- Built-in steps: the template `defaults/steps/<name>/step.toml` (plus `gate/run.sh`).
 - Code: `lib/sstack_workflow.py` resolves and records; `bin/sstack-workflow` is the
   entry point. `lib/sstack_config.py` (`steps()`, `layers()`, `source()`) reads the
   folders.

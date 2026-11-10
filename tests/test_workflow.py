@@ -72,7 +72,7 @@ class ResolveTests(WorkflowBase):
         r = self.show()["steps"]["review"]
         self.assertEqual((r["role"], r["on_fail"], r["min_score"]), ("review", "implement", 7))
         self.assertEqual(r["source"]["min_score"], "repo")
-        self.assertEqual(r["source"]["role"], "defaults")
+        self.assertEqual(r["source"]["role"], "home")
 
     def test_local_layer_beats_repo_per_key(self):
         self.step(self.repo(), "review", "min_score = 7\nmax_agents = 1\n")
@@ -122,6 +122,16 @@ class ResolveTests(WorkflowBase):
 
 
 class DoneTests(WorkflowBase):
+    def test_profile_without_steps_points_at_sync(self):
+        import shutil
+        shutil.rmtree(self.home / ".sstack" / "steps")
+        for args in (("done", "recon", "--run", str(self.run_dir)),
+                     ("run", "gate", "--run", str(self.run_dir)),
+                     ("status", "--run", str(self.run_dir))):
+            code, _, err = self.wf(*args)
+            self.assertEqual(code, 1, args)
+            self.assertIn("sstack-config sync", err, args)
+
     def test_pass_moves_to_next(self):
         code, out, _ = self.done("implement")
         self.assertEqual(code, 0)

@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
 """Symlink sstack skills into existing skill dirs (clashes → .bak), add the marked
-line to global agent instructions, create ~/.sstack/. --dry-run, --uninstall."""
+line to global agent instructions, create the ~/.sstack/ profile from <sstack>/defaults (never
+overwriting a file). --dry-run, --uninstall."""
 import argparse
+import sys
 import time
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO / "lib"))
+import sstack_config as C  # noqa: E402
+import sstack_configcli as CC  # noqa: E402
 MARK = "For engineering tasks, start with the sstack skill. <!-- sstack -->"
 SKILL_DIRS = [".claude/skills", ".agents/skills", ".codex/skills", ".cursor/skills", ".pi/agent/skills"]
 INSTRUCTION_FILES = [".claude/CLAUDE.md", ".codex/AGENTS.md", ".pi/agent/AGENTS.md"]
@@ -82,17 +87,19 @@ def main() -> int:
             sep = "" if text.endswith("\n\n") or not text else ("\n" if text.endswith("\n") else "\n\n")
             dry or f.write_text(f"{text}{sep}{MARK}\n")
 
+    code = 0
     if not a.uninstall:
-        cfg = home / ".sstack"  # built-in defaults live in <sstack>/defaults; this layer starts empty
+        cfg = C.home_dir()  # the profile: sync copies the template's settings files and keys into it
         if not cfg.is_dir():
             say(f"create {cfg}/")
             dry or cfg.mkdir(parents=True)
+        code = CC.sync(cfg, dry_run=dry)  # prints its own error
         found = [HOOKS[d] for d in HOOKS if (home / d).is_dir()]
         if (home / ".agents/skills").is_dir() and not (home / ".codex/skills").is_dir():
             found.append(HOOKS[".codex/skills"])  # codex reads ~/.agents/skills too
         print(HEADER)
         print("\n".join(found) or f"No harness skill dir found; hook snippets: {REPO / 'skills/sstack/harness-notes'}/")
-    return 0
+    return code
 
 
 if __name__ == "__main__":

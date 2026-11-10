@@ -84,7 +84,7 @@ prints `MERGE`; exit 1 prints `HOLD: <reason>; <reason>`; exit 2 is a setup erro
 `gh` call, malformed JSON, or a repo missing from `repos.txt`) and nothing is written. The first
 stdout line is the verdict, followed by `## Summary` and, on a hold, `## HOLD`.
 
-The policy is the effective `[overnight]` table of `config.toml`, layered defaults → home → repo →
+The policy is the effective `[overnight]` table of `config.toml`, layered home → repo →
 local, with one difference from `load()`: the repo layer is `git show <base_ref()>:.sstack/config.toml`.
 When the base has no such file, the working-tree repo file is used if `HEAD` does not track
 `.sstack/config.toml`; a tracked-but-absent file is ignored. Either case is named on the verdict's

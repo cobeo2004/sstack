@@ -16,6 +16,6 @@ token (`?t=<token>`); POST/PUT/DELETE also need `Content-Type: application/json`
 A nested `run_dir` such as `.sstack/runs/<task>/dispatch/<HHMM>-<role>` belongs to task
 `.sstack/runs/<task>`; a flat `.sstack/runs/<YYYYMMDD-HHMM>-<role>` is its own task.
 
-`<layer>` is `home`, `repo` or `local`, never `defaults`. `<kind>/<name>` as in `source()`:
+`<layer>` is `home`, `repo` or `local`, never the template. `<kind>/<name>` as in `source()`:
 `config`, `project`, `harnesses/<n>`, `roles/<n>`, `tiers/<n>`, `ades/<n>` (TOML only; hooks and
 notes are never written). Names are checked against `[A-Za-z0-9_.-]+` (no `/`, no leading `.`).

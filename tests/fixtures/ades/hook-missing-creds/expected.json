@@ -1,1 +1,1 @@
-{"order": [["fake", "home"], ["conductor", "defaults"], ["cursor", "defaults"], ["orca", "defaults"], ["t3", "defaults"]], "delegate_exit": 0, "delegate": {"action": "none", "note": "FAKE_API_KEY not set; running headless"}, "falls_back_to": "headless"}
+{"order": [["fake", "home"], ["conductor", "home"], ["cursor", "home"], ["orca", "home"], ["t3", "home"]], "delegate_exit": 0, "delegate": {"action": "none", "note": "FAKE_API_KEY not set; running headless"}, "falls_back_to": "headless"}

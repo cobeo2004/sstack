@@ -108,6 +108,14 @@
       "harness": "codex",
       "model": "gpt-6.1-sol"
     },
+    "investigate": {
+      "harness": "claude",
+      "model": "sonnet"
+    },
+    "plan": {
+      "harness": "claude",
+      "model": "opus"
+    },
     "review": {
       "mode": "auto",
       "panel": [

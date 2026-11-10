@@ -1,4 +1,4 @@
-import os, tempfile
+import os, shutil, subprocess, sys, tempfile
 from pathlib import Path
 from unittest import mock
 
@@ -42,25 +42,67 @@ class ConfigTests(TempEnv):
         s = self.home / ".sstack"
         self.assertTrue((s / "harnesses/pi.toml").is_file())
         self.assertTrue((s / "roles/implement.toml").is_file())
-        self.assertNotIn("role", (s / "config.toml").read_text())
+        self.assertNotIn("[role", (s / "config.toml").read_text())
 
-    def test_defaults_are_layer_zero(self):
-        cfg = C.load(None)
+    def test_template_is_not_a_layer(self):
+        cfg = C.load(None)  # a synced profile: the template's values, read from home
         self.assertEqual(sorted(cfg["harness"]), ["claude", "codex", "cursor", "pi"])
         self.assertNotIn("t3_provider", cfg["harness"]["pi"])
         self.assertEqual(cfg["dispatch"]["via"], "auto")
         self.assertNotIn("tier", cfg)  # no tiers: kind routing stays off
-        self.assertEqual(C.layers(None)[0], ("defaults", REPO / "defaults"))
+        self.assertEqual(C.layers(None), [("home", self.home / ".sstack")])
+        self.assertNotIn(REPO / "defaults", [d for _, d in C.layers(self.root)])
+
+    def test_no_profile_is_an_error_with_the_fix(self):
+        shutil.rmtree(self.home / ".sstack")
+        with self.assertRaises(C.ConfigError) as cm:
+            C.load(self.root)
+        self.assertIn("no sstack profile at", str(cm.exception))
+        self.assertIn("sstack-config sync", str(cm.exception))
+        env = {**os.environ, "HOME": str(self.home)}
+        for cmd in (["sstack-config", "show"], ["sstack-dispatch", "routes"]):
+            with self.subTest(cmd=cmd[0]):
+                r = subprocess.run([sys.executable, str(REPO / "bin" / cmd[0]), *cmd[1:]], cwd=self.root,
+                                   env=env, capture_output=True, text=True)
+                self.assertNotEqual(r.returncode, 0)
+                self.assertIn("sstack-config sync", r.stderr)
+
+    def test_deleted_home_harness_is_gone_not_the_templates(self):
+        (self.home / ".sstack/harnesses/claude.toml").unlink()
+        cfg = C.load(self.root)
+        self.assertNotIn("claude", cfg["harness"])
+        with self.assertRaises(C.ConfigError) as cm:
+            C.resolve(cfg, "scout")
+        self.assertIn("unknown harness 'claude'", str(cm.exception))
+        self.assertIn("sstack-config sync", str(cm.exception))
+
+    def test_code_files_come_from_the_template_until_a_layer_has_one(self):
+        tpl = REPO / "defaults/steps/gate/run.sh"
+        self.assertFalse((self.home / ".sstack/steps/gate/run.sh").exists())
+        self.assertEqual(C.source(self.root, "steps", "gate/run.sh"), ("template", tpl))
+        gate = C.steps(self.root)["gate"]
+        self.assertEqual((gate["run"], gate["source"]["run"]), (tpl, "template"))
+        self.assertEqual(C.source(self.root, "ades", "orca.hook"), ("template", REPO / "defaults/ades/orca.hook"))
+        self.assertIsNone(C.source(self.root, "steps", "gate/step.toml.bak"))
+        mine = self.write(self.home, ".sstack/steps/gate/run.sh", "#!/bin/sh\n")
+        self.assertEqual(C.source(self.root, "steps", "gate/run.sh"), ("home", mine))
+        self.assertEqual(C.steps(self.root)["gate"]["source"]["run"], "home")
 
     def test_sstack_home_env(self):
-        other = self.home / "elsewhere"
+        other = self.profile(self.home / "elsewhere")
         self.write(other, "roles/scout.toml", 'harness="codex"\nmodel="x"\n')
         with mock.patch.dict(os.environ, {"SSTACK_HOME": str(other)}):
-            self.assertEqual(C.layers(None)[1], ("home", other))
+            self.assertEqual(C.layers(None)[0], ("home", other))
             self.assertEqual(C.load(None)["role"]["scout"]["model"], "x")
+
+    def test_template_routes_investigate_and_plan(self):
+        cfg = C.load(self.root)
+        self.assertEqual(C.resolve(cfg, "investigate"), [{"harness": "claude", "model": "sonnet", "effort": None}])
+        self.assertEqual(C.resolve(cfg, "plan"), [{"harness": "claude", "model": "opus", "effort": None}])
 
     def test_unlisted_role_is_local(self):
         self.glob_cfg(HARN)
+        (self.home / ".sstack/roles/investigate.toml").unlink()
         self.assertIsNone(C.resolve(C.load(self.root), "investigate"))
 
     def test_harness_local_is_local(self):
@@ -89,15 +131,15 @@ class ConfigTests(TempEnv):
             C.load(self.root)
         self.assertIn(".sstack/roles/implement.toml", str(cm.exception))
 
-    def test_no_git_root_uses_defaults_and_home(self):
+    def test_no_git_root_uses_home(self):
         self.glob_cfg('[reflect]\nauto=true\n')
         with tempfile.TemporaryDirectory() as d:
             self.assertIsNone(C.git_root(Path(d)))
         self.assertTrue(C.load(None)["reflect"]["auto"])
-        self.assertEqual([n for n, _ in C.layers(None)], ["defaults", "home"])
+        self.assertEqual([n for n, _ in C.layers(None)], ["home"])
 
     def test_layers_order(self):
-        self.assertEqual([n for n, _ in C.layers(self.root)], ["defaults", "home", "repo", "local"])
+        self.assertEqual([n for n, _ in C.layers(self.root)], ["home", "repo", "local"])
 
     def test_source(self):
         self.glob_cfg(HARN + '[role.implement]\nharness="pi"\n')
@@ -105,8 +147,9 @@ class ConfigTests(TempEnv):
         self.assertEqual(C.source(self.root, "roles", "implement"),
                          ("local", self.root / ".sstack/local/roles/implement.toml"))
         self.assertEqual(C.source(self.root, "harnesses", "pi")[0], "home")
-        self.assertEqual(C.source(self.root, "harnesses", "claude")[0], "defaults")
-        self.assertEqual(C.source(self.root, "config", None)[0], "defaults")
+        self.assertEqual(C.source(self.root, "harnesses", "claude")[0], "home")
+        self.assertEqual(C.source(self.root, "config", None)[0], "home")
+        (self.home / ".sstack/roles/plan.toml").unlink()
         self.assertIsNone(C.source(self.root, "roles", "plan"))
 
     def test_project_is_repo_only_and_whole(self):
@@ -133,7 +176,7 @@ class ConfigTests(TempEnv):
     def test_source_dotted_names_and_traversal(self):
         self.write(self.home, ".sstack/roles/ui.fast.toml", 'harness="pi"\n')
         self.assertEqual(C.source(self.root, "roles", "ui.fast"), ("home", self.home / ".sstack/roles/ui.fast.toml"))
-        self.assertEqual(C.source(self.root, "ades", "t3.md"), ("defaults", REPO / "defaults/ades/t3.md"))
+        self.assertEqual(C.source(self.root, "ades", "t3.md"), ("home", self.home / ".sstack/ades/t3.md"))
         self.assertIsNone(C.source(self.root, "roles", "../config"))
         self.assertIsNone(C.source(self.root, "ades", "../config.toml"))
 
@@ -149,10 +192,10 @@ class ConfigTests(TempEnv):
         a = C.ades(self.root)
         self.assertEqual([(x["name"], x["layer"]) for x in a],
                          [("t3", "repo"), ("acme", "home"), ("zed", "home"),
-                          ("conductor", "defaults"), ("cursor", "defaults"), ("orca", "defaults")])
+                          ("conductor", "home"), ("cursor", "home"), ("orca", "home")])
         t3 = a[0]
         self.assertEqual(t3["toml"]["detect"]["env"], ["MY_T3"])
-        self.assertEqual(t3["note_path"], REPO / "defaults/ades/t3.md")  # per-file fallback
+        self.assertEqual(t3["note_path"], self.home / ".sstack/ades/t3.md")  # per-file fallback
         self.assertEqual(a[1]["hook_path"], self.home / ".sstack/ades/acme.hook")
         self.assertIsNone(a[2]["hook_path"])
         self.assertEqual((a[1]["auto"], a[2]["auto"]), (False, True))

@@ -21,6 +21,7 @@ Every block on this page assumes sstack's commands are on `PATH`, as after
 
 ```sh
 export PATH="$HOME/sstack/bin:$PATH"   # where getting-started.md cloned sstack
+sstack-config sync >/dev/null          # your ~/.sstack profile, as sstack-install creates it
 ```
 
 The machine also needs `gh`, logged in, and the repo must be registered in

@@ -29,7 +29,8 @@ Expected: the dry run prints what it would change and writes nothing. The real r
   `~/.codex/skills`, `~/.cursor/skills`, `~/.pi/agent/skills`;
 - adds one marked line pointing at the `sstack` skill to `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`
   and `~/.pi/agent/AGENTS.md`;
-- creates an empty `~/.sstack/`;
+- creates your profile `~/.sstack/` from the template (`sstack-config sync`); it never overwrites a
+  file you have;
 - prints the optional hook snippets (post-edit check, end-of-session reflect) for each harness
   whose skill dir exists; it writes no harness settings. Each harness note in
   `skills/sstack/harness-notes/` has the same snippets.
@@ -39,6 +40,7 @@ Output (the dry run, then the real run's first line):
 ```text
 # expect
 would create <home>/.sstack/
+would copy config.toml
 Optional hooks (sstack writes no harness settings): post-edit runs `check` from .sstack/project.toml;
 end-of-session runs reflect when [reflect] auto = true in ~/.sstack/config.toml.
 No harness skill dir found; hook snippets: <sstack>/skills/sstack/harness-notes/
@@ -59,9 +61,10 @@ Expected (exit 0 when every line is `PASS`):
 
 ```text
 # expect
+PASS profile: <home>/.sstack has every template file and key
 PASS config loads: config and ADEs parse
 PASS no legacy files: none
-PASS roles resolve: implement → pi/opencode-go/deepseek-v4.1-flash; review → codex/gpt-6.1-sol, claude/opus; scout → claude/haiku
+PASS roles resolve: implement → pi/opencode-go/deepseek-v4.1-flash; investigate → claude/sonnet; plan → claude/opus; review → codex/gpt-6.1-sol, claude/opus; scout → claude/haiku
 PASS harness CLIs: claude, codex, pi
 PASS active ADE: name None, why no adapter detected, delegate None, browser None, device None, capture None, note None
 PASS hooks executable: ok
@@ -76,10 +79,11 @@ is described in [doctor.md](doctor.md).
 ```sh
 sstack-dispatch scout --brief /dev/null --report /dev/null --dry-run
 sstack-dispatch implement --brief /dev/null --report /dev/null --dry-run
-sstack-dispatch plan --brief /dev/null --report /dev/null --dry-run   # exit 3
+sstack-dispatch plan --brief /dev/null --report /dev/null --dry-run
+sstack-dispatch triage --brief /dev/null --report /dev/null --dry-run   # exit 3
 ```
 
-Expected with the built-in defaults, outside any ADE:
+Expected with the template profile, outside any ADE:
 
 ```text
 # expect
@@ -89,10 +93,14 @@ headless: claude -p --model haiku --permission-mode plan
 route: role default
 ade: None (no adapter detected)
 headless: pi -p --no-session --model opencode-go/deepseek-v4.1-flash --thinking high
+route: role default
+ade: None (no adapter detected)
+headless: claude -p --model opus --permission-mode plan
 local
 ```
 
-`local` with exit 3 is not an error: that role has no config, so your own session does the work.
+`local` with exit 3 is not an error: `triage` has no `roles/triage.toml` in any layer, so your own
+session does the work.
 
 ## Run a first dispatch
 
@@ -125,7 +133,7 @@ Edits made through the shell fire no hook, so run the same `check` in CI too. Co
 
 ## Next
 
-- [configuration.md](configuration.md): the split config and its four layers.
+- [configuration.md](configuration.md): the split config, its three layers and `sstack-config sync`.
 - [ades.md](ades.md): how sstack detects T3 Code, Orca, Conductor and Cursor.
 - [dispatch.md](dispatch.md): roles, panels, exit codes and run records.
 - [dashboard.md](dashboard.md): the local config and runs cockpit.
@@ -134,7 +142,7 @@ Edits made through the shell fire no hook, so run the same `check` in CI too. Co
 
 - Installer: `bin/sstack-install`; tested by `tests/test_install.py`. Hook snippets live in its
   `HOOKS` and in each harness note; keep both in step.
-- Built-in roles and harnesses that the output above shows: `defaults/roles/*.toml`,
+- Template roles and harnesses that the output above shows: `defaults/roles/*.toml`,
   `defaults/harnesses/*.toml` (contract: [docs/spec/config.md](../spec/config.md)).
 - If you change a default, update the expected output on this page and run
   `python3 -m unittest discover -s tests -p test_docs.py`.

@@ -17,9 +17,7 @@ class DetectionChecks(TempEnv):
         n = 0
         for case in sorted(ADES.iterdir()):
             want = json.loads((case / "expected.json").read_text())
-            sstack_home = self.home / case.name
-            if (case / "home").is_dir():
-                shutil.copytree(case / "home", sstack_home)
+            sstack_home = self.profile(self.home / case.name, case / "home" if (case / "home").is_dir() else None)
             os.environ["SSTACK_HOME"] = str(sstack_home)
             self.assertEqual([[a["name"], a["layer"]] for a in C.ades(None)], want["order"], case.name)
             for c in want.get("checks", []):
@@ -32,13 +30,14 @@ class DetectionChecks(TempEnv):
         self.assertEqual(n, 9)  # t3: 4, cursor-off: 3, user-overrides-builtin: 2
 
     def test_auto_false_never_detected_but_forceable(self):
+        self.profile(self.home / "s")
         self.write(self.home, "s/ades/x.toml", 'auto = false\n[detect]\nenv = ["X_SESSION"]\n[delegate]\nkind = "none"\n')
         os.environ["SSTACK_HOME"] = str(self.home / "s")
         self.assertEqual(A.active(None, {"ade": "auto"}, {"X_SESSION": "1"}), (None, "no adapter detected"))
         self.assertEqual(A.active(None, {"ade": "x"}, {})[0]["name"], "x")
 
     def test_hook_detect(self):
-        shutil.copytree(ADES / "hook-async/home", self.home / "s")
+        self.profile(self.home / "s", ADES / "hook-async/home")
         os.environ["SSTACK_HOME"] = str(self.home / "s")
         a, why = A.active(None, {"ade": "auto"}, {"PATH": os.environ["PATH"]})
         self.assertEqual((a["name"], why), ("fake", "hook detect"))
@@ -121,10 +120,10 @@ class AdeSubcommand(FakeCliBase):
 
     def test_t3(self):
         self.assertEqual(self.ade(T3), {
-            "name": "t3", "why": "env T3CODE_THREAD_ID", "layer": "defaults", "delegate": "tool delegate_task",
+            "name": "t3", "why": "env T3CODE_THREAD_ID", "layer": "home", "delegate": "tool delegate_task",
             "readonly": "instructed", "browser": "tool: preview_* tools (see t3.md)",
             "device": "tool: device_* tools (see t3.md)", "capture": "tool: preview_recording_* tools (see t3.md)",
-            "note": str(REPO / "defaults/ades/t3.md")})
+            "note": str(self.home / ".sstack/ades/t3.md")})
 
     def test_none(self):
         d = self.ade()

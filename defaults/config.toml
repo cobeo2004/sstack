@@ -1,4 +1,4 @@
-# sstack built-in defaults (layer 0). Do not edit: override in ~/.sstack, .sstack or .sstack/local.
+# sstack profile. Created from <sstack>/defaults by `sstack-config sync`; edit freely (docs/spec/config.md).
 # Layout and merge rules: docs/spec/config.md.
 ade = "auto"            # auto | none | <adapter name>; SSTACK_ADE overrides
 

@@ -12,7 +12,7 @@
 | end-of-session hook | `SessionEnd` hook in `~/.claude/settings.json` → `<sstack>/bin/sstack-reflect-hook` (the installer prints the snippet) |
 
 - Headless child: `claude -p --model <m>`; read-only roles use
-  `--permission-mode plan` (set in `<sstack>/defaults/harnesses/claude.toml`).
+  `--permission-mode plan` (set in `~/.sstack/harnesses/claude.toml`, synced from the template).
 - Long test/build output: redirect to a file under `.sstack/runs/<run-id>/`.
 - Capture a browser or device still/video: the active ADE's note, else
   [testing.md § Capture with the shell](../../work/testing.md#capture-with-the-shell).

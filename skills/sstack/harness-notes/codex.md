@@ -12,7 +12,7 @@
 | end-of-session hook | `SessionEnd` in `~/.codex/hooks.json` → `<sstack>/bin/sstack-hook session-end --harness codex` (the installer prints the snippet) |
 
 - Headless child: `codex exec -m <m> -c model_reasoning_effort=<e> -`; read-only
-  roles use `--sandbox read-only` (set in `<sstack>/defaults/harnesses/codex.toml`).
+  roles use `--sandbox read-only` (set in `~/.sstack/harnesses/codex.toml`, synced from the template).
 - Codex reads `~/.codex/AGENTS.md` and skills from `~/.codex/skills/`
   (`sstack-install` links both).
 - Capture a browser or device still/video: the active ADE's note, else

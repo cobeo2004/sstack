@@ -10,6 +10,8 @@ from pathlib import Path
 
 import sstack_config as C
 
+NO_STEPS = f"no steps: {C.SYNC} or add steps/<name>/ (docs/spec/workflow.md)"
+
 REPO = Path(__file__).resolve().parent.parent
 GATE = "GATE: wait for the user's yes"
 STOP = "STOP: ask user"
@@ -156,7 +158,7 @@ def advance(root: Path, run_dir: Path, wf: dict, step: str, failed: bool = False
     """Record one step's result, print what the agent does next, and exit 0, or 2 at the loop cap."""
     chain, steps = wf["chain"], wf["steps"]
     if step not in chain:
-        print(f"sstack-workflow: no step {step!r} in the chain ({' → '.join(chain) or 'no steps'})",
+        print(f"sstack-workflow: no step {step!r} in the chain ({' → '.join(chain) or NO_STEPS})",
               file=sys.stderr)
         return 1
     spec = steps[step]
@@ -228,7 +230,7 @@ def show(root: Path, as_json: bool = False) -> int:
 def status(root: Path, run_dir: Path) -> int:
     wf = resolved(root)
     if not wf["chain"]:
-        print("sstack-workflow: no steps: add steps/<name>/ (docs/spec/workflow.md)", file=sys.stderr)
+        print(f"sstack-workflow: {NO_STEPS}", file=sys.stderr)
         return 1
     st = read_state(run_dir, wf["chain"])
     print(f"at: {st['current']}")
@@ -246,7 +248,7 @@ def cmd_run(root: Path, run_dir: Path, step: str) -> int:
     SSTACK_HOME_DIR in the environment; exit 0 passes, like `done`."""
     wf = resolved(root)
     if step not in wf["steps"]:
-        print(f"sstack-workflow: no step {step!r} ({', '.join(sorted(wf['steps']))})", file=sys.stderr)
+        print(f"sstack-workflow: no step {step!r} ({', '.join(sorted(wf['steps'])) or NO_STEPS})", file=sys.stderr)
         return 1
     path = wf["steps"][step]["run"]
     if not path:

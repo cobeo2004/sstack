@@ -1,10 +1,11 @@
-"""`sstack-config migrate` and `show` (docs/spec/config.md)."""
+"""`sstack-config migrate`, `show` and `sync` (docs/spec/config.md)."""
 from __future__ import annotations
 
 import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -21,7 +22,7 @@ MODE = {"thread": "ade-cli", "auto": "auto", "headless": "headless", "local": "l
 SHOW_KINDS = ("harnesses", "roles", "tiers", "ades")
 GITIGNORE = (".sstack/local/", ".sstack/config.local.toml.bak")
 T3_PROVIDER_NOTE = "provider ids live in ades/t3.toml [providers]"
-T3_CLI_NOTE = "thread start is [cli] in defaults/ades/t3.toml; override with ades/t3.toml"
+T3_CLI_NOTE = "thread start is [cli] in ades/t3.toml (sstack-config sync copies the template's)"
 PROJECT_HOME_NOTE = "project is repo-only; dropped [project] from the home layer"
 
 
@@ -505,6 +506,8 @@ def migrate(root: Path | None, scope: str = "all", dry_run: bool = False) -> int
     if rest := C.legacy(root):
         for p in rest:
             print(f"note: still legacy: {p}")
+    elif not (C.home_dir() / "config.toml").is_file():  # migrate never needs a profile; sync makes one
+        print(f"note: no sstack profile at {C.home_dir()}: {C.SYNC}")
     else:
         try:
             C.load(root)
@@ -512,6 +515,153 @@ def migrate(root: Path | None, scope: str = "all", dry_run: bool = False) -> int
             print(f"error: {e}", file=sys.stderr)
             return 1
     print("next: ask the user, then `sstack-doctor --smoke`")
+    return 0
+
+
+PROFILE_SUFFIXES = (".toml", ".md")  # settings files; run.sh / *.hook / *.ts stay in the template
+
+
+def _template_keys(text: str) -> list[tuple[tuple[str, ...], str, bool, str]]:
+    """Each `key = value` line of the template's config.toml: (full key path, line, multiline,
+    the header line it sits under or "")."""
+    out, hdr, hdr_line, ml, depth = [], (), "", None, 0
+    for line in text.splitlines(keepends=True):
+        top = ml is None and depth == 0
+        h = _header(line) if top else None
+        ml, depth = _scan(line, ml, depth)
+        if h is not None:
+            hdr, hdr_line = h, line
+        elif top and (k := _key(line)):
+            out.append((hdr + tuple(k.split(".")), line, ml is not None or depth > 0, hdr_line))
+    return out
+
+
+def _has_path(data, path: tuple[str, ...]) -> bool:
+    for k in path:
+        if not isinstance(data, dict) or k not in data:
+            return False
+        data = data[k]
+    return True
+
+
+def _nested(path: tuple[str, ...], value) -> dict:
+    for k in reversed(path):
+        value = {k: value}
+    return value
+
+
+def _add_keys(text: str, missing: list) -> str:
+    """Insert the template's lines for `missing` keys: root keys before home's first table header,
+    table keys right after home's header for that table, else a new table at the end."""
+    lines = text.splitlines(keepends=True)
+    if lines and not lines[-1].endswith("\n"):
+        lines[-1] += "\n"
+    first, at, ml, depth = len(lines), {}, None, 0
+    for i, line in enumerate(lines):
+        h = _header(line) if ml is None and depth == 0 else None
+        ml, depth = _scan(line, ml, depth)
+        if h is not None:
+            first = min(first, i)
+            at.setdefault(h, i + 1)
+    before: dict[int, list[str]] = {}
+    tail: dict[str, list[str]] = {}
+    for path, line, _, hdr_line in missing:
+        line = line if line.endswith("\n") else line + "\n"
+        hdr = _header(hdr_line) if hdr_line else ()
+        if not hdr:
+            before.setdefault(first, []).append(line)
+        elif hdr in at:
+            before.setdefault(at[hdr], []).append(line)
+        else:
+            tail.setdefault(hdr_line if hdr_line.endswith("\n") else hdr_line + "\n", []).append(line)
+    out = []
+    for i, line in enumerate(lines):
+        out += before.get(i, [])
+        out.append(line)
+    out += before.get(len(lines), [])
+    for hdr_line, body in tail.items():
+        out += ["\n", hdr_line, *body]
+    return "".join(out)
+
+
+def _profile_plan(home: Path):
+    """What sync would do to `home`: (template files to copy, missing config.toml keys,
+    new config.toml text or None, an error for keys it can't add or None).
+    Raises C.ConfigError for a legacy or unreadable config.toml in home."""
+    tpl = C.TEMPLATE
+    copies = [p.relative_to(tpl).as_posix() for p in sorted(tpl.rglob("*"))
+              if p.is_file() and p.suffix in PROFILE_SUFFIXES]
+    copies = [rel for rel in copies if not ((home / rel).exists() or (home / rel).is_symlink())]
+    cfg = home / "config.toml"
+    if "config.toml" in copies or not cfg.is_file():
+        return copies, [], None, None
+    if C._is_legacy(cfg):
+        raise C.ConfigError(f"legacy sstack config {cfg}: {C.MIGRATE}")
+    text = cfg.read_text()
+    have = C._read(cfg)
+    tpl_text = (tpl / "config.toml").read_text()
+    tpl_data = tomllib.loads(tpl_text)
+    missing = [k for k in _template_keys(tpl_text) if not _has_path(have, k[0])]
+    if not missing:
+        return copies, [], None, None
+    names = ", ".join(".".join(k[0]) for k in missing)
+    error = f"config.toml: cannot add {names} automatically; copy them from {tpl / 'config.toml'}"
+    if any(k[2] for k in missing):
+        return copies, missing, None, error
+    new = _add_keys(text, missing)
+    want = have
+    for path, *_ in missing:
+        value = tpl_data
+        for k in path:
+            value = value[k]
+        want = C.merge(want, _nested(path, value))
+    try:
+        ok = tomllib.loads(new) == want
+    except tomllib.TOMLDecodeError:
+        ok = False
+    return (copies, missing, new, None) if ok else (copies, missing, None, error)
+
+
+def drift(home: Path) -> list[str]:
+    """Template files and config.toml keys that `home` lacks (what sync would add)."""
+    copies, missing, _, _ = _profile_plan(home)
+    return [f"missing {rel}" for rel in copies] + \
+        [f"missing key config.toml {'.'.join(k[0])}" for k in missing]
+
+
+def sync(home: Path, dry_run: bool = False) -> int:
+    """Copy missing template settings files into `home` and add missing config.toml keys.
+    Never overwrites a file or rewrites an existing key."""
+    try:
+        copies, missing, new, error = _profile_plan(home)
+    except C.ConfigError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
+    would = "would " if dry_run else ""
+    for rel in copies:
+        print(f"{would}copy {rel}")
+        if not dry_run:
+            try:
+                (home / rel).parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(C.TEMPLATE / rel, home / rel)
+            except OSError as e:
+                print(f"error: cannot write {home / rel}: {e.strerror or e}", file=sys.stderr)
+                return 1
+    if new is not None:
+        for path, *_ in missing:
+            print(f"{would}add config.toml {'.'.join(path)}")
+        if not dry_run:
+            target = (home / "config.toml").resolve()  # write through a symlink, not over it
+            try:
+                _atomic_write(target, new)
+            except OSError as e:
+                print(f"error: cannot write {target}: {e.strerror or e}", file=sys.stderr)
+                return 1
+    if error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
+    if not copies and not missing:
+        print(f"profile {home} is in sync with {C.TEMPLATE}")
     return 0
 
 
@@ -543,6 +693,11 @@ def show(root: Path | None, target: str | None) -> int:
     if old := C.legacy(root):
         print(f"legacy sstack config {', '.join(map(str, old))}: {C.MIGRATE}", file=sys.stderr)
         return 1
+    try:
+        C.require_profile(root)
+    except C.ConfigError as e:
+        print(e, file=sys.stderr)
+        return 1
     if target is None:
         return _list(root)
     if target == "config":
@@ -555,7 +710,7 @@ def show(root: Path | None, target: str | None) -> int:
         found = C.source(root, "project", None)
     else:
         kind, sep, name = target.partition("/")
-        found = C.source(root, kind, name) if sep and kind in SHOW_KINDS and name else None
+        found = C.source(root, kind, name) if sep and kind in (*SHOW_KINDS, "steps") and name else None
     if not found:
         print(f"no {target} in any layer", file=sys.stderr)
         return 1
@@ -575,7 +730,12 @@ def main(argv: list[str] | None = None) -> int:
     m.add_argument("--dry-run", action="store_true")
     s = sub.add_parser("show", help="print effective config and its layer")
     s.add_argument("target", nargs="?")
+    y = sub.add_parser("sync", help="copy missing template files and keys into the home profile")
+    y.add_argument("--dry-run", action="store_true")
     a = ap.parse_args(argv)
+
+    if a.cmd == "sync":
+        return sync(C.home_dir(), a.dry_run)
 
     root = C.git_root(Path.cwd())
     if a.cmd == "migrate":

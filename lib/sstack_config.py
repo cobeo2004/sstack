@@ -1,8 +1,10 @@
 """Load the layered, split sstack config (docs/spec/config.md) and resolve a role to members.
 
-Layers, lowest first: <sstack>/defaults → home ($SSTACK_HOME or ~/.sstack) → repo .sstack →
-.sstack/local. In each: config.toml (merged key by key), project.toml (repo layers only, replaced
-whole), harnesses/ roles/ tiers/ ades/ (one file per thing, replaced whole)."""
+Layers, lowest first: home ($SSTACK_HOME or ~/.sstack) → repo .sstack → .sstack/local. In each:
+config.toml (merged key by key), project.toml (repo layers only, replaced whole), harnesses/ roles/
+tiers/ ades/ (one file per thing, replaced whole). <sstack>/defaults is the profile template that
+`sstack-config sync` copies into home; at runtime only its code files (steps/*/run.sh, ades/*.hook)
+are read, as a fallback when no layer has one."""
 import os
 import subprocess
 import tomllib
@@ -10,7 +12,7 @@ from pathlib import Path
 
 from sstack_worktree import primary_of
 
-DEFAULTS = Path(__file__).resolve().parent.parent / "defaults"
+TEMPLATE = Path(__file__).resolve().parent.parent / "defaults"
 READONLY_ROLES = {"scout", "investigate", "plan", "review"}
 VARIANT_STAGES = ("investigate", "plan", "review")  # stages that take roles/<stage>/<name>.toml
 WHOLE = {"role", "harness", "tier"}  # tables whose children are replaced whole
@@ -19,6 +21,7 @@ LAYOUT = ("config.toml", "project.toml", "harnesses", "roles", "tiers", "ades", 
 STEP_FILES = ("step.toml", "brief.md", "run.sh")  # what a steps/<name>/ folder may hold
 LEGACY_TABLES = {"harness", "role", "tier", "project", "transport"}
 MIGRATE = "run `sstack-config migrate` to split it into the new layout (docs/spec/config.md)"
+SYNC = "run `sstack-config sync`"
 
 
 class ConfigError(Exception):
@@ -87,8 +90,8 @@ def trusted(root: Path) -> bool:
 
 
 def layers(root: Path | None) -> list[tuple[str, Path]]:
-    """[(name, dir)] lowest first: defaults, home, then repo and local when in a git repo."""
-    out = [("defaults", DEFAULTS), ("home", home_dir())]
+    """[(name, dir)] lowest first: home, then repo and local when in a git repo."""
+    out = [("home", home_dir())]
     if root is not None:
         out += [("repo", _repo_dir(root, ".sstack")), ("local", _repo_dir(root, ".sstack/local"))]
     return out
@@ -125,7 +128,7 @@ def legacy(root: Path | None, _ls: list | None = None) -> list[Path]:
     """Old single-file configs: a config.toml holding [harness|role|tier|project|transport]
     tables, or any `config.local.toml`. Deduped (home == repo when $HOME is the git repo)."""
     out = []
-    for name, d in (_ls or layers(root))[1:]:
+    for name, d in _ls or layers(root):
         cands = [d / "config.toml"] + ([d / "config.local.toml"] if name == "repo" else [])
         out += [p for p in cands if _is_legacy(p) and p.resolve() not in {q.resolve() for q in out}]
     return out
@@ -141,10 +144,18 @@ def _layer_data(name: str, d: Path) -> dict:
     return data
 
 
+def require_profile(root: Path | None, _ls: list | None = None) -> None:
+    """Raise when the home layer has no config.toml: nothing falls back to the template."""
+    home = dict(_ls or layers(root)).get("home")
+    if home is not None and not (home / "config.toml").is_file():
+        raise ConfigError(f"no sstack profile at {home}: {SYNC}")
+
+
 def _layer_datas(root, _ls: list | None = None):
     ls = _ls or layers(root)
     if old := legacy(root, ls):  # hard cut: any legacy file, even beside split files
         raise ConfigError(f"legacy sstack config {', '.join(map(str, old))}: {MIGRATE}")
+    require_profile(root, ls)
     return [(name, _layer_data(name, d)) for name, d in ls]
 
 
@@ -163,7 +174,8 @@ def source(root: Path | None, kind: str, name: str | None, _ls: list | None = No
     roles | tiers | ades | steps (name = the file stem, dots allowed; ades also takes "t3.md" /
     "t3.hook"; roles also takes a variant "<stage>/<name>" or "<stage>/<name>.md"; steps takes
     "<step>/<file>" for step.toml, brief.md or run.sh).
-    Only names listed in the kind's dir match, so a name can't climb out of it."""
+    Only names listed in the kind's dir match, so a name can't climb out of it. A code file
+    (steps run.sh, ades .hook) that no layer has comes from the template, labelled "template"."""
     found = None
     sub, _, tail = (name or "").rpartition("/")
     if kind == "steps":
@@ -172,7 +184,10 @@ def source(root: Path | None, kind: str, name: str | None, _ls: list | None = No
     elif sub and (kind != "roles" or sub not in VARIANT_STAGES):
         return None
     name = tail
-    for layer, d in _ls or layers(root):
+    ls = list(_ls or layers(root))
+    if (kind, name) == ("steps", "run.sh") or (kind == "ades" and name.endswith(".hook")):
+        ls = [("template", TEMPLATE)] + ls  # lowest: any layer's copy wins
+    for layer, d in ls:
         if kind == "project" and layer not in ("repo", "local"):
             continue
         if kind in ("config", "project"):
@@ -187,13 +202,15 @@ def source(root: Path | None, kind: str, name: str | None, _ls: list | None = No
 
 
 def ades(root: Path | None, _ls: list | None = None) -> list[dict]:
-    """Adapters in detection order: user layers nearest first (local, repo, home), then defaults;
-    alphabetical within a layer; a user file replaces the built-in of the same name whole.
-    hook_path / note_path resolve per file (nearest layer that has one)."""
+    """Adapters in detection order: layers nearest first (local, repo, home); within a layer the
+    user's own ADEs alphabetically, then the template's built-ins alphabetically; a nearer file
+    replaces a farther one of the same name whole. hook_path / note_path resolve per file (nearest
+    layer that has one, then the template for a hook)."""
     ls = _ls or layers(root)
     out, seen = [], set()
-    for layer, d in [*reversed(ls[1:]), ls[0]]:
-        for p in sorted((d / "ades").glob("*.toml")):
+    for layer, d in reversed(ls):
+        for p in sorted((d / "ades").glob("*.toml"),
+                        key=lambda p: ((TEMPLATE / "ades" / p.name).is_file(), p.stem)):
             if p.stem in seen:
                 continue
             seen.add(p.stem)
@@ -235,8 +252,8 @@ def _step_names(ls: list[tuple[str, Path]]) -> list[str]:
 
 def steps(root: Path | None, _ls: list | None = None) -> dict:
     """The `steps/<name>/` folders of every layer: {"spec": step.toml merged key by key, "source":
-    {key or file: layer}, "brief"/"run": the nearest layer's file or None, "builtin": ships in
-    defaults/steps/}. Read beside load(), never in it, so load() output is unchanged."""
+    {key or file: layer, "template" for a template run.sh}, "brief"/"run": the nearest layer's
+    file or None, "builtin": ships in the template's steps/}. Read beside load(), never in it, so load() output is unchanged."""
     ls = _ls or layers(root)
     out = {}
     for name in _step_names(ls):
@@ -254,7 +271,7 @@ def steps(root: Path | None, _ls: list | None = None) -> dict:
         if run:
             src["run"] = run[0]
         out[name] = {"spec": spec, "source": src, "brief": brief[1] if brief else None,
-                     "run": run[1] if run else None, "builtin": (DEFAULTS / "steps" / name).is_dir()}
+                     "run": run[1] if run else None, "builtin": (TEMPLATE / "steps" / name).is_dir()}
     return out
 
 
@@ -263,7 +280,7 @@ def _member(cfg: dict, m: dict) -> dict | None:
     if not h or h == "local":
         return None
     if h not in cfg.get("harness", {}):
-        raise ConfigError(f"unknown harness {h!r} (add harnesses/{h}.toml)")
+        raise ConfigError(f"unknown harness {h!r} (add harnesses/{h}.toml or {SYNC})")
     return {"harness": h, "model": m.get("model"), "effort": m.get("effort")}
 
 

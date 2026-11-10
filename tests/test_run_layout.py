@@ -5,7 +5,7 @@ from pathlib import Path
 
 from helpers import TempEnv
 from test_dispatch import FakeCliBase, T3
-from test_doctor import DoctorBase, roles
+from test_doctor import DoctorBase, SmokeTests, roles
 from test_reflect_dedupe import ReflectDedupeTests
 from test_ui import ServerTests
 import sstack_dispatch as D
@@ -136,6 +136,8 @@ class ReflectHomeTests(ReflectDedupeTests):
 
 
 class SmokeHomeTests(DoctorBase):
+    glob_cfg = SmokeTests.glob_cfg
+
     def test_smoke_runs_under_runs_doctor_and_cleans_up(self):  # T1.f
         self.glob_cfg(roles())
         code, out, err = self.doctor("--smoke")

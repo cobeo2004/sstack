@@ -49,6 +49,34 @@ class StaticTests(DoctorBase):
             self.assertIn(f"PASS {c}", out)
         self.assertIn("name None", out)
 
+    def test_profile_first_drift_warns_then_passes_after_sync(self):
+        self.glob_cfg(roles())
+        code, out, _ = self.doctor()
+        self.assertTrue(out.startswith("PASS profile: "), out)
+        (self.home / ".sstack/harnesses/pi.toml").unlink()
+        cfg = self.home / ".sstack/config.toml"
+        cfg.write_text("".join(x for x in cfg.read_text().splitlines(keepends=True) if not x.startswith("stop_at")))
+        code, out, _ = self.doctor()
+        self.assertRegex(out, r"(?m)^WARN profile: drift: .*harnesses/pi\.toml.*overnight\.stop_at.*sstack-config sync")
+        subprocess.run([sys.executable, str(REPO / "bin/sstack-config"), "sync"], env=dict(os.environ, HOME=str(self.home)),
+                       check=True, capture_output=True)
+        code, out, _ = self.doctor()
+        self.assertRegex(out, r"(?m)^PASS profile: ")
+
+    def test_no_profile_fails_with_the_fix(self):
+        import shutil
+        shutil.rmtree(self.home / ".sstack")
+        code, out, _ = self.doctor()
+        self.assertEqual(code, 1)
+        self.assertRegex(out, r"(?m)^FAIL profile: no sstack profile at .*sstack-config sync")
+
+    def test_roles_without_a_file_are_named(self):
+        self.glob_cfg(roles())
+        (self.home / ".sstack/roles/investigate.toml").unlink()
+        code, out, _ = self.doctor()
+        self.assertIn("investigate → local (no roles/investigate.toml)", out)
+        self.assertNotIn("scout → local (no", out)
+
     def test_bad_toml(self):
         self.glob_cfg(roles())
         (self.home / ".sstack" / "roles" / "scout.toml").write_text("harness = \n")
@@ -57,7 +85,7 @@ class StaticTests(DoctorBase):
         self.assertIn("FAIL config loads", out)
 
     def test_legacy(self):
-        (self.home / ".sstack").mkdir()
+        (self.home / ".sstack").mkdir(exist_ok=True)
         (self.home / ".sstack" / "config.toml").write_text('[role.scout]\nharness = "claude"\n')
         code, out, _ = self.doctor()
         self.assertEqual(code, 1)
@@ -85,7 +113,7 @@ class StaticTests(DoctorBase):
     def test_hook_not_executable(self):
         self.glob_cfg(roles())
         ad = self.home / ".sstack" / "ades"
-        ad.mkdir()
+        ad.mkdir(exist_ok=True)
         (ad / "mine.toml").write_text("auto = false\n[delegate]\nkind = \"hook\"\n")
         (ad / "mine.hook").write_text("#!/bin/sh\n")
         code, out, _ = self.doctor()
@@ -95,6 +123,15 @@ class StaticTests(DoctorBase):
 
 
 class SmokeTests(DoctorBase):
+    def glob_cfg(self, text):
+        """The template routes investigate and plan to claude; these tests fake scout, implement and
+        review only, so a role the text leaves out has no file (local)."""
+        p = DoctorBase.glob_cfg(self, text)
+        for r in ("investigate", "plan"):
+            if f"[role.{r}]" not in text:
+                (self.home / ".sstack/roles" / f"{r}.toml").unlink()
+        return p
+
     def test_headless_passes_and_cleans_up(self):
         self.glob_cfg(roles())
         code, out, err = self.doctor("--smoke")

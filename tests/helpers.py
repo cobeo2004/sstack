@@ -47,6 +47,7 @@ class TempEnv(unittest.TestCase):
         self._old = {k: os.environ.get(k) for k in ("HOME", "SSTACK_HOME")}
         os.environ["HOME"] = str(self.home)
         os.environ.pop("SSTACK_HOME", None)
+        self.profile(self.home / ".sstack")  # as sstack-install does
 
     def tearDown(self):
         for k, v in self._old.items():
@@ -55,6 +56,17 @@ class TempEnv(unittest.TestCase):
             else:
                 os.environ[k] = v
         self._tmp.cleanup()
+
+    def profile(self, dest: Path, overlay: Path | None = None) -> Path:
+        """A synced home profile at `dest`: `overlay` copied in first, then the template fills
+        only what it lacks, so an overrides-only fixture loads as it did over the defaults layer."""
+        import contextlib, io
+        import sstack_configcli
+        if overlay is not None:
+            shutil.copytree(overlay, dest, dirs_exist_ok=True)
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            sstack_configcli.sync(dest)  # a legacy or broken config.toml is left for the test to see
+        return dest
 
     def write(self, rel_base: Path, rel: str, text: str) -> Path:
         p = rel_base / rel
@@ -72,7 +84,10 @@ class TempEnv(unittest.TestCase):
         return layer / "config.toml" if "config.toml" in files else written[0]
 
     def glob_cfg(self, text):
-        return self.layer_cfg(self.home / ".sstack", text)
+        """Home's config is `text` over the synced template (the old defaults-under-home merge)."""
+        p = self.layer_cfg(self.home / ".sstack", text)
+        self.profile(self.home / ".sstack")
+        return p
 
     def repo_cfg(self, text):
         return self.layer_cfg(self.root / ".sstack", text)
@@ -82,4 +97,4 @@ class TempEnv(unittest.TestCase):
 
     def example(self):
         """The home layer equivalent to the old single-file example config."""
-        shutil.copytree(EXAMPLE, self.home / ".sstack", dirs_exist_ok=True)
+        self.profile(self.home / ".sstack", EXAMPLE)

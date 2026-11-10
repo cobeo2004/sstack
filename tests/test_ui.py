@@ -154,11 +154,11 @@ class ServerTests(TempEnv):
     def test_api_ade_follows_the_detection_contract(self):
         with mock.patch.dict(os.environ, {"T3CODE_THREAD_ID": "x"}):
             ade = self.get(f"/api/ade?repo={self.root}")
-        self.assertEqual((ade["name"], ade["why"], ade["layer"]), ("t3", "env T3CODE_THREAD_ID", "defaults"))
+        self.assertEqual((ade["name"], ade["why"], ade["layer"]), ("t3", "env T3CODE_THREAD_ID", "home"))
         self.assertEqual(ade["delegate"], "tool delegate_task")
         self.assertEqual(ade["readonly"], "instructed")
         self.assertIn("tool:", ade["browser"])
-        self.assertTrue(ade["note"].endswith("defaults/ades/t3.md"))
+        self.assertTrue(ade["note"].endswith(".sstack/ades/t3.md"))
         with mock.patch.dict(os.environ, {"T3CODE_THREAD_ID": "x", "SSTACK_ADE": "none"}):
             self.assertIsNone(self.get(f"/api/ade?repo={self.root}")["name"])
 
@@ -198,7 +198,7 @@ class ServerTests(TempEnv):
 
     def test_config_summary_exposes_effective_values_and_sources(self):
         cfg = self.get(f"/api/config?repo={self.root}")
-        self.assertEqual([l["name"] for l in cfg["layers"]], ["defaults", "home", "repo", "local"])
+        self.assertEqual([l["name"] for l in cfg["layers"]], ["home", "repo", "local"])
         self.assertEqual(cfg["effective"]["dispatch"]["via"], "auto")
         review = next(t for t in cfg["things"] if t["kind"] == "roles" and t["name"] == "review")
         self.assertEqual(review["source"], "home")
@@ -292,7 +292,7 @@ class ServerTests(TempEnv):
     def test_api_ade_carries_the_note_and_the_note_route_is_gone(self):
         with mock.patch.dict(os.environ, {"T3CODE_THREAD_ID": "x"}):
             ade = self.get(f"/api/ade?repo={self.root}")
-        self.assertTrue(ade["note"].endswith("defaults/ades/t3.md"))
+        self.assertTrue(ade["note"].endswith(".sstack/ades/t3.md"))
         self.assertTrue(ade["note_text"].startswith("# t3"))
         with self.assertRaises(urllib.error.HTTPError) as cm:
             self.get(f"/api/ade/note?repo={self.root}")

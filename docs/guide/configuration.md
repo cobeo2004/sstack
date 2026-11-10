@@ -3,8 +3,9 @@
 ## What this is
 
 sstack config is split into one small TOML file per thing (a role, a harness, a tier, an ADE) and
-stacked in four layers: built-in defaults, your home, the repo, and a personal git-ignored layer
-inside the repo. A later layer wins. `sstack-config show` prints the effective file and the layer it
+stacked in three layers: your home profile, the repo, and a personal git-ignored layer inside the
+repo. A later layer wins. The home profile starts as a copy of sstack's template (`<sstack>/defaults/`),
+made by `sstack-config sync`; edit `~/.sstack` directly. `sstack-config show` prints the effective file and the layer it
 came from; `sstack-config migrate` converts an old single-file config. The full contract is
 [docs/spec/config.md](../spec/config.md); this page shows how to use it.
 
@@ -15,6 +16,7 @@ Every block on this page assumes sstack's commands are on `PATH`, as after
 
 ```sh
 export PATH="$HOME/sstack/bin:$PATH"   # where getting-started.md cloned sstack
+sstack-config sync >/dev/null          # your ~/.sstack profile, as sstack-install creates it
 ```
 
 ## Layout
@@ -36,7 +38,7 @@ Every layer dir may hold any of these. A file's top level is the table itself:
 | `steps/<name>/step.toml` | one workflow step: `after`, `role`, `gate`, `on_fail`, `max_loops`, `max_agents`, `min_score`, `enabled` ([workflow.md](workflow.md)) | key by key |
 | `steps/<name>/brief.md`, `steps/<name>/run.sh` | a step's brief (role step) or command (command step) | nearest layer per file |
 
-`config.toml` keys and their built-in values (`defaults/config.toml`):
+`config.toml` keys and their template values (`defaults/config.toml`):
 
 ```toml
 ade = "auto"              # auto | none | <adapter name>; env SSTACK_ADE wins
@@ -118,14 +120,30 @@ Lowest first. A later layer wins.
 
 | layer | dir | notes |
 |---|---|---|
-| `defaults` | `<sstack>/defaults/` | ships harnesses `pi`, `codex`, `claude`, `cursor`; roles `scout`, `implement`, `review`; ADEs `t3`, `orca`, `conductor`, `cursor`; the steps `recon`, `plan`, `implement`, `gate`, `review`, `pr`; no tiers. Never edit it. |
-| `home` | `$SSTACK_HOME`, else `~/.sstack/` | your machine-wide settings |
+| `home` | `$SSTACK_HOME`, else `~/.sstack/` | your profile: machine-wide settings, created from the template by `sstack-config sync` |
 | `repo` | `<git root>/.sstack/` | committed with the repo |
 | `local` | `<git root>/.sstack/local/` | personal; add the line `.sstack/local/` to `.gitignore` |
 
 `repo` and `local` exist only inside a git repo.
 
-`steps/` is the workflow: one folder per step, merged per key across the four layers,
+## The template and `sstack-config sync`
+
+`<sstack>/defaults/` is the template, not a layer: it ships harnesses `pi`, `codex`, `claude`,
+`cursor`; roles `scout`, `investigate`, `plan`, `implement`, `review`; ADEs `t3`, `orca`,
+`conductor`, `cursor`; the steps `recon`, `plan`, `implement`, `gate`, `review`, `pr`; no tiers.
+`sstack-install` runs `sstack-config sync`, which copies every template `.toml` and `.md` file your
+home lacks and adds `config.toml` keys it lacks. It never overwrites a file or a key, so run it
+again after a `git pull` to pick up new settings; `--dry-run` lists what it would do:
+
+```sh
+sstack-config sync --dry-run
+```
+
+With no profile, every command stops with `no sstack profile at <home>: run `sstack-config sync``.
+Code files (`steps/*/run.sh`, `ades/*.hook`) are not copied: they come from the template until a
+layer has its own. `sstack-doctor` WARNs `drift` when sync has something to add.
+
+`steps/` is the workflow: one folder per step, merged per key across the three layers,
 so a repo can add, reorder, disable or re-gate a step without touching a skill. What
 the keys mean and a worked custom step: [workflow.md](workflow.md).
 
@@ -147,9 +165,9 @@ sstack-config show tiers/strong   # exit 1
 
 ```text
 # expect
-harnesses/claude  defaults  <sstack>/defaults/harnesses/claude.toml
-roles/review  defaults  <sstack>/defaults/roles/review.toml
-ades/t3  defaults  <sstack>/defaults/ades/t3.toml
+harnesses/claude  home  <home>/.sstack/harnesses/claude.toml
+roles/review  home  <home>/.sstack/roles/review.toml
+ades/t3  home  <home>/.sstack/ades/t3.toml
 ```
 
 `show <kind>/<name>` prints `# <layer>: <path>` then the winning file verbatim. `show config` prints
@@ -257,7 +275,8 @@ legacy sstack config ~/.sstack/config.toml: run `sstack-config migrate` to split
 ```
 
 ```sh
-home="${SSTACK_HOME:-$HOME/.sstack}"   # your home layer
+export SSTACK_HOME="$HOME/old-sstack"   # stands in for an old install: one legacy file, no profile
+home="$SSTACK_HOME"
 mkdir -p "$home"
 printf '[transport]\nmode = "thread"\n\n[role.scout]\nharness = "pi"\nmodel = "small"\n' > "$home/config.toml"
 sstack-doctor                        # exit 1
@@ -272,9 +291,9 @@ prints the plan and writes nothing. The real run prints one line per action:
 
 ```text
 # expect
-write <home>/.sstack/roles/scout.toml
-rename <home>/.sstack/config.toml → <home>/.sstack/config.toml.bak
-write <home>/.sstack/config.toml
+write <home>/old-sstack/roles/scout.toml
+rename <home>/old-sstack/config.toml → <home>/old-sstack/config.toml.bak
+write <home>/old-sstack/config.toml
 next: ask the user, then `sstack-doctor --smoke`
 ```
 
@@ -295,7 +314,8 @@ then run the smoke test ([doctor.md](doctor.md#run-the-smoke-test)).
 
 - Loader: `lib/sstack_config.py` (`load`, `layers`, `source`, `steps`, `legacy`, `ades`, `resolve`).
 - `sstack-config` CLI: `lib/sstack_configcli.py`, `bin/sstack-config`.
-- Built-in values: `defaults/config.toml`, `defaults/roles/`, `defaults/harnesses/`.
+- Template values: `defaults/config.toml`, `defaults/roles/`, `defaults/harnesses/`; sync is
+  `sync()` in `lib/sstack_configcli.py`.
 - Spec first: change [docs/spec/config.md](../spec/config.md), then add a new fixture case under
   `tests/fixtures/config/<case>/` with its `expected.json` (existing fixtures are frozen), then the
   code.

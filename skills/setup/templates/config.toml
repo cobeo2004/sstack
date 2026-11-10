@@ -1,4 +1,4 @@
 # .sstack/config.toml — main sstack config (one file per thing).
-# Layers: defaults → ~/.sstack → .sstack → .sstack/local; see docs/spec/config.md.
+# Layers: ~/.sstack → .sstack → .sstack/local; see docs/spec/config.md.
 # Project settings: .sstack/project.toml. Repo routing: .sstack/roles/<role>.toml.
 # Keep .sstack/local/ and .sstack/runs/ in .gitignore (setup adds them).

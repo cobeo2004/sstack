@@ -15,15 +15,16 @@ Every block on this page assumes sstack's commands are on `PATH`, as after
 
 ```sh
 export PATH="$HOME/sstack/bin:$PATH"   # where getting-started.md cloned sstack
+sstack-config sync >/dev/null          # your ~/.sstack profile, as sstack-install creates it
 ```
 
 ## Roles, members and panels
 
-| role | read-only | built-in config (`defaults/roles/`) |
+| role | read-only | template config (`defaults/roles/`, synced to `~/.sstack/roles/`) |
 |---|---|---|
 | `scout` | yes | `claude` / `haiku` |
-| `investigate` | yes | none → local (exit 3) |
-| `plan` | yes | none → local (exit 3) |
+| `investigate` | yes | `claude` / `sonnet` |
+| `plan` | yes | `claude` / `opus` |
 | `implement` | no | `pi` / `opencode-go/deepseek-v4.1-flash`, effort `high` |
 | `review` | yes | `mode = "auto"`, panel `codex/gpt-6.1-sol` (effort `high`) + `claude/opus` |
 
@@ -115,13 +116,14 @@ config error (exit 1).
 ```sh
 printf 'List the files.\n' > brief.md
 sstack-dispatch scout --brief brief.md --report scout.md                 # exit 0
-sstack-dispatch plan --brief brief.md --report plan.md                   # exit 3
+sstack-dispatch triage --brief brief.md --report triage.md               # exit 3
 sstack-dispatch scout --brief brief.md --report s.md --via local         # exit 3
 T3CODE_THREAD_ID=demo sstack-dispatch scout --brief brief.md --report t3.md > "${TMPDIR:-/tmp}/payload.json"   # exit 4
 T3CODE_THREAD_ID=demo sstack-dispatch scout --brief brief.md --report h.md --via headless
 ```
 
-The last line runs headless even inside T3 Code, because `--via` beats the ADE.
+`triage` has no `roles/triage.toml` in any layer, so it runs locally. The last line runs headless
+even inside T3 Code, because `--via` beats the ADE.
 
 ## Steps and caps
 

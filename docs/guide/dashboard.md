@@ -16,6 +16,7 @@ Every block on this page assumes sstack's commands are on `PATH`, as after
 
 ```sh
 export PATH="$HOME/sstack/bin:$PATH"   # where getting-started.md cloned sstack
+sstack-config sync >/dev/null          # your ~/.sstack profile, as sstack-install creates it
 ```
 
 ## Start it
@@ -27,7 +28,7 @@ sstack-ui --port 8765  # needs: a browser; fixed port instead of a free one
 
 It prints one line, `http://127.0.0.1:<port>/?t=<token>`. Open that URL. Repos come from
 `~/.sstack/repos.txt` (`$SSTACK_HOME/repos.txt` when that is set), one absolute repo root per line; `setup` adds
-the repo there. `repo=global` means no repo layers (home and defaults only).
+the repo there. `repo=global` means no repo layers (home only).
 
 ## Pages
 
@@ -39,7 +40,7 @@ the repo there. `repo=global` means no repo layers (home and defaults only).
 | Lessons | `.sstack/lessons.md` and `~/.sstack/lessons.md` | accept, forget |
 | Graph | code graph status | rebuild (runs `code-review-graph build` or `update`) |
 
-Rules for saves: never into `defaults/`, never a hook or a note (TOML only). Every save is checked
+Rules for saves: never into the template (`<sstack>/defaults/`), never a hook or a note (TOML only). Every save is checked
 by the real loader on a staged copy of the layers first; a save that would break the config is
 refused with HTTP 400 and nothing is written. Symlinked targets are refused.
 
@@ -94,7 +95,7 @@ Expected output, exit 0:
 
 ```text
 # expect
-ConfigError: unknown harness 'nope' (add harnesses/nope.toml)
+ConfigError: unknown harness 'nope' (add harnesses/nope.toml or run `sstack-config sync`)
 ok
 ```
 

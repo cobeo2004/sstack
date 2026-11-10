@@ -56,7 +56,7 @@ def legacy_map(data: dict, layer: str = "repo") -> dict:
 
 def legacy_effective(home: Path, root: Path) -> dict:
     """The pre-split loader's whole effective config: defaults + every legacy file, mapped."""
-    cfg = C._layer_data("defaults", C.DEFAULTS)
+    cfg = C._layer_data("defaults", C.TEMPLATE)
     for layer, p in (("home", home / ".sstack/config.toml"),
                      ("repo", root / ".sstack/config.toml"),
                      ("repo", root / ".sstack/config.local.toml")):
@@ -66,6 +66,10 @@ def legacy_effective(home: Path, root: Path) -> dict:
 
 
 class ConfigCliTests(TempEnv):
+    def setUp(self):
+        super().setUp()
+        shutil.rmtree(self.home / ".sstack")  # a legacy home predates the profile
+
     def run_cli(self, *args, cwd=None, code=0):
         """Run the CLI; returns stdout on success, stderr on failure."""
         env = dict(os.environ, HOME=str(self.home))
@@ -91,6 +95,7 @@ class ConfigCliTests(TempEnv):
         old = legacy_effective(self.home, self.root)
         out = self.run_cli("migrate")
         self.assertIn("next: ask the user, then `sstack-doctor --smoke`", out)
+        self.run_cli("sync")  # the template fills in what the old defaults layer gave
         self.assertEqual((global_cfg.parent / "config.toml.bak").read_text(), (DATA / "global.toml").read_text())
         self.assertEqual((repo_cfg.parent / "config.toml.bak").read_text(), (DATA / "unibuz.toml").read_text())
         self.assertEqual(C.legacy(self.root), [])
@@ -119,6 +124,7 @@ model = "opus"
         self.run_cli("migrate", "--global")
         text = (self.home / ".sstack/roles/review.toml").read_text()
         self.assertEqual(text.count("[[panel]]"), 2, text)
+        self.profile(self.home / ".sstack")  # migrate leaves the template to sync
         panel = C.load(None)["role"]["review"]["panel"]
         self.assertEqual([(m["harness"], m["model"]) for m in panel],
                          [("codex", "gpt-6.1-sol"), ("claude", "opus")])
@@ -133,6 +139,7 @@ model = "opus"
         self.run_cli("migrate", "--global")
         self.assertEqual((self.home / ".sstack/tiers/ui.fast.toml").read_text(),
                          'harness = "claude"\nmodel = "haiku"\n')
+        self.profile(self.home / ".sstack")  # migrate leaves the template to sync
         self.assertEqual(C.load(None)["tier"]["ui.fast"], {"harness": "claude", "model": "haiku"})
 
     def test_hint_sub_table_and_comment_survive(self):
@@ -147,6 +154,7 @@ note = "be brief"
         text = (self.home / ".sstack/roles/implement.toml").read_text()
         self.assertIn("# keep this", text)
         self.assertIn("[hint.ui]", text)
+        self.profile(self.home / ".sstack")  # migrate leaves the template to sync
         self.assertEqual(C.load(None)["role"]["implement"],
                          {"harness": "pi", "hint": {"ui": {"note": "be brief"}}})
 
@@ -193,6 +201,7 @@ max_parallel = 2
         self.assertFalse((cfg.parent / "config.toml.bak").exists())
         self.assertEqual(tomllib.loads(cfg.read_text())["role"]["scout"]["harness"], "claude")
         self.run_cli("migrate", "--global")  # a rerun still finds the legacy file
+        self.profile(self.home / ".sstack")  # migrate leaves the template to sync
         self.assertEqual(C.load(None)["role"]["scout"]["harness"], "claude")
 
     def test_failure_after_rename_rolls_back(self):
@@ -213,7 +222,7 @@ max_parallel = 2
         self.assertEqual(C.legacy(self.root), [local])
 
     def test_load_failure_after_migrate_exits_one(self):
-        self.write(self.home, ".sstack/config.toml", '[role.scout]\nharness = "claude"\n')
+        self.write(self.home, ".sstack/config.toml", '[rules]\nmax_parallel = 2\n[role.scout]\nharness = "claude"\n')
         self.write(self.root, ".sstack/roles/broken.toml", "[oops\n")
         err = self.run_cli("migrate", "--global", code=1)
         self.assertIn("broken.toml", err)
@@ -245,6 +254,7 @@ max_parallel = 2
         self.assertIn("next: ask the user, then `sstack-doctor --smoke`", out)
         self.assertTrue((self.root / ".sstack/project.toml").is_file())
         self.assertTrue((self.root / ".sstack/config.toml.bak").is_file())
+        self.profile(self.home / ".sstack")  # migrate leaves the template to sync
         self.assertEqual(C.load(C.git_root(wt))["project"], {"verify": "make"})
 
     def test_show_refuses_legacy(self):
@@ -316,7 +326,7 @@ max_parallel = 2
         self.assertEqual(cfg["rules"]["max_parallel"], 2)
         self.assertFalse((p.parent / "project.toml").exists())
         self.assertIn("provider ids live in ades/t3.toml [providers]", out)
-        self.assertIn("defaults/ades/t3.toml", out)
+        self.assertIn(M.T3_CLI_NOTE, out)
         self.assertIn("project is repo-only", out)
 
     def test_existing_dispatch_timeout_wins_but_mode_maps(self):
@@ -336,6 +346,7 @@ max_parallel = 2
         self.assertEqual((self.root / ".sstack/config.local.toml.bak").read_text(),
                          '[role.implement]\nharness = "codex"\nmodel = "mine"\n'
                          '[project]\nverify = "mine"\n')
+        self.profile(self.home / ".sstack")  # migrate leaves the template to sync
         self.assertEqual(C.load(self.root)["role"]["implement"],
                          {"harness": "codex", "model": "mine"})
         self.assertEqual(C.source(self.root, "project", None)[0], "local")
@@ -361,6 +372,7 @@ max_parallel = 2
         self.copy_global()
         self.copy_unibuz()
         self.run_cli("migrate")
+        self.run_cli("sync")
         roles = self.run_cli("show", "roles/review")
         self.assertTrue(roles.startswith("# home: "), roles)
         self.assertIn("panel = [", roles)
@@ -369,13 +381,16 @@ max_parallel = 2
         self.assertIn('verify = [', project)
         every = self.run_cli("show")
         self.assertIn("roles/review  home  ", every)
-        self.assertIn("ades/t3  defaults  ", every)
+        self.assertIn("ades/t3  home  ", every)
         config = self.run_cli("show", "config")
-        self.assertIn("# defaults: ", config)
+        self.assertNotIn("# defaults: ", config)
         self.assertIn("# home: ", config)
+        run = self.run_cli("show", "steps/gate/run.sh")
+        self.assertTrue(run.startswith(f"# template: {REPO / 'defaults/steps/gate/run.sh'}\n"), run)
         self.assertIn('[dispatch]\nvia = "auto"', config)
 
     def test_show_missing_exits_one(self):
+        self.profile(self.home / ".sstack")
         self.assertEqual(self.run_cli("show", "roles/nope", code=1).strip(),
                          "no roles/nope in any layer")
 

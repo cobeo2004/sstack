@@ -16,6 +16,7 @@ Every block on this page assumes sstack's commands are on `PATH`, as after
 
 ```sh
 export PATH="$HOME/sstack/bin:$PATH"   # where getting-started.md cloned sstack
+sstack-config sync >/dev/null          # your ~/.sstack profile, as sstack-install creates it
 ```
 
 ## Pick a delegate kind
@@ -216,8 +217,8 @@ next is in [dispatch.md](dispatch.md#exit-4-make-the-tool-calls).
 
 `ades/<name>.md` tells the agent what it can't learn from the TOML. Built-in notes use four
 sections, `## Delegation`, `## Browser`, `## Device`, `## Capture`; copy one from
-`<sstack>/defaults/ades/` as a start. The note and the hook resolve per file: a user `ades/t3.toml`
-without `t3.md` keeps the built-in note.
+`<sstack>/defaults/ades/` as a start. The note and the hook resolve per file: a repo `ades/t3.toml`
+without `t3.md` keeps your home profile's note, and a hook no layer has comes from the template.
 
 ## How to change this
 
