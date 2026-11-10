@@ -1,0 +1,1 @@
+The dashboard change is one text line on the runs page (current step, loop count, review score), covered by tests/test_ui.py::test_run_group_shows_current_step; no screenshot captured. Backend flow is in before/after-workflow.mmd.
