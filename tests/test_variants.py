@@ -108,7 +108,7 @@ class MemberRulesTests(VariantBase):
         self.assertEqual(code, 0, err)
         self.assertTrue(self.out("r-other.md").is_file(), err)  # a distinct variant does run
         self.assertFalse(self.out("r-twin.md").exists())
-        self.assertEqual(self.last_run()[1]["members"], ["fake/echo", "fake/echo#review/other"])
+        self.assertEqual(self.last_run()[1]["members"], ["fake/echo", "fake/other#review/other"])
 
     def test_t3c_variant_members_run_read_only(self):
         ro = (f'[harness.ro]\nheadless = ["{PY}", "-c", "print(\'WRITE\')"]\n'
@@ -375,8 +375,8 @@ class DoctorVariantTests(DoctorBase):
 
 class RecordVariantTests(VariantBase):
 
-    def panel_index(self) -> list[Path]:
-        return [p for p in sorted(self.report().parent.glob("*.md"))
+    def panel_index(self, d: Path) -> list[Path]:
+        return [p for p in sorted(d.glob("*.md"))
                 if "fake/echo#review/security" in p.read_text()]
 
     def test_t3n_record_in_either_order_then_one_panel_index(self):
@@ -397,7 +397,7 @@ class RecordVariantTests(VariantBase):
                     code, _, err = self.record(calls["fake/echo#review/security" if who == "variant" else "fake/echo"],
                                                0, env=T3)
                     self.assertEqual(code, 0, err)
-                    codes.append(self.panel_index())
+                    codes.append(self.panel_index(report.parent))
                 self.assertEqual(codes[0], [])  # not before every member recorded
                 [index] = codes[1]
                 self.assertNotEqual(index, report)
@@ -407,7 +407,7 @@ class RecordVariantTests(VariantBase):
                 self.assertEqual((report.parent / "r.md").read_text(), "# default\nPASS\n")
                 code, _, err = self.record(calls["fake/echo"], 0, env=T3)
                 self.assertEqual(code, 0, err)
-                self.assertEqual([index], self.panel_index())
+                self.assertEqual([index], self.panel_index(report.parent))
                 self.assertEqual(index.read_text(), text)  # written once
 
 
