@@ -163,6 +163,8 @@ def _run_parent(root: Path, report: Path) -> tuple[Path, bool]:
     parent = report.resolve().parent
     if parent == runs or not parent.is_relative_to(runs):
         return runs, False
+    if not (parent / "dispatch").resolve().is_relative_to(runs):
+        return runs, False  # a symlinked dispatch/ would escape runs/: stay flat
     return parent / "dispatch", True
 
 

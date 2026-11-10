@@ -165,7 +165,7 @@ def _dispatch(root: Path, *args) -> subprocess.CompletedProcess:
 def _owned(root: Path, x) -> Path | None:
     """x resolved, when it is a direct child of <root>/.sstack/runs/doctor/ and not a symlink; else None."""
     p = Path(x)
-    doctor = (root / RUNS / "doctor").resolve()
+    doctor = root.resolve() / RUNS / "doctor"  # unresolved below root: a symlinked runs/ or doctor/ never matches
     return p.resolve() if not p.is_symlink() and p.resolve().parent == doctor else None
 
 

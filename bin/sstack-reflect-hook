@@ -91,7 +91,7 @@ def run(payload: dict) -> int:
         # re-read: another session's hook may have saved its offset while the scout ran
         # ponytail: read-modify-write without a lock; a same-instant write can still lose one entry
         try:
-            state = json.loads(state_path.read_text())
+            state = json.loads((state_path if state_path.is_file() else legacy_state).read_text())
         except (OSError, ValueError):
             state = {}
         state = state if isinstance(state, dict) else {}  # a corrupt state file starts over
