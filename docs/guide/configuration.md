@@ -25,7 +25,7 @@ Every layer dir may hold any of these. A file's top level is the table itself:
 | path | holds | merge |
 |---|---|---|
 | `config.toml` | `ade`, `[dispatch]`, `[rules]`, `[reflect]`, `[routing]` | key by key, nested tables too |
-| `project.toml` | repo facts: `verify`, `[test.<surface>]`, `graph` (repo and local layers only) | replaced whole |
+| `project.toml` | repo facts: `verify`, `protected`, `[test.<surface>]`, `graph` (repo and local layers only) | replaced whole |
 | `harnesses/<name>.toml` | `headless`, `headless_readonly` argv templates | replaced whole |
 | `roles/<role>.toml` | `harness`, `model`, `effort`, `mode`, `panel`, `[hint.<name>]` | replaced whole |
 | `tiers/<tier>.toml` | `harness`, `model`, `effort` | replaced whole |
@@ -81,10 +81,17 @@ harness = "codex"
 model = "gpt-6.1-sol"
 ```
 
-`project.toml` holds the repo's `verify` commands, `graph`, and one `[test.<surface>]` table per
-surface (`code`, `browser`, `mobile`) with the framework, where tests live, and the run, serve or
-build commands. `setup` writes it; [skills/work/testing.md](../../skills/work/testing.md) defines
-how each surface is tested.
+`project.toml` holds the repo's `verify` commands, `protected` globs, `graph`, and one
+`[test.<surface>]` table per surface (`code`, `browser`, `mobile`) with the framework, where tests
+live, and the run, serve or build commands. `verify` is the base branch's copy of the commands the
+[gate](gate.md) runs; `protected` names files the gate refuses to see modified or deleted. `setup`
+writes it; [skills/work/testing.md](../../skills/work/testing.md) defines how each surface is tested.
+
+```toml
+# project.toml
+verify = ["pnpm lint", "pnpm test"]  # string or list; base branch copy wins
+protected = ["lib/core/*"]           # .sstack/project.toml is always protected
+```
 
 Skills a dispatched child must use: `skills = [...]` in `roles/<role>.toml`, `[skills.kinds]
 <kind> = [...]` in `config.toml`, and `[practices] "<glob>" = [...]` in `project.toml` (skill names,

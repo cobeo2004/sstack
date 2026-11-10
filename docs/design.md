@@ -106,12 +106,13 @@ Explicit: every skill is also callable by name (`/sstack`, `/work`, `/review`,
 and superpowers disabled (`DISABLE_OMC=1`, superpowers plugin turned off for that
 session), so it shows sstack working alone. Nothing is uninstalled.
 
-## The skills (13)
+## The skills (14)
 
 | Skill | Purpose | Main sources |
 |---|---|---|
 | `sstack` | Entry router: classify the request, pick skill/playbook, copy its steps into a todo list verbatim (skipped steps stay, marked `skip: <reason>`). Holds the principles index, gate rules, verification gate, "delegate by volume" rule, harness notes. | pstack poteto-mode (cut hard), superpowers verification-before-completion, OMC verify check order |
 | `setup` | New or existing repo → agent-ready. See Setup. | new; pstack setup-pstack + create-verification-skill; orbyn clash check |
+| `practices` | Find and link best-practice skills and docs for the repo's stack, then write the `[practices]` globs in `.sstack/project.toml`. | new |
 | `work` | Gated phases for any task. See Work. | user's phased-work, pstack playbooks, orbyn answer key + loop guard, superpowers writing-plans granularity |
 | `grill` | Interview in frontier rounds (each question with a recommended answer) until every decision is settled; fuzzy ideas open with one open question. Writes `decisions.md`, which `work` Phase 0 reads as the ticket. | mattpocock/skills grilling, superpowers brainstorming opening |
 | `swarm` | Fan one question out to N children; each returns PASS/ISSUES/BLOCKED with evidence; missing evidence → respawn once, then record a gap. | pstack swarm |
@@ -195,17 +196,21 @@ Phases and gates:
    COULD NOT VERIFY — as in phased-work).
 1. **Plan** — ordered, bite-sized changes with exact files and the check for each.
    Write the **answer key** before implementation: the success commands, and copies
-   of the protected tests plus their hashes, saved in `.sstack/runs/<id>/`.
+   of the protected tests plus `protected/SHA256SUMS` and a `restore|strict` mode,
+   saved in `.sstack/runs/<id>/`.
    **Gate: the harness's own plan approval** (plan mode in Claude Code; the
    equivalent elsewhere, or an explicit yes in chat where none exists).
 2. **Implement** — role `implement`. Routed or local. No commits, no PR.
-3. **Test / fix** — run the answer key; restore protected tests from their hashes
-   before judging. Failures loop back to Implement with the failing checks added to
-   the brief. Loop guard: same failure twice → change approach once, then stop and
-   ask. `review` runs here (role `review`). **Gate: green checks + review findings
-   resolved or explicitly agreed out of lane.**
-4. **PR** — `unslop`, repo PR template, re-run tests on the merged result, push,
-   then `babysit`. **Gate: the user's explicit yes before commit/push/PR.**
+3. **Test / fix** — restore protected files in `restore` mode, then run
+   `sstack-gate --run <run>`; a FAIL goes back to Implement with the verdict file,
+   and no review runs on a failing gate. Then run the answer key. Loop guard: same
+   failure twice → change approach once, then stop and ask. `review` runs here (role
+   `review`). **Gate: green gate and checks + review findings resolved or explicitly
+   agreed out of lane.**
+4. **PR** — `unslop`, repo PR template, rebase and run
+   `sstack-gate --run <run> --pr` on the merged result, push, then run
+   `sstack-pr-media` and `babysit`. **Gate: gate PASS (show any `MEDIA WAIVED`),
+   then the user's explicit yes before commit/push/PR.**
 
 The orchestrator reads every child's report **and** the real `git diff` before any
 gate. A routed child never approves its own gate. Exit code 1/2 from dispatch →

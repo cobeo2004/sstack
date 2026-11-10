@@ -75,9 +75,9 @@ over memory.
      right, or a scripted browser/device check with its expected states;
    - the expected end state (files, behaviour the commands observe);
    - protected paths: the tests/fixtures that define correctness. Copy each into
-     `protected/` and record its `sha256` (`shasum -a 256 <file>`) and the base
-     commit. Default mode `restore`; `strict` only when editing the test is itself
-     forbidden.
+     `protected/`; write `protected/SHA256SUMS` (`shasum -a 256`, repo-relative
+     paths) and `protected/mode` (`restore`, or `strict` when editing the test is
+     forbidden); note the base commit in `progress.md`.
    The implementer's brief names the outcome, not the key.
 3. Role `plan` may draft the plan if routed; the gate stays here.
 
@@ -97,16 +97,15 @@ implemented before it.
 - Exit 3 (`local`) → implement here, step by step, checking each step.
 - One implementer edits the tree at a time. No commits, no PR from a child.
 - Read the report **and** the change itself before moving on: `git diff`, or
-  `git -C <child worktree> diff` for a child in its own checkout (per
-  [sstack § Delegation](../sstack/SKILL.md#delegation)). Bring that change into this
-  checkout before Phase 3: the answer key runs here, not there.
+  `git -C <child worktree> diff` in its own checkout
+  ([sstack § Delegation](../sstack/SKILL.md#delegation)); bring it here before Phase 3.
 
 ## Phase 3 — Test / fix with review → gate
 
-1. Restore protected files from `protected/` and confirm their hashes, then run
-   every answer-key check on its surface per [testing.md](testing.md) and read the
-   output. For changes a user can see, save before/after media per testing.md
-   (`<run>/media/`). A changed protected file is reported, never accepted silently.
+1. Restore `protected/` in `restore` mode, then run
+   `<sstack>/bin/sstack-gate --run <run>` (base `verify`, protected diffs, manifest).
+   FAIL → Phase 2 with `<run>/gate/<n>.md`, no review. Then run the answer key and
+   save before/after media per [testing.md](testing.md).
 2. Failures → back to Phase 2 with the failing commands and output added to the
    brief. **Loop guard** (`rules.loop_guard`, default 2): the same failure twice →
    change approach once and say how; if it fails again, stop and ask.
@@ -119,7 +118,8 @@ of lane by the user; nits listed. Report commands + results, findings + outcome.
 ## Phase 4 — PR → gate
 
 1. `unslop` the diff and the PR text. Use the repo's PR template if it has one.
-2. Rebase/merge the base branch and re-run the answer key on the result.
+2. Rebase/merge base and run `<sstack>/bin/sstack-gate --run <run> --pr` on the
+   result; FAIL → Phase 2/3. Show any `MEDIA WAIVED: <reason>` line at Gate 4.
 3. **Gate 4:** the user's explicit yes before commit, push or PR, and before
    publishing media. Then push, open the PR, and run
    `<sstack>/bin/sstack-pr-media <pr> <run>/media/* --edit-body` right after opening,
