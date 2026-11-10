@@ -1,0 +1,6 @@
+# Built-in step (docs/spec/workflow.md). Override any key in a nearer layer:
+# steps/<name>/step.toml. Delete nothing here: a closer layer replaces one key at a time.
+after = "implement"
+gate = false
+on_fail = "implement"
+max_agents = 0

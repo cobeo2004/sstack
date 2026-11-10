@@ -11,11 +11,11 @@ measuring.
    target: don't do it; don't do it again; do it less; do it later; do it when
    they're not looking; do it concurrently; do it cheaper.
 4. Plan the fix from the measurement; the benchmark command and its threshold go
-   in the answer key (Phase 1 gate).
-5. Implement one attempt at a time and measure each before the next (Phase 2).
+   in the answer key (the gate after `plan`).
+5. Implement one attempt at a time and measure each before the next (step `implement`).
 6. Post-fix measurement under the same conditions. Compare the artifacts, not
    impressions. Wrong surface or mixed cold/warm runs is not a pass.
-7. `review`, then Phase 4; cite the numbers in the PR.
+7. `review`, then the `pr` step; cite the numbers in the PR.
 
 **Reply:** baseline, post-fix number, delta with noise floor and units, run count,
 cold/warm, artifact path.

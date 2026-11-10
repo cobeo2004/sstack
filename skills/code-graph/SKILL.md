@@ -26,9 +26,9 @@ All accept `--repo <root>`; the default is auto-detected. Large repos:
 ## How sstack uses it
 
 - **setup** step 5: `build`, then `status` to confirm counts.
-- **work** Phase 0: `update`, then `detect-changes --base <base>` to list what the
-  intended change reaches; put the result under SYSTEM STATE / RISKS.
-- **review** / Phase 4: `detect-changes` on the final diff for the impact summary
+- **work**, `recon` step: `update`, then `detect-changes --base <base>` to list what
+  the intended change reaches; put the result under SYSTEM STATE / RISKS.
+- **review** / `pr` step: `detect-changes` on the final diff for the impact summary
   in the PR; any reached area without a test is a review lens.
 - **diagram** and **how**: callers, callees and module dependencies.
 - The dashboard's Code graph page shows `status` and runs `update` (or `build`).

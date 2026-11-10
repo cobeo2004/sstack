@@ -79,6 +79,7 @@ members and layer, e.g. `review/security: auth changes → claude/opus (repo)`.
 | `--title <text>` | title for ADE tasks and the index line's `task` (default `sstack <role>`) |
 | `--hint <name>` | a config hint or a built-in kind |
 | `--files <paths…>` | files the work touches; used for kind detection (review defaults to `git diff`) |
+| `--step <name>` | take the role, the brief and the concurrency cap from that step folder ([workflow.md](workflow.md)) |
 | `--base <ref>` | review: diff base for detection |
 | `--panel` | review: force the full panel from `roles/review.toml` (other roles ignore it) |
 | `--via auto\|headless\|local\|ade-cli` | beats `[dispatch] via` |
@@ -109,6 +110,7 @@ config error (exit 1).
 | 2 | timeout (`[dispatch] timeout_min`, default 30) | the child was killed; retry or narrow the brief |
 | 3 | run locally | do the work in this session; stdout is `local` |
 | 4 | the agent must make tool calls; nothing started | follow the payload (next section) |
+| 5 | `BUSY: <holder run> <files>; nothing started` — another run holds this checkout's write lock | wait for the holder to record its step or finish, then dispatch again |
 
 ```sh
 printf 'List the files.\n' > brief.md
@@ -120,6 +122,35 @@ T3CODE_THREAD_ID=demo sstack-dispatch scout --brief brief.md --report h.md --via
 ```
 
 The last line runs headless even inside T3 Code, because `--via` beats the ADE.
+
+## Steps and caps
+
+`--step <name>` takes the role, the brief and the concurrency cap from the step
+folder ([workflow.md](workflow.md)) instead of retyping them: the role defaults to
+the step's `role`, the brief to its `brief.md`, and the run's `max_parallel` is
+`min(max_agents, [rules] max_parallel)`. `max_agents = 0` runs the step inline (exit
+3, stdout `local`); `1` allows no concurrency; over-cap members queue in the
+payload's `calls`, never drop. `[rules] max_parallel` stays the hard ceiling, so a
+step can only lower it, and `sstack-doctor` WARNs when a step asks for more.
+
+## One writer at a time
+
+Every dispatch of a write role — any role not in the read-only list — takes this
+checkout's lock at `.sstack/runs/implement.lock`, including local work (exit 3).
+The holder is the task run folder the `--report` sits in, so one orchestrator
+serializes its own groups without waiting on itself. Another owner gets exit 5 when
+it can't safely run beside the holders:
+
+- an ADE that does not isolate children → refused while any live holder exists;
+- an isolating ADE → refused when the holders already reach the step's `max_agents`,
+  or when its `--files` overlap a holder's files.
+
+Refused prints `BUSY: <holder run> <files>; nothing started` and starts nothing.
+The caller waits for the holder, then dispatches again. The lock is released by the
+run's last `record`, by a headless return, or for local work by
+`sstack-workflow done <step>` of the step that dispatched it; a holder older than
+`[dispatch] timeout_min` is stale and ignored. Parallel implement is described in
+[workflow.md](workflow.md) and `skills/work/steps.md`.
 
 ## Exit 4: make the tool calls
 
@@ -307,8 +338,9 @@ scout 0
 
 ## How to change this
 
-- Dispatch, `record`, the run dir and the read-only check: `lib/sstack_dispatch.py`; routing,
-  kinds and tiers: `lib/sstack_route.py`; ADE payloads and hooks: `lib/sstack_ade.py`.
+- Dispatch, `record`, the run dir, the read-only check and the write lock: `lib/sstack_dispatch.py`;
+  routing, kinds and tiers: `lib/sstack_route.py`; ADE payloads and hooks: `lib/sstack_ade.py`;
+  step folders and caps: `lib/sstack_workflow.py` ([workflow.md](workflow.md)).
 - Spec first: [docs/spec/dispatch.md](../spec/dispatch.md). Payload shapes are frozen fixtures in
   `tests/fixtures/payloads/*.json`; add a new fixture instead of editing one.
 - The router's dispatch procedure (`## Delegation` in `skills/sstack/SKILL.md`) must keep naming

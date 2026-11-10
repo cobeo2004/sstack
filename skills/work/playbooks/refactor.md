@@ -13,13 +13,13 @@ feature or real bug found on the way is split out, not folded in.
    orphan references (principle laziness).
 4. Plan in small behaviour-preserving steps, each keeping the pin green. For API
    reshapes, migrate every caller and delete the old API in the same wave; no
-   shims, no parallel old and new paths. (Phase 1 gate.)
-5. Implement (Phase 2). Spot-check every rename against the files, including
+   shims, no parallel old and new paths. (The gate after `plan`.)
+5. Implement (step `implement`). Spot-check every rename against the files, including
    strings and docs.
 6. Prove behaviour is unchanged on the real artifact; for larger moves, an
    equivalence check (old vs new output diff, or a replayed baseline).
 7. Keep it only if the diff lowers reader load somewhere; otherwise revert.
-8. Commits: subtraction, then reshape, then cleanup. `review`, then Phase 4.
+8. Commits: subtraction, then reshape, then cleanup. `review`, then the `pr` step.
 
 **Reply:** the structure that changed, the pin, the equivalence proof, what shipped
 and what was reverted. No new behaviour.

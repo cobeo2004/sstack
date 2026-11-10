@@ -14,11 +14,11 @@ revert what it motivated.
 4. **Diagnose-only exit:** if the user asked only for the cause, stop here and
    report: symptom, root cause with evidence, proposed fix, what you didn't verify.
 5. Plan the fix; the failing repro goes in the answer key as a protected test when
-   it's cheap to write (Phase 1 gate).
-6. Implement the smallest change the evidence justifies (Phase 2).
+   it's cheap to write (the gate after the `plan` step).
+6. Implement the smallest change the evidence justifies (step `implement`).
 7. Verify on the same surface: the original repro now passes. Unit tests show
    branch behaviour, not bug absence.
-8. Order commits so the failing test lands before the fix. `review`, then Phase 4.
+8. Order commits so the failing test lands before the fix. `review`, then the `pr` step.
 
 **Reply:** what was broken, root cause, fix, how you verified it. Quote the
 decisive failing and passing output, trimmed to the assertion and counts.

@@ -11,7 +11,7 @@ token (`?t=<token>`); POST/PUT/DELETE also need `Content-Type: application/json`
 | `DELETE /api/config/<layer>/<kind>/<name>` | "reset to inherited": deletes the layer file |
 | `GET /api/config` | effective config + per thing `source()` layer (docs/spec/config.md) |
 | `GET /api/ade` | `sstack-dispatch ade` output (docs/spec/dispatch.md) |
-| `GET /api/runs` | `{"runs": [{"task", "ts", "children"}]}`: index lines grouped by task (the top-level run folder), tasks newest first; each child is the old per-`run_dir` group object (`run_dir`, `lines`, `run`, `readonly_warning`, `ts`) with its `run.json`; a flat legacy run is a task with itself as its only child |
+| `GET /api/runs` | `{"runs": [{"task", "ts", "children", "workflow"}]}`: index lines grouped by task (the top-level run folder), tasks newest first; each child is the old per-`run_dir` group object (`run_dir`, `lines`, `run`, `readonly_warning`, `ts`) with its `run.json`; a flat legacy run is a task with itself as its only child; `workflow` is the task folder's `workflow.json` (docs/spec/workflow.md), or `null` when it is missing or unreadable |
 
 A nested `run_dir` such as `.sstack/runs/<task>/dispatch/<HHMM>-<role>` belongs to task
 `.sstack/runs/<task>`; a flat `.sstack/runs/<YYYYMMDD-HHMM>-<role>` is its own task.

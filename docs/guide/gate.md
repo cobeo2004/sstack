@@ -52,8 +52,8 @@ numbering and writes `<n>-pr.md` and `<n>-pr.log`.
 - **Protected files.** Any modified or deleted file matching `protected`, or
   `.sstack/project.toml`, fails the gate. New files under a protected glob pass.
 - **The run manifest.** With `--run`, the gate checks every repository file listed in
-  `<run>/protected/SHA256SUMS` against its recorded sha256. `work` writes that file in Phase 1 and
-  restores protected files before the gate in `restore` mode.
+  `<run>/protected/SHA256SUMS` against its recorded sha256. `work` writes that file in the `plan`
+  step and restores protected files before the `gate` step in `restore` mode.
 - **PR evidence.** With `--pr`, frontend and mobile changes need an `after-*` image or video; backend
   and security changes need an `after-*.mmd` diagram. Every after file needs a matching before file.
   Test files and docs/config-only changes owe nothing.
@@ -64,14 +64,18 @@ the whole evidence check with a reason; the verdict says `MEDIA WAIVED: <reason>
 
 ## In `work`
 
-`work` Phase 3 runs `sstack-gate --run <run>`. A FAIL goes back to Phase 2 with the verdict file; no
-review is dispatched on a failing gate. Phase 4 rebases, re-runs the answer key (the gate runs only `verify`), then runs
-`sstack-gate --run <run> --pr` and does not ask for Gate 4 until it passes. If it prints a
-`MEDIA WAIVED` line, show that line to the user at Gate 4.
+The `gate` step is a command step: its `run.sh` is `sstack-gate --run "$SSTACK_RUN"`, so
+`sstack-workflow run gate --run <run>` executes it from the repo root and records pass or fail. A
+FAIL routes to the step's `on_fail` (built in: `implement`) with the verdict file; no review runs on
+a failing gate. The `pr` step then rebases, re-runs the answer key (the gate runs only `verify`), and
+runs `sstack-gate --run <run> --pr`; it does not ask for the user's yes until that passes. If it
+prints a `MEDIA WAIVED` line, show that line at the gate.
 
 ## How to change this
 
 - Contract: [docs/spec/gate.md](../spec/gate.md); code: `lib/sstack_gate.py`, `bin/sstack-gate`.
 - Config keys: `verify` and `protected` in [configuration.md](configuration.md#file-schemas).
-- Skills: `skills/work/SKILL.md` Phases 1, 3 and 4; evidence rules in `skills/work/testing.md`.
+- Skill text: `skills/work/steps.md` (`plan`, `gate`, `review`, `pr`); the step config:
+  `defaults/steps/<name>/step.toml` ([workflow.md](workflow.md)); evidence rules in
+  `skills/work/testing.md`.
 - Tests: `python3 -m unittest discover -s tests -p test_gate.py`, then the full suite.

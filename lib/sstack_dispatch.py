@@ -17,11 +17,15 @@ from pathlib import Path
 import sstack_ade as A
 import sstack_route as R
 import sstack_skills as S
+import sstack_workflow as W
 from sstack_config import READONLY_ROLES, VARIANT_STAGES, ConfigError, ades, git_root, load, resolve, variants
 
 VIAS = ("auto", "headless", "local", "ade-cli")
 WARNING = "\n\nWARNING: read-only role changed the working tree:\n"
 INDEX = ".sstack/runs/index.jsonl"
+RUNS = ".sstack/runs"
+LOCK = "implement.lock"  # the per-checkout write lock (docs/spec/dispatch.md)
+OURS = {INDEX, f"{RUNS}/{LOCK}", f"{RUNS}/{LOCK}.mutex", f"{RUNS}/{LOCK}.tmp"}  # never a warning
 fill, key, unkey = A.fill, A.key, A.unkey
 
 
@@ -48,9 +52,126 @@ def max_parallel(cfg: dict) -> int:
     return int(cfg.get("rules", {}).get("max_parallel", 4))
 
 
+def step_cap(step: dict | None, cfg: dict) -> int:
+    """A step's cap: min(max_agents, rules.max_parallel). No --step → rules.max_parallel, as before."""
+    return min(int(step["max_agents"]), max_parallel(cfg)) if step else max_parallel(cfg)
+
+
+def isolates(ade: dict | None) -> bool:
+    """The ADE runs write children in their own checkout: [delegate.write_args] isolation."""
+    return bool(ade and A.kind(ade) == "tool"
+                and ade["toml"].get("delegate", {}).get("write_args", {}).get("isolation"))
+
+
 def rel(root: Path, p) -> str:
     p = Path(p).resolve()
     return str(p.relative_to(root)) if p.is_relative_to(root) else str(p)
+
+
+# ---- write lock, one writer per checkout (docs/spec/dispatch.md) --------------------------------
+
+def lock_owner(root: Path, report: Path) -> str:
+    """The task run folder `--report` sits in, relative to the repo root: `.sstack/runs/<task>` for
+    a report anywhere below it, else the report's own folder (a flat dispatch). The same string
+    sstack_workflow.release() computes from its `--run`."""
+    runs, parent = (root / RUNS).resolve(), report.resolve().parent
+    if parent == runs or parent.is_relative_to(runs):
+        parts = parent.relative_to(runs).parts
+        return rel(root, runs / parts[0]) if parts else rel(root, RUNS)
+    return rel(root, parent)
+
+
+def lock_cap(step: dict | None) -> int:
+    """The lock's cap: the `--step`'s max_agents (inline 0 counts as 1), else one writer per checkout."""
+    return max(1, int(step["max_agents"])) if step else 1
+
+
+def _lock_read(p: Path) -> dict:
+    try:
+        data = json.loads(p.read_text())
+    except (OSError, ValueError):
+        return {"holders": []}
+    return data if isinstance(data, dict) and isinstance(data.get("holders"), list) else {"holders": []}
+
+
+def _lock_write(p: Path, data: dict) -> None:
+    tmp = p.with_name(p.name + ".tmp")
+    tmp.write_text(json.dumps(data, indent=2) + "\n")
+    os.replace(tmp, p)
+
+
+def _mutex(root: Path):
+    """`<runs>/implement.lock.mutex`, held for one short read-modify-write of the holder list: the
+    same lock sstack_workflow.release() takes through lock_release(). Closing the file releases it."""
+    p = root / RUNS / f"{LOCK}.mutex"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    while True:
+        f = open(p, "a")
+        fcntl.flock(f, fcntl.LOCK_EX)
+        try:  # release may have unlinked it while we waited: retry on the file now at that path
+            if os.stat(p).st_ino == os.fstat(f.fileno()).st_ino:
+                return f
+        except FileNotFoundError:
+            pass
+        f.close()
+
+
+def _overlaps(files: list[str] | None, held: list[str] | None) -> bool:
+    """Two `--files` sets touch the same path (or one names a folder of the other). An empty side is
+    unknown, so it counts as overlap: only provably disjoint files run together."""
+    a = [f.removeprefix("./").rstrip("/") for f in files or [] if f]
+    b = [f.removeprefix("./").rstrip("/") for f in held or [] if f]
+    return not a or not b or any(x == y or x.startswith(y + "/") or y.startswith(x + "/")
+                                 for x in a for y in b)
+
+
+def lock_acquire(root: Path, owner: str, run: str, role: str, files: list[str], cap: int,
+                 isolated: bool, timeout_s: float) -> dict | None:
+    """Take this checkout's write lock for `owner`: None once held, else the holder that blocks it.
+    Holders older than `[dispatch] timeout_min` are dropped first. The same owner reuses its holder
+    (one orchestrator never waits on itself); another owner is refused when the ADE does not isolate
+    write children, the cap is reached, or `--files` overlap."""
+    p, now = root / RUNS / LOCK, time.time()
+    with _mutex(root):
+        data = _lock_read(p)
+        live = [h for h in data["holders"]
+                if isinstance(h, dict) and now - float(h.get("started") or 0) <= timeout_s]
+        if not any(h.get("owner") == owner for h in live):
+            blocker = next((h for h in live if
+                            not isolated or len(live) >= cap or _overlaps(files, h.get("files"))), None)
+            if blocker:
+                _lock_write(p, {**data, "holders": live})
+                return blocker
+            live.append({"owner": owner, "run": run, "role": role, "files": list(files), "started": now})
+        _lock_write(p, {**data, "holders": live})
+    return None
+
+
+def lock_release(root: Path, owner: str) -> None:
+    """Drop this owner's holders so the next dispatch into this checkout starts. An empty holder
+    list removes the lock and its mutex, leaving the runs folder as record found it."""
+    p = root / RUNS / LOCK
+    if not p.is_file():
+        return
+    m = _mutex(root)
+    try:
+        data = _lock_read(p)
+        keep = [h for h in data["holders"] if not isinstance(h, dict) or h.get("owner") != owner]
+        if len(keep) == len(data["holders"]):
+            return
+        if keep:
+            _lock_write(p, {**data, "holders": keep})
+        else:
+            p.unlink(missing_ok=True)
+            (root / RUNS / f"{LOCK}.mutex").unlink(missing_ok=True)  # _mutex re-checks the inode
+    finally:
+        m.close()
+
+
+def busy_line(h: dict) -> str:
+    """The exit-5 line: which run holds this checkout, on which files, and that nothing ran."""
+    files = " ".join(h.get("files") or []) or "-"
+    return f"BUSY: {h.get('run') or h.get('owner')} {files}; nothing started"
 
 
 def headless_argv(cfg: dict, role: str, member: dict, title: str) -> list[str]:
@@ -134,7 +255,7 @@ def tree_changes(root: Path, base: dict, skip: list[str]) -> list[str]:
     changed = sorted(p for p in paths
                      if (old_s.get(p) != new_s.get(p) or base["files"].get(p, gone) != now["files"].get(p, gone))
                      and not any(p == s or (s.endswith("/") and p.startswith(s)) for s in skip)
-                     and p != INDEX)
+                     and p not in OURS)
     if not _appended(root, base):  # checked even when .sstack/runs/ is gitignored (not in status)
         changed.append(INDEX)
     if base["head"] != now["head"]:
@@ -242,12 +363,8 @@ def index_line(root: Path, run_dir: Path, run: dict, rec: dict) -> None:
                         **{k: run[k] for k in ("skills", "skills_missing") if k in run}})
 
 
-def panel_index(root: Path, run_dir: Path, run: dict) -> int | None:
-    """Once every member has an index line from this run dir, write the panel index (latest line
-    per member) at panel_report, once (run.json `panel_written`). Returns 0/1 (any member ok) when
-    written, else None."""
-    if not run.get("panel_report") or run.get("panel_written"):
-        return None
+def _latest(root: Path, run_dir: Path) -> dict:
+    """The latest index line per member key from this run dir."""
     rd, latest = rel(root, run_dir), {}
     p = root / ".sstack" / "runs" / "index.jsonl"
     for l in p.read_text().splitlines() if p.exists() else []:
@@ -257,6 +374,16 @@ def panel_index(root: Path, run_dir: Path, run: dict) -> int | None:
             continue
         if rec.get("run_dir") == rd:
             latest[f"{rec['harness']}/{rec['model']}" + (f"#{rec['variant']}" if rec.get("variant") else "")] = rec
+    return latest
+
+
+def panel_index(root: Path, run_dir: Path, run: dict) -> int | None:
+    """Once every member has an index line from this run dir, write the panel index (latest line
+    per member) at panel_report, once (run.json `panel_written`). Returns 0/1 (any member ok) when
+    written, else None."""
+    if not run.get("panel_report") or run.get("panel_written"):
+        return None
+    latest = _latest(root, run_dir)
     if not all(m in latest for m in run["members"]):
         return None
     out = [f"# {run['role']} panel\n"]
@@ -362,7 +489,7 @@ def _record(a, root: Path, run_dir: Path) -> int:
         try:
             cfg = load(git_root(root))
             ade = next((x for x in ades(git_root(root)) if x["name"] == run.get("ade")), None)
-            isolated = not run["readonly"] and bool(ade and ade["toml"].get("delegate", {}).get("write_args", {}).get("isolation"))
+            isolated = not run["readonly"] and isolates(ade)
             up = _escalate(root, run_dir, run, failed, report, code, cfg, isolated) if A.kind(ade) == "tool" else None
         except ConfigError as e:
             print(f"sstack-dispatch record: {e}", file=sys.stderr)
@@ -372,11 +499,15 @@ def _record(a, root: Path, run_dir: Path) -> int:
             brief.write_text(up[1])
             run["brief"] = rel(root, brief)
             write_run(run_dir, run)
-            print(json.dumps(payload(ade, run["role"], [up[0]], str(run_dir), run.get("title") or f"sstack {run['role']}",
-                                     str(brief), report, max_parallel(cfg)), indent=2))
+            print(json.dumps(payload(ade, run["role"], [up[0]], str(run_dir),
+                                     run.get("title") or f"sstack {run['role']}", str(brief), report,
+                                     int(run.get("max_agents", max_parallel(cfg)))), indent=2))
             return 4
     panel = panel_index(root, run_dir, run)
-    return code if panel is None else panel
+    code = code if panel is None else panel
+    if all(m in _latest(root, run_dir) for m in run["members"]):
+        lock_release(root, lock_owner(root, report))  # the run's last record frees the checkout
+    return code
 
 
 # ---- main --------------------------------------------------------------------------------------
@@ -408,15 +539,30 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--no-escalate", action="store_true", help="never retry a failed member one tier up")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--route", action="store_true", help="print the exit-4 payload shape; creates nothing")
+    ap.add_argument("--step", help="a step folder (docs/spec/workflow.md): role, default brief, max_agents")
     a = ap.parse_args(argv)
-    if not a.route and not (a.brief and a.report):
-        ap.error("--brief and --report are required unless --route is given")
-    title = a.title or f"sstack {a.role}"
+    if not a.route and not (a.brief and a.report) and not a.step:
+        ap.error("--brief and --report are required unless --route or --step is given")
     gr = git_root(cwd)
     root = gr or cwd
-    readonly = a.role in READONLY_ROLES
+    locked = False
     try:
         cfg = load(gr)
+        step = None
+        if a.step:  # the step folder supplies the role, the default brief and the cap
+            specs = W.resolved(root)["steps"]
+            if a.step not in specs:
+                raise ConfigError(f"--step {a.step}: no steps/{a.step}/ in any layer")
+            step = specs[a.step]
+            a.role = step["role"] or a.role  # gate has no role of its own: the CLI's stands
+            a.brief = a.brief or step["brief"]
+        if not a.route and not a.report:
+            ap.error("--report is required unless --route is given")
+        if not a.route and not a.brief:
+            raise ConfigError(f"--step {a.step}: no brief.md in its folder; pass --brief")
+        title = a.title or f"sstack {a.role}"
+        readonly = a.role in READONLY_ROLES
+        cap = step_cap(step, cfg)
         via = a.via or cfg.get("dispatch", {}).get("via", "auto")
         cfg.setdefault("dispatch", {})["via"] = via  # route.pick / resolve read it (local → exit 3)
         rules = cfg.get("rules", {})
@@ -437,6 +583,8 @@ def main(argv: list[str] | None = None) -> int:
         vs = {}  # variant id → variant, for the ones that matched and kept a member
         if members and a.role in VARIANT_STAGES:
             members, vs = _add_variants(cfg, gr, a, members, files, rules)
+        if step and step["max_agents"] == 0:  # inline: the agent does the step itself, no subagent
+            members, vs = None, {}
         ade, why = A.active(gr, cfg, os.environ) if via in ("auto", "ade-cli") else (None, f"via {via}")
         # the whitelist: only via = ade-cli ever runs the adapter's [cli] (T3: a new top-level thread)
         shape = {"tool": "tool", "hook": "hook", "none": "headless"}[A.kind(ade)] if via == "auto" else \
@@ -447,12 +595,22 @@ def main(argv: list[str] | None = None) -> int:
                           root / ".sstack" / "runs" / f"{time.strftime('%Y%m%d-%H%M')}-{a.role}")
             if shape == "tool" and members:
                 p = payload(ade, a.role, members, run_dir, title,
-                            str(Path(a.brief).resolve()) if a.brief else "<BRIEF>", report, max_parallel(cfg))
+                            str(Path(a.brief).resolve()) if a.brief else "<BRIEF>", report, cap)
             else:
                 p = {"ade": ade and ade["name"], "role": a.role, "readonly": readonly, "run_dir": run_dir,
                      "calls": [{"member": key(m), "via": shape} for m in members or []]}
             print(json.dumps({**p, "route": route}, indent=2))
             return 0 if members else 3
+        # the write lock: one writer per checkout, whatever runs it (docs/spec/dispatch.md)
+        timeout_s = float(cfg.get("dispatch", {}).get("timeout_min", 30)) * 60
+        if not readonly and not a.dry_run:
+            report = Path(a.report).resolve()
+            blocker = lock_acquire(root, lock_owner(root, report), rel(root, planned_run_dir(root, a.role, report)),
+                                   a.role, files, lock_cap(step), isolates(ade), timeout_s)
+            if blocker:
+                print(busy_line(blocker), file=sys.stderr)
+                return 5
+            locked = True
         # the union: role + kind + [practices] by path; local work gets every harness's skill dirs
         # ponytail: one brief per run, so a panel's members share the union of their harnesses' dirs
         kind = a.hint if a.hint in {**R.kind_tiers(cfg), **cfg.get("skills", {}).get("kinds", {})} else R.classify(files)
@@ -468,6 +626,8 @@ def main(argv: list[str] | None = None) -> int:
         # argv up front, once: config errors surface before anything runs
         plans = {key(m): plan(m) for m in members} if shape in ("headless", "ade-cli") else {}
     except ConfigError as e:
+        if locked:
+            lock_release(root, lock_owner(root, Path(a.report).resolve()))
         print(f"sstack-dispatch: {e}", file=sys.stderr)
         return 1
 
@@ -495,7 +655,7 @@ def main(argv: list[str] | None = None) -> int:
     run_dir = new_run(root, a.role, members, report, readonly,
                       {"title": title, "brief": rel(root, brief_p), "route": route, "ade": ade_name,
                        "via": "headless" if shape == "headless" else via, "hint": a.hint,
-                       "no_escalate": a.no_escalate})
+                       "no_escalate": a.no_escalate, "step": a.step, "max_agents": cap})
     run = json.loads((run_dir / "run.json").read_text())
     if found or missing:  # a derived brief, like brief.escalated.md; escalation reuses run["brief"]
         for n in missing:
@@ -518,12 +678,17 @@ def main(argv: list[str] | None = None) -> int:
         briefs.update({key(m): bp for m in vms})
     report.parent.mkdir(parents=True, exist_ok=True)  # ADE children write the report themselves
     if shape == "tool":
-        print(json.dumps(payload(ade, a.role, members, str(run_dir), title, str(brief_p), report, max_parallel(cfg),
-                                 briefs), indent=2))
+        print(json.dumps(payload(ade, a.role, members, str(run_dir), title, str(brief_p), report, cap, briefs),
+                         indent=2))
         return 4
 
     brief = brief_p.read_text()
-    timeout_s = float(cfg.get("dispatch", {}).get("timeout_min", 30)) * 60
+
+    def finish(code: int) -> int:
+        """Headless, hook and ade-cli work ended here: nothing outlives it, so free the checkout."""
+        if locked:
+            lock_release(root, lock_owner(root, report))
+        return code
 
     def member(m: dict, text: str, deadline: float, rp: Path) -> tuple[int, str | None, str]:
         """(exit, ade used, via) for one member; one deadline across delegate → run → wait → collect."""
@@ -568,20 +733,20 @@ def main(argv: list[str] | None = None) -> int:
     if len(members) == 1:
         code = go(members[0], brief)
         if code == 0:
-            return 0
+            return finish(0)
         try:
             up = _escalate(root, run_dir, run, members[0], report, code, cfg)
             if up and shape in ("headless", "ade-cli"):
                 plans[key(up[0])] = plan(up[0])
         except ConfigError as e:
             print(f"sstack-dispatch: {e}", file=sys.stderr)
-            return code
+            return finish(code)
         if not up:
-            return code
+            return finish(code)
         write_run(run_dir, run)
-        return go(up[0], up[1])
+        return finish(go(up[0], up[1]))
 
-    with ThreadPoolExecutor(max_parallel(cfg)) as ex:  # variants count against the same cap
+    with ThreadPoolExecutor(cap) as ex:  # variants count against the same cap
         codes = list(ex.map(lambda m: go(m, briefs[key(m)].read_text() if key(m) in briefs else brief), members))
     defaults = [i for i, m in enumerate(members) if not m.get("variant")]
     if len(defaults) == 1 and codes[defaults[0]] != 0:  # variants alongside: the default still escalates
@@ -598,7 +763,7 @@ def main(argv: list[str] | None = None) -> int:
             members[i] = up[0]
             codes[i] = go(up[0], up[1])
     panel = panel_index(root, run_dir, run)
-    return panel if panel is not None else (0 if any(c == 0 for c in codes) else 1)
+    return finish(panel if panel is not None else (0 if any(c == 0 for c in codes) else 1))
 
 
 def _add_variants(cfg, root, a, members, files, rules):

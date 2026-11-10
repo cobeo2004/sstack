@@ -290,7 +290,19 @@ def _run_groups(root: Path | None) -> list[dict]:
     for group in tasks.values():
         group["children"].sort(key=lambda g: g["ts"], reverse=True)
         group["ts"] = max((g["ts"] for g in group["children"]), default="")
+        group["workflow"] = _task_workflow(root, group["task"])
     return sorted(tasks.values(), key=lambda g: g["ts"], reverse=True)
+
+
+def _task_workflow(root: Path, task: str) -> dict | None:
+    """The task's `<run>/workflow.json`, or None when it is missing or unreadable."""
+    d = Path(task)
+    d = d if d.is_absolute() else root / d
+    try:
+        state = json.loads((d / "workflow.json").read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+    return state if isinstance(state, dict) else None
 
 
 def _lessons(root: Path | None) -> list[dict]:

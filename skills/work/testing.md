@@ -1,7 +1,8 @@
 # Testing by surface
 
-How a check is written, run and proven. `work` uses this in Phase 0 (test
-strategy), Phase 1 (answer key) and Phase 3 (run). `setup` records each surface's
+How a check is written, run and proven. `work` uses this in the `recon` step (test
+strategy), the `plan` step (answer key) and the `gate` and `review` steps (run).
+`setup` records each surface's
 commands in `[project.test]`. Read principle test-behavior-not-implementation
 before writing any test.
 
@@ -18,7 +19,7 @@ library change gets code tests only.
 
 Tag each answer-key check with its surface: `code:`, `browser:` or `mobile:`.
 Never add a framework, dependency or device setup without the user's yes at the
-plan gate.
+gate after the `plan` step.
 
 ## Find the browser and device
 
@@ -125,7 +126,7 @@ with a reason, and `media/no-before.md` explains a missing before side.
 4. Look at every image before publishing. Crop out or skip any frame that shows
    secrets, tokens or personal data.
 
-Publishing happens in Phase 4, with the user's yes, right after opening the PR:
+Publishing happens in the `pr` step, with the user's yes, right after opening the PR:
 `<sstack>/bin/sstack-pr-media <pr> <run>/media/* --edit-body` pushes the files to
 the repo's `sstack-media` branch (never the PR branch) and puts the marked
 Before | After table in the PR description. PR comments are only for add-ons
@@ -142,7 +143,7 @@ code (the `diagram` skill's Mermaid fallback; `how` for the facts):
   schema changes. A brand-new flow has only `after`.
 - Each node and arrow is a real function, endpoint, queue or table you can cite;
   no invented boxes. Keep it under about 15 nodes: the part that changed.
-- Add the proof beside it: the endpoint call or test output from Phase 3.
+- Add the proof beside it: the endpoint call or test output from the `gate` step.
 
 `sstack-pr-media` puts `.mmd` files in the same Before | After table as images,
 as ```` ```mermaid ```` blocks (GitHub renders them), and doesn't push them. A PR

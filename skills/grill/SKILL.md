@@ -78,7 +78,7 @@ silently assumed. Then write `.sstack/runs/<slug>-<YYYYmmdd-HHMM>/decisions.md`:
 - **OPEN** — anything the user deferred, plainly.
 
 Show it and ask the user to confirm. On their yes, it is the ticket: hand off to
-`work` with that run directory, and `work` reads `decisions.md` in Phase 0.
+`work` with that run directory, and `work` reads `decisions.md` in its `recon` step.
 
 ---
 Adapted from mattpocock/skills `grilling` (MIT) and the opening move of

@@ -16,6 +16,9 @@ Owner: `lib/sstack_config.py`. Fixtures: `tests/fixtures/config/<case>/` (each w
   tiers/<tier>.toml      one tier                                            — replaced whole
   ades/<name>.toml       one ADE adapter (docs/spec/ade.md)                  — replaced whole
   ades/<name>.hook       optional executable; ades/<name>.md optional note   — per file
+  steps/<name>/step.toml one workflow step (docs/spec/workflow.md)           — merged key by key
+  steps/<name>/brief.md  a role step's brief                                 — per file, nearest wins
+  steps/<name>/run.sh    a command step's executable                         — per file, nearest wins
 ```
 
 A file's top level is the table itself: `roles/implement.toml` holds `harness = "pi"`, not
@@ -114,6 +117,12 @@ and `worktree-local-fallback` (no `local/` in the worktree → the primary's `lo
 Merge: `load()` folds layers in order. `config.toml` merges key by key (nested tables too);
 harness/role/tier/ade files and `project.toml` replace the lower layer's file whole.
 
+Step folders are read by `steps()`, *not* `load()`, so `load()` output is unchanged by them
+(`tests/test_contracts.py` snapshots it): `steps/<name>/step.toml` merges key by key across layers,
+and `brief.md` / `run.sh` each come whole from the nearest layer that has one. `steps/` counts as a
+layer's config for the worktree fallback above, like every other layout entry. Contract:
+[workflow.md](workflow.md).
+
 ## Legacy
 
 Legacy = a `config.toml` holding any of `[harness.*] [role.*] [tier.*] [project] [transport]`, or a
@@ -134,10 +143,15 @@ load(root: Path | None) -> dict
 layers(root) -> [(name, dir)]            # [("defaults", …), ("home", …), ("repo", …), ("local", …)]
 trusted(root) -> bool                     # root or its primary is listed in ~/.sstack/repos.txt
 source(root, kind, name) -> (layer, path) | None
-# kind: config | project | harnesses | roles | tiers | ades; name = file stem, dots allowed ("ui.fast")
-# or, for ades, a file name ("t3.md" / "t3.hook"); for roles, a variant "review/security" or its lens
-# "review/security.md" (stages investigate | plan | review only). Only names listed in that dir match.
+# kind: config | project | harnesses | roles | tiers | ades | steps; name = file stem, dots allowed
+# ("ui.fast") or, for ades, a file name ("t3.md" / "t3.hook"); for roles, a variant "review/security"
+# or its lens "review/security.md" (stages investigate | plan | review only); for steps,
+# "<name>/step.toml", "<name>/brief.md" or "<name>/run.sh". Only names listed in that dir match.
 # e.g. source(root, "roles", "review") -> ("local", <root>/.sstack/local/roles/review.toml)
+steps(root) -> {name: {"spec": dict, "source": {key or file: layer}, "brief": Path | None,
+                       "run": Path | None, "builtin": bool}}
+# steps/<name>/ of every layer: step.toml merged per key, brief.md and run.sh each whole from the
+# nearest layer, builtin = ships in defaults/steps/. Read outside load() (docs/spec/workflow.md).
 legacy(root) -> [Path]                   # legacy files, any layer
 ades(root) -> [{"name", "layer", "toml", "hook_path" | None, "note_path" | None, "auto"}]
 # detection order: local, repo, home (alphabetical within each), then defaults (alphabetical);
