@@ -2,7 +2,9 @@
 variant's brief never overwrites the run's shared brief."""
 import unittest
 
+from test_doctor import SmokeTests
 from test_variants import REVIEW_SINGLE, VariantBase
+import sstack_dispatch as D
 
 
 class VariantReviewFixes(VariantBase):
@@ -26,6 +28,19 @@ class VariantReviewFixes(VariantBase):
         self.assertIn("SKILLS LENS", self.out("r-skills.md").read_text())
 
 
+class VariantSmokeCheck(SmokeTests):
+    def test_variant_canary_matches_its_index_line(self):
+        members = ["fake/x", "fake/x#review/security"]
+        d = self.crafted([], roles={"review": members})
+        for name in ("review.md", "review-security.md"):
+            (d / name).write_text("CANARY t\n")
+        base = {"harness": "fake", "model": "x", "exit": 0}
+        for name, extra in (("review.md", {}), ("review-security.md", {"variant": "review/security"})):
+            D.append_index(self.root, {**base, **extra, "report": (d / name).relative_to(self.root).as_posix()})
+        code, out, err = self.doctor("--smoke", "--check", str(d))
+        self.assertIn("PASS review fake/x#review/security", out, err)
+
+
 def load_tests(loader, tests, pattern):
-    return unittest.TestSuite(VariantReviewFixes(n) for n in sorted(VariantReviewFixes.__dict__)
-                              if n.startswith("test_"))
+    return unittest.TestSuite(cls(n) for cls in (VariantReviewFixes, VariantSmokeCheck)
+                              for n in sorted(cls.__dict__) if n.startswith("test_"))

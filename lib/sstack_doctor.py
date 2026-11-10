@@ -307,9 +307,10 @@ def check(root: Path, d: Path) -> int:
             report = d / f"{role}.md"
             ms = [A.unkey(m) for m in members]
             for m, um in zip(members, ms):
-                h, _, model = m.partition("/")
+                h, _, model = m.partition("#")[0].partition("/")
                 rp = D.report_path(report, um, ms)
                 hit = [l for l in mine if l.get("harness") == h and l.get("model") == model
+                       and l.get("variant") == um["variant"]
                        and (root / l["report"]).resolve() == rp]
                 why = ("no index line" if not hit else f"exit {hit[-1].get('exit')}" if hit[-1].get("exit") != 0 else
                        f"no `CANARY {token}` line in {rp}" if not (rp.is_file() and want.search(rp.read_text())) else
