@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import fnmatch
 import hashlib
+import json
 import os
 import re
 import shlex
@@ -14,7 +15,7 @@ import sys
 import tomllib
 from pathlib import Path
 
-from sstack_config import git_root, home_dir, trusted
+from sstack_config import git_root, home_dir, layers, merge, trusted
 from sstack_route import _kind
 from sstack_worktree import base_ref
 
@@ -27,6 +28,7 @@ VISUAL = IMAGES | VIDEOS
 DIAGRAM = {".mmd"}
 SVG = {".svg"}  # an archify extra: pairs like a visual, never required
 SUFFIX = re.compile(r"^(before|after)-(.+)\.([A-Za-z0-9]+)$")
+MERGE_FIELDS = "headRefOid,isDraft,mergeable,baseRefName,statusCheckRollup,additions,deletions,files"
 
 
 class SetupError(Exception):
@@ -62,6 +64,104 @@ def _parse(text: str, label: str) -> dict:
         return tomllib.loads(text) if text.strip() else {}
     except tomllib.TOMLDecodeError as e:
         raise SetupError(f"{label}: {e}") from None
+
+
+def _policy(root: Path, base: str) -> tuple[dict, str]:
+    """Effective [overnight] table. The repo layer is pinned to `base` so a branch cannot
+    loosen the policy it is merged under; local stays in because it is machine-only."""
+    policy: dict = {}
+    labels: list[str] = []
+    for name, d in layers(root):
+        if name == "repo":
+            shown = _git(root, "show", f"{base}:.sstack/config.toml")
+            if shown.returncode == 0:
+                text = shown.stdout
+                label = f"base {base} .sstack/config.toml"
+            else:
+                tracked = _git(root, "ls-files", "--error-unmatch", ".sstack/config.toml")
+                path = d / "config.toml"
+                if tracked.returncode == 0:
+                    text = ""
+                    label = f"ignored .sstack/config.toml (tracked in HEAD, absent from base {base})"
+                elif path.is_file():
+                    text = path.read_text()
+                    label = f"working tree {path} (base {base} has none)"
+                else:
+                    text = ""
+                    label = f"none (base {base} and working tree have no .sstack/config.toml)"
+        elif name == "local" and _branch_local(root):
+            text, label = "", "ignored .sstack/local (tracked in git or a symlink, so not machine-only)"
+        else:
+            path = d / "config.toml"
+            text = path.read_text() if path.is_file() else ""
+            label = str(path) if path.is_file() else f"none ({name})"
+        labels.append(label)
+        if not text.strip():
+            continue
+        data = _parse(text, label)
+        overnight = data.get("overnight", {})
+        if not isinstance(overnight, dict):
+            raise SetupError(f"{label}: [overnight] must be a table")
+        policy = merge(policy, overnight)
+    return policy, "; ".join(labels)
+
+
+def _branch_local(root: Path) -> bool:
+    """Whether a branch could be carrying the local layer: anything tracked under .sstack/local,
+    or .sstack or .sstack/local being a symlink (which could point at tracked files)."""
+    if any((root / p).is_symlink() for p in (".sstack", ".sstack/local")):
+        return True
+    r = _git(root, "ls-files", "--", ".sstack/local")
+    return r.returncode != 0 or bool(r.stdout.strip())
+
+
+def fingerprint(root: Path, rev: str | None = None) -> str | None:
+    """sha256 of the change from the merge base to commit `rev` (default: the working tree,
+    untracked files included). Whitespace, hunk headers and context count; only the `index` lines
+    (whole-file blob ids) are dropped, so a rebase onto unrelated files keeps it and any edit to the
+    change, a whitespace one included, alters it. None when git cannot compute it.
+    ponytail: a rebase that touches the same file changes it too, so it holds for a fresh review."""
+    mb = _git(root, "merge-base", base_ref(root), rev or "HEAD")
+    if mb.returncode:
+        return None
+    mb = mb.stdout.strip()
+    tree = f"{rev}^{{tree}}" if rev else None
+    if tree is None:
+        index = Path(_git(root, "rev-parse", "--git-path", "index").stdout.strip())
+        tmp = (root / index if not index.is_absolute() else index).with_name("sstack-review-index")
+        env = dict(os.environ, GIT_INDEX_FILE=str(tmp))
+        try:
+            for args in (["read-tree", "HEAD"], ["add", "-A"]):
+                if subprocess.run(["git", "-C", str(root), *args], env=env, capture_output=True).returncode:
+                    return None
+            tree = subprocess.run(["git", "-C", str(root), "write-tree"], env=env, capture_output=True,
+                                  text=True).stdout.strip()
+        finally:
+            tmp.unlink(missing_ok=True)
+    diff = _git(root, "diff-tree", "-p", "--no-renames", mb, tree)
+    if diff.returncode:
+        return None
+    kept = "".join(l for l in diff.stdout.splitlines(keepends=True) if not l.startswith("index "))
+    return hashlib.sha256(kept.encode()).hexdigest()
+
+
+def _pr(pr: str) -> dict:
+    """Read one PR with `gh`. Missing gh, a failed call or bad JSON is a setup error (exit 2)."""
+    try:
+        r = subprocess.run(["gh", "pr", "view", str(pr), "--json", MERGE_FIELDS],
+                           capture_output=True, text=True)
+    except OSError as e:
+        raise SetupError(f"gh pr view {pr}: {e}") from None
+    if r.returncode:
+        detail = (r.stderr or r.stdout).strip()
+        raise SetupError(f"gh pr view {pr}: {detail or f'exit {r.returncode}'}")
+    try:
+        data = json.loads(r.stdout)
+    except ValueError as e:
+        raise SetupError(f"gh pr view {pr}: {e}") from None
+    if not isinstance(data, dict):
+        raise SetupError(f"gh pr view {pr}: expected a JSON object")
+    return data
 
 
 def _strings(value, key: str) -> list[str]:
@@ -200,6 +300,106 @@ def _reason(path: Path) -> str:
     return " ".join(path.read_text().split()) if path.is_file() else ""
 
 
+def _ci(rollup) -> str:
+    """"failed" if any finished check is not green, else "pending" if any is unfinished, else
+    "green" (an empty rollup too). overnight's one CI fix attempt keys on "failed"."""
+    states = set()
+    for check in rollup or []:
+        if not isinstance(check, dict):
+            states.add("failed")
+        elif check.get("__typename") == "StatusContext" or ("state" in check
+                                                            and check.get("__typename") != "CheckRun"):
+            s = check.get("state")
+            states.add("green" if s == "SUCCESS" else "pending" if s in ("PENDING", "EXPECTED") else "failed")
+        elif check.get("status") != "COMPLETED":
+            states.add("pending")
+        else:
+            states.add("green" if check.get("conclusion") in {"SUCCESS", "NEUTRAL", "SKIPPED"} else "failed")
+    return "failed" if "failed" in states else "pending" if "pending" in states else "green"
+
+
+def _merge_reasons(root: Path, policy: dict, run: Path, pr_json: dict, default_branch: str) -> list[str]:
+    """HOLD reasons in R5 order; an empty list means the PR may be merged."""
+    reasons = []
+    mode = policy.get("merge", "never")
+    if mode != "policy":
+        reasons.append(f"merge policy is {mode!r}, not 'policy'")
+
+    gate = run / "gate"
+    verdicts = [(int(m.group(1)), p) for p in gate.glob("*-pr.md")
+                if (m := re.fullmatch(r"(\d+)-pr\.md", p.name))]
+    if not verdicts:
+        reasons.append("gate: no --pr verdict")
+    else:
+        latest = max(verdicts, key=lambda x: x[0])[1]
+        text = latest.read_text()
+        if not text.startswith("GATE: PASS"):
+            reasons.append(f"gate: {latest.name} is not PASS")
+        m = re.search(r"^- Head: (\S+)( \(dirty\))?$", text, re.M)
+        if not m or m[2] or m[1] != pr_json.get("headRefOid"):
+            reasons.append(f"head: {latest.name} was not taken on the PR head "
+                           f"{pr_json.get('headRefOid')!r} with a clean tree "
+                           "(run sstack-gate --run <run> --pr after the commit)")
+
+    status = score = reviewed = None
+    try:
+        state = json.loads((run / "workflow.json").read_text())
+        entry = state["steps"]["review"]
+        status, score, reviewed = entry.get("status"), entry.get("score"), entry.get("patch")
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    if status != "pass":
+        reasons.append(f"review: status {status!r} is not pass")
+    elif (reviewed is None or not isinstance(pr_json.get("headRefOid"), str)
+          or reviewed != fingerprint(root, pr_json["headRefOid"])):
+        reasons.append("review: the PR's change is not the one reviewed (record review again)")
+    try:
+        min_score = int(policy.get("merge_min_score", 8))
+    except (TypeError, ValueError):
+        min_score = 8
+    if not isinstance(score, int) or isinstance(score, bool) or score < min_score:
+        reasons.append(f"score: review {score!r} is below merge_min_score {min_score}")
+
+    ci = _ci(pr_json.get("statusCheckRollup"))
+    if ci != "green":
+        reasons.append(f"ci: {ci}")
+    if pr_json.get("mergeable") != "MERGEABLE":
+        reasons.append(f"conflicts with base (mergeable {pr_json.get('mergeable')!r})")
+
+    try:
+        diff = int(pr_json.get("additions") or 0) + int(pr_json.get("deletions") or 0)
+    except (TypeError, ValueError):
+        diff = 0
+    try:
+        max_lines = int(policy.get("max_diff_lines", 400))
+    except (TypeError, ValueError):
+        max_lines = 400
+    if diff > max_lines:
+        reasons.append(f"diff: {diff} lines exceeds max_diff_lines {max_lines}")
+
+    patterns = policy.get("never_merge") or []
+    if isinstance(patterns, str):
+        patterns = [patterns]
+    files = [f.get("path") if isinstance(f, dict) else f for f in (pr_json.get("files") or [])]
+    hits = sorted({p for p in files
+                   if isinstance(p, str)
+                   and any(isinstance(g, str) and fnmatch.fnmatch(p, g) for g in patterns)})
+    if hits:
+        reasons.append("never_merge: " + ", ".join(hits))
+
+    if pr_json.get("isDraft"):
+        reasons.append("draft: PR is a draft")
+
+    assumptions = run / "assumptions.md"
+    if (assumptions.is_file() and assumptions.read_text().strip()
+            and not policy.get("merge_with_assumptions")):
+        reasons.append("assumptions: run has decided assumptions")
+
+    if pr_json.get("baseRefName") != default_branch:
+        reasons.append(f"base: PR targets {pr_json.get('baseRefName')!r}, not {default_branch!r}")
+    return reasons
+
+
 def _is_test(path: str) -> bool:
     p = Path(path)
     name = p.name
@@ -277,12 +477,13 @@ def _tail(log: str, limit: int = 6000) -> str:
     return cut.split("\n", 1)[-1]
 
 
-def _verdict(config: str, changes: list[tuple[str, str]], base_sha: str, verify: str,
+def _verdict(config: str, changes: list[tuple[str, str]], base_sha: str, head: str, verify: str,
              run: str | None, errors: list[str], log: str) -> str:
     status = "FAIL" if errors else "PASS"
     bullets = [
         f"Config: {config}",
         f"Diff: {len(changes)} changed file(s) against {base_sha[:12]}",
+        f"Head: {head}",  # sstack-gate --merge binds this verdict to the PR head
         f"Verify: {verify}",
     ]
     if run:
@@ -296,7 +497,8 @@ def _verdict(config: str, changes: list[tuple[str, str]], base_sha: str, verify:
 
 
 def _next(gate: Path) -> int:
-    nums = [int(m[1]) for p in gate.glob("*.md") if (m := re.fullmatch(r"(\d+)(?:-pr)?\.md", p.name))]
+    nums = [int(m[1]) for p in gate.glob("*.md")
+            if (m := re.fullmatch(r"(\d+)(?:-(?:pr|merge))?\.md", p.name))]
     return max(nums, default=0) + 1
 
 
@@ -337,8 +539,52 @@ def _evaluate(run: Path | None, pr: bool) -> tuple[int, str, str]:
             parts.append(f"evidence {evidence_label}")
         run_label = "; ".join(parts)
 
-    verdict = _verdict(config_label, changes, base_sha, verify_label, run_label, errors, log)
+    head = _git(root, "rev-parse", "HEAD").stdout.strip()
+    if _git(root, "status", "--porcelain").stdout.strip():
+        head += " (dirty)"
+    verdict = _verdict(config_label, changes, base_sha, head, verify_label, run_label, errors, log)
     return (1 if errors else 0), verdict, log
+
+
+def _merge_verdict(policy: dict, label: str, pr_json: dict, default_branch: str,
+                   reasons: list[str], run: Path) -> str:
+    first = "MERGE" if not reasons else "HOLD: " + "; ".join(reasons)
+    try:
+        state = json.loads((run / "workflow.json").read_text())
+        score = state["steps"]["review"].get("score")
+    except (OSError, ValueError, KeyError, TypeError):
+        score = None
+    out = [first, "", "## Summary", "",
+           f"- Policy: {label}",
+           f"- Merge: {policy.get('merge', 'never')} ({policy.get('method', 'merge')})",
+           f"- Base: {pr_json.get('baseRefName')} (default {default_branch})",
+           f"- Diff: {pr_json.get('additions')} additions, {pr_json.get('deletions')} deletions",
+           f"- Review: score {score}"]
+    if reasons:
+        out += ["", "## HOLD", ""] + [f"- {r}" for r in reasons]
+    return "\n".join(out) + "\n"
+
+
+def _write_merge(run: Path, verdict: str) -> None:
+    gate = run / "gate"
+    gate.mkdir(parents=True, exist_ok=True)
+    (gate / f"{_next(gate)}-merge.md").write_text(verdict)
+
+
+def _evaluate_merge(pr: str, run: Path) -> tuple[int, str]:
+    root = git_root(Path.cwd())
+    if root is None:
+        raise SetupError("not a git repository")
+    if not trusted(root):
+        raise SetupError(f"{root} is not in {home_dir() / 'repos.txt'}")
+    base = base_ref(root)
+    policy, label = _policy(root, base)
+    pr_json = _pr(pr)
+    default_branch = base.removeprefix("origin/")
+    reasons = _merge_reasons(root, policy, run, pr_json, default_branch)
+    verdict = _merge_verdict(policy, label, pr_json, default_branch, reasons, run)
+    _write_merge(run, verdict)
+    return (1 if reasons else 0), verdict
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -346,9 +592,18 @@ def main(argv: list[str] | None = None) -> int:
                                  description="Run the repo's base verify commands and write a gate verdict.")
     ap.add_argument("--run", type=Path, metavar="RUN", help="run directory for verdict and log files")
     ap.add_argument("--pr", action="store_true", help="also enforce before/after PR evidence in RUN/media")
+    ap.add_argument("--merge", metavar="PR", help="merge verdict for PR against [overnight] policy")
     a = ap.parse_args(argv)
     run = a.run.expanduser() if a.run else None
     try:
+        if a.merge is not None:
+            if a.pr:
+                raise SetupError("--merge cannot be combined with --pr")
+            if run is None:
+                raise SetupError("--merge needs --run")
+            code, verdict = _evaluate_merge(a.merge, run)
+            sys.stdout.write(verdict)
+            return code
         code, verdict, log = _evaluate(run, a.pr)
         if run is not None:
             _write(run, a.pr, verdict, log)

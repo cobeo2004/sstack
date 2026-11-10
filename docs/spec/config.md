@@ -7,7 +7,7 @@ Owner: `lib/sstack_config.py`. Fixtures: `tests/fixtures/config/<case>/` (each w
 
 ```
 <layer>/
-  config.toml            ade, [dispatch], [rules], [reflect], [routing]   — merged key by key
+  config.toml            ade, [dispatch], [rules], [reflect], [routing], [overnight]   — merged key by key
   project.toml           repo layers only (repo, local); replaced whole      — was [project]
   harnesses/<name>.toml  one harness                                         — replaced whole
   roles/<role>.toml      one role (sub-tables like [hint.ui] allowed)        — replaced whole
@@ -71,6 +71,28 @@ Skill keys (R19–R21; read by `lib/sstack_skills.py`, never validated by the lo
 
 The built-in `skill_dirs` live in code, not in `defaults/harnesses/*.toml`, so `load()` output is
 unchanged for configs without skill keys. Fixture: `skills-keys`.
+
+## `[overnight]`
+
+The `overnight` skill's policy ([guide](../guide/overnight.md)). `load()` merges it key by key across
+the four layers; `sstack-gate --merge` re-reads it with the repo layer pinned to the base branch
+([gate.md](gate.md)). No other code reads it.
+
+| key | default | type / values | read by |
+|---|---|---|---|
+| `merge` | `"never"` | `never` or `policy` | gate, doctor |
+| `method` | `"merge"` | `merge`, `squash` or `rebase` | skill |
+| `merge_min_score` | `8` | int 1–10 | gate, doctor |
+| `max_diff_lines` | `400` | int ≥ 1 | gate, doctor |
+| `never_merge` | `[]` | list of globs | gate, doctor |
+| `merge_with_assumptions` | `false` | bool | gate, doctor |
+| `on_question` | `"decide"` | `decide` or `park` | skill, doctor |
+| `on_stuck` | `"draft"` | `draft` or `park` | skill, doctor |
+| `stop_at` | `""` | `""` or local `HH:MM` (00:00–23:59) | skill, doctor |
+
+`sstack-doctor`'s `overnight` check FAILs a value outside those ranges and PASSes with `merge never`,
+or `merge policy (<method>, score ≥ <n>)` when `merge = "policy"`. The table is part of `load()`
+output, so every fixture's `expected.json` carries it.
 
 ## Stage variants
 

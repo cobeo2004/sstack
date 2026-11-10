@@ -190,8 +190,48 @@ def _workflow(root):
     return f"{len(chain)} steps: {' → '.join(chain)}"
 
 
+def _overnight(root):
+    """Validate the [overnight] policy read by `sstack-gate --merge` (docs/spec/config.md)."""
+    ov = load(root).get("overnight")
+    if not isinstance(ov, dict):
+        raise ConfigError("overnight must be a table")
+    problems = []
+    merge = ov.get("merge")
+    if merge not in ("never", "policy"):
+        problems.append(f"merge {merge!r} is not never or policy")
+    method = ov.get("method")
+    if method not in ("merge", "squash", "rebase"):
+        problems.append(f"method {method!r} is not merge, squash or rebase")
+    score = ov.get("merge_min_score")
+    if type(score) is not int or not 1 <= score <= 10:
+        problems.append(f"merge_min_score {score!r} is outside 1..10")
+    diff = ov.get("max_diff_lines")
+    if type(diff) is not int or diff < 1:
+        problems.append(f"max_diff_lines {diff!r} is below 1")
+    never = ov.get("never_merge")
+    if not isinstance(never, list) or any(not isinstance(x, str) for x in never):
+        problems.append(f"never_merge {never!r} is not a list of strings")
+    assumptions = ov.get("merge_with_assumptions")
+    if type(assumptions) is not bool:
+        problems.append(f"merge_with_assumptions {assumptions!r} is not a boolean")
+    question = ov.get("on_question")
+    if question not in ("decide", "park"):
+        problems.append(f"on_question {question!r} is not decide or park")
+    stuck = ov.get("on_stuck")
+    if stuck not in ("draft", "park"):
+        problems.append(f"on_stuck {stuck!r} is not draft or park")
+    stop = ov.get("stop_at")
+    if not isinstance(stop, str) or (stop and not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", stop)):
+        problems.append(f"stop_at {stop!r} is not empty or HH:MM")
+    if problems:
+        raise ConfigError("; ".join(problems))
+    if merge == "policy":
+        return f"merge policy ({method}, score ≥ {score})"
+    return "merge never"
+
+
 CHECKS = [("config loads", _loads), ("no legacy files", _legacy), ("roles resolve", _roles),
-          ("stage variants", _variants), ("workflow", _workflow),
+          ("stage variants", _variants), ("workflow", _workflow), ("overnight", _overnight),
           ("harness CLIs", _clis), ("active ADE", _ade), ("hooks executable", _hooks),
           ("entry pointers", _pointers),
           ("skills resolve", _skills)]

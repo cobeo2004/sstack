@@ -24,7 +24,7 @@ Every layer dir may hold any of these. A file's top level is the table itself:
 
 | path | holds | merge |
 |---|---|---|
-| `config.toml` | `ade`, `[dispatch]`, `[rules]`, `[reflect]`, `[routing]` | key by key, nested tables too |
+| `config.toml` | `ade`, `[dispatch]`, `[rules]`, `[reflect]`, `[routing]`, `[overnight]` | key by key, nested tables too |
 | `project.toml` | repo facts: `verify`, `protected`, `[test.<surface>]`, `graph` (repo and local layers only) | replaced whole |
 | `harnesses/<name>.toml` | `headless`, `headless_readonly` argv templates | replaced whole |
 | `roles/<role>.toml` | `harness`, `model`, `effort`, `mode`, `panel`, `[hint.<name>]` | replaced whole |
@@ -54,6 +54,16 @@ panel_diff_lines = 400          # a review diff bigger than this gets the full p
 auto = false
 encode_at = 2
 # [routing.kinds] frontend = "ui-fast"   # remap a built-in work kind to your tier
+[overnight]                      # policy for `sstack-gate --merge` (overnight.md)
+merge = "never"                  # never | policy
+method = "merge"                 # merge | squash | rebase
+merge_min_score = 8              # 1..10
+max_diff_lines = 400             # additions + deletions
+never_merge = []                 # globs; a PR touching one is never merged
+merge_with_assumptions = false   # true: merge a run that decided assumptions
+on_question = "decide"           # decide | park
+on_stuck = "draft"               # draft | park
+stop_at = ""                     # "" or local HH:MM; no run starts after it
 ```
 
 ## File schemas

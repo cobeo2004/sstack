@@ -162,7 +162,8 @@ survived:
 `final` = the lowest recomputed score across reviewers. The step fails when `--fail` is given, when
 `final < min_score`, or when `important > 0` — a verified Important routes back regardless of the
 score. The tool prints `score: <final> (min of <reviewer>=<n>, …; verified Important <n>)` and
-stores `final` as the step's `score`.
+stores `final` as the step's `score`, and `patch`: sha256 of the working tree's diff from the merge base, without `index` lines (untracked files included; `null` when git cannot compute it), which
+`sstack-gate --merge` compares with the PR (docs/spec/gate.md).
 
 ## Doctor rules
 

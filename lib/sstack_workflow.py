@@ -173,6 +173,8 @@ def advance(root: Path, run_dir: Path, wf: dict, step: str, failed: bool = False
             return 1
         final, important, shown = score(rows)
         entry["score"] = final
+        import sstack_gate  # lazy: only a review records the change it saw
+        entry["patch"] = sstack_gate.fingerprint(root)  # sstack-gate --merge holds when the PR differs
         ok = ok and important == 0 and (final is None or final >= int(spec["min_score"] or 0))
         print(f"score: {final if final is not None else '-'} (min of {', '.join(shown) or 'no reviewers'}; "
               f"verified Important {important})")

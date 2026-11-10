@@ -19,7 +19,7 @@ PAGE_CMD = {"getting-started.md": "sstack-install", "configuration.md": "sstack-
             "gate.md": "sstack-gate", "ades.md": "sstack-dispatch",
             "writing-an-ade.md": "sstack-dispatch", "dispatch.md": "sstack-dispatch",
             "doctor.md": "sstack-doctor", "dashboard.md": "sstack-ui", "contributing.md": None,
-            "workflow.md": "sstack-workflow"}
+            "workflow.md": "sstack-workflow", "overnight.md": "sstack-gate"}
 SPEC_OF = {"sstack-dispatch": "dispatch.md", "sstack-doctor": "doctor.md", "sstack-config": "config.md",
            "sstack-gate": "gate.md", "sstack-ui": "ui.md"}
 # Subcommands handled before argparse, so not in the usage line; None = takes no flags.
