@@ -18,7 +18,8 @@ ADE_ENV = ("T3CODE_THREAD_ID", "ORCA_AGENT_SESSION_ID", "CONDUCTOR_SESSION_ID", 
 PAGE_CMD = {"getting-started.md": "sstack-install", "configuration.md": "sstack-config",
             "gate.md": "sstack-gate", "ades.md": "sstack-dispatch",
             "writing-an-ade.md": "sstack-dispatch", "dispatch.md": "sstack-dispatch",
-            "doctor.md": "sstack-doctor", "dashboard.md": "sstack-ui", "contributing.md": None}
+            "doctor.md": "sstack-doctor", "dashboard.md": "sstack-ui", "contributing.md": None,
+            "workflow.md": "sstack-workflow"}
 SPEC_OF = {"sstack-dispatch": "dispatch.md", "sstack-doctor": "doctor.md", "sstack-config": "config.md",
            "sstack-gate": "gate.md", "sstack-ui": "ui.md"}
 # Subcommands handled before argparse, so not in the usage line; None = takes no flags.

@@ -47,7 +47,7 @@ this file's resolved path (skills are symlinked; resolve the link, e.g.
 | "Just find the cause", "diagnose only" | `work` → `bug-fix`, diagnose-only exit |
 | Behaviour-preserving restructure (rename, extract, dedupe, move) | `work` → `refactor` |
 | Measured slowness | `work` → `perf` |
-| Spans several phases or PRs, a migration | `work` → `multi-phase` |
+| Spans several PRs, a migration | `work` → `multi-phase` |
 | Review a diff or PR, "are we sure?" | `review` |
 | PR status, CI red, review comments to handle | `babysit` |
 | How does X work | `how` |
@@ -64,16 +64,24 @@ Nothing fits → use `work` with the closest playbook and say which steps you
 dropped. Domain skills (framework, design, platform) are not sstack's: `practices`
 finds them for this repo and links them in `[practices]`.
 
-## Follow the playbook
+## Follow the steps
 
-Open a todo list. Copy the chosen playbook's steps (or the skill's steps) into it
-**verbatim** before any task-specific items. A step you decide not to do stays in
-the list, marked `skip: <reason>`. Repo overrides in `.sstack/playbooks/` apply on
-top (see `work`).
+The workflow is a chain of step folders (`steps/<name>/step.toml`), resolved across
+the config layers. `work` reads it with `<sstack>/bin/sstack-workflow show` and
+follows the order that prints; a repo may add, disable, reorder or re-gate steps
+([workflow guide](../../docs/guide/workflow.md)).
+
+Open a todo list in chain order. Copy the chosen playbook's steps (or the skill's
+steps) into it **verbatim** before any task-specific items. A step you decide not to
+do stays in the list, marked `skip: <reason>`. Repo overrides in `.sstack/playbooks/`
+apply on top (see `work`).
 
 ## Gates
 
 - A gate is a stop: report, then wait for the user. Gates belong to this session.
+  They come from the chain: `sstack-workflow done|run` prints `GATE: wait for the
+  user's yes` after a step with `gate = true`, and the `pr` step's gate cannot be
+  configured off. `STOP: ask user` (exit 2) is the loop cap: report, then ask.
 - Before any gate, read every child's report **and** the change itself: `git diff`,
   or `git -C <child worktree> diff` when the child ran in its own checkout. Never
   pass a child's self-report through as your own claim.
@@ -104,6 +112,11 @@ Dispatch a role; never pick a model by hand.
   `implement`, `review`. Task scratch (briefs, reports, logs, notes) goes inside the
   task's run folder, never a new top-level folder under `.sstack/runs/`; dispatches
   whose `--report` sits there nest under it automatically.
+- Inside `work`, add `--step <name>` instead of retyping the step: its `role` is the
+  default role, its `brief.md` the default brief, and the run's concurrency cap is
+  `min(max_agents, [rules] max_parallel)`. `[rules] max_parallel` is the hard
+  ceiling; a step's `max_agents` only lowers it (`0` = inline, `1` = no concurrency),
+  and over-cap members queue, never drop.
 - Routing maps the kind (`--hint` or detected from `--files`) to a tier, then to a
   harness and model. `<sstack>/bin/sstack-dispatch routes` lists the routes;
   `--dry-run` prints the resolved one. Pass the kind from the plan.
@@ -126,12 +139,23 @@ Dispatch a role; never pick a model by hand.
        timed out, `--exit 1` if it failed or left no report, else `--exit 0`. A `record` that exits `4` prints the next tier's payload: same
        procedure. Read each report and verify it — launch success is not task
        success.
+  - `5` — `BUSY: <holder run> <files>; nothing started`: another run holds this
+    checkout's write lock. Say you are waiting on that holder, wait for it to record
+    its step or finish, then dispatch again. Never kill it or work around it in the
+    same tree.
 - A write child may run in its own checkout (`isolation: "worktree"` on T3). That
   checkout starts from the last commit, so uncommitted edits and ignored files
   (`.sstack/runs/`) are not there. Give every brief and report an absolute path, and
   commit or otherwise make reachable whatever the child needs before dispatch. Once
   it finishes, review `git -C <child worktree> diff` (path or branch from the tool
   result) and bring the change into this checkout before the next gate.
+- Write roles (any role that is not read-only) take a per-checkout lock
+  `.sstack/runs/implement.lock`, so one implementer edits a tree at a time. The last
+  `record`, a headless return, or `sstack-workflow done <step>` for the step that
+  dispatched it releases it; a holder older than `[dispatch] timeout_min` is stale.
+  Parallel implement (`max_agents > 1`) runs only when the ADE isolates children in
+  their own checkouts and the files are disjoint; bring each diff back one at a time
+  and re-run the gate after each.
 - Headless dispatch blocks until the child finishes. To run several at once, start
   each in the background (`&` … `wait`, or the harness's background run).
 - Delegate reading by volume: fan out only when the question needs about five or

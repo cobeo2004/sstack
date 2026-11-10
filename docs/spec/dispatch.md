@@ -14,6 +14,21 @@ Owner: `lib/sstack_dispatch.py` (B2). Fixtures: `tests/fixtures/payloads/*.json`
 
 `--via` beats config; `main(argv)` honours it.
 
+## `--step <name>`
+
+A step folder (docs/spec/workflow.md) supplies what used to be per-call options:
+
+| from the step | effect |
+|---|---|
+| `role` | the role: it wins over the positional; a step with no role (`gate`) keeps the CLI's |
+| `brief.md` | the default brief; its absolute path goes into the payload `task` (`--brief` when the step has none) |
+| `max_agents` | cap = `min(max_agents, rules.max_parallel)`; over-cap members queue, never drop |
+
+The cap is the payload `max_parallel` and the headless pool's thread count. `max_agents = 0` is
+inline: dispatch prints `local` and exits 3 without starting anything — the agent does the step
+itself (it still takes the write lock when the role writes; see below). Without `--step`,
+`rules.max_parallel` and the role's own config apply, exactly as before.
+
 ## Exit codes
 
 | code | meaning |
@@ -21,14 +36,17 @@ Owner: `lib/sstack_dispatch.py` (B2). Fixtures: `tests/fixtures/payloads/*.json`
 | 0 | report written (panel: at least one member) |
 | 1 | failure / config error / empty report |
 | 2 | timeout (`[dispatch] timeout_min`): one deadline per member across hook `delegate` → run / `wait` → `collect`; on expiry the hook's `cancel` is called |
-| 3 | run locally (`via = local`, role unset, harness `local`) |
+| 3 | run locally (`via = local`, role unset, harness `local`, a `--step` with `max_agents = 0`) |
 | 4 | the agent must call a tool: stdout is the payload below; nothing was started |
+| 5 | busy: another run holds this checkout's write lock (below); nothing was started |
 
 ## Run layout
 
 ```
 .sstack/runs/
   index.jsonl                         one global index, every run, every member (append only)
+  implement.lock                      the checkout's write lock (below); absent when nobody writes
+  implement.lock.mutex                the short flock around every read-modify-write of it
   <task>/                             one top-level folder per task
     dispatch/
       <HHMM>-<role>/                  a dispatch whose --report folder is under this task
@@ -64,14 +82,16 @@ Runs are grouped by that `run_dir`.
 {"role": "review", "members": ["codex/gpt-6.1-sol", "claude/opus"],
  "report_base": ".sstack/runs/task/dispatch/1200-review/r", "panel_report": ".sstack/runs/task/dispatch/1200-review/r.md",
  "started_at": 1794225600.0, "readonly": true, "title": "sstack review", "brief": "b.md",
- "route": "panel (--panel)", "ade": "t3", "via": "auto", "hint": null}
+ "route": "panel (--panel)", "ade": "t3", "via": "auto", "hint": null,
+ "step": "review", "max_agents": 2}
 ```
 
 Keys: `role`, `members`, `report_base`, `panel_report`, `started_at`, `readonly`, `title`, `brief`
 (repo-relative like every path here), `route` (the routing reason), `ade` (adapter name, null when
 none was used), `via` (`auto` | `headless` | `ade-cli`), `hint` (`--hint` or null), `no_escalate`
-(`--no-escalate`: never escalate this run; sstack-doctor smoke), `skills` / `skills_missing`
-(only with skills; see Skills). Written later:
+(`--no-escalate`: never escalate this run; sstack-doctor smoke), `step` (`--step` or null),
+`max_agents` (the cap this dispatch used; an escalated run's payload carries it), `skills` /
+`skills_missing` (only with skills; see Skills). Written later:
 `escalated` (true once `record` or dispatch escalated; never twice) and `panel_written` (true once
 the panel index was written; never rewritten).
 
@@ -100,10 +120,10 @@ skipped). With no dispatched default (local), variants don't run.
 | index line, hook stdin | no `variant` key | `"variant": "<stage>/<name>"`; `harness`/`model` stay clean |
 
 Order: default members first, then variants by stage and name. Headless runs every member on one
-pool of `rules.max_parallel` threads. Escalation is judged on the default members only: a run whose
-single default member fails escalates it once, variants or not. Variants never escalate; a failed
-variant is a gap (`gap (no report)` in the panel
-index). The panel index lists every member, variants included.
+pool of `max_parallel` threads (`--step`'s cap, else `rules.max_parallel`). Escalation is judged on
+the default members only: a run whose single default member fails escalates it once, variants or
+not. Variants never escalate; a failed variant is a gap (`gap (no report)` in the panel index). The
+panel index lists every member, variants included.
 
 `baseline.json` (read-only roles; written with `run.json`):
 
@@ -124,9 +144,11 @@ this run dir, every other run dir under `.sstack/runs/` (for a nested run, its w
 folder), every report path (each member report,
 `panel_report`, the escalation's `<report_base>.failed.md`) and each one's `.err`.
 `.sstack/runs/index.jsonl` may only grow: it counts as changed when its baseline content is no longer
-a prefix of what is there (truncated or replaced), not when lines were appended. Changed paths, sorted, go to
-`readonly_warning` and a `WARNING: read-only role changed the working tree:` block (one path per
-line) appended to the report. Warns, never fails. Same check for `readonly = "enforced"`.
+a prefix of what is there (truncated or replaced), not when lines were appended.
+`.sstack/runs/implement.lock` and its `.mutex` are sstack's own and never count. Changed paths,
+sorted, go to `readonly_warning` and a `WARNING: read-only role changed the working tree:` block
+(one path per line) appended to the report. Warns, never fails. Same check for
+`readonly = "enforced"`.
 
 ## Skills
 
@@ -180,11 +202,45 @@ the agent.
 ```
 
 Unmapped model → passed through, `"note"` added to that call (fixture `t3-implement.json`).
-`max_parallel` = `rules.max_parallel` (default 4): the agent starts at most that many calls at once
-and starts the next as each is recorded. Each call carries its own report and brief (a stage
-variant's call names its `brief.variant-<name>.md`).
+`max_parallel` = `rules.max_parallel` (default 4), or the `--step` cap: the agent starts at most
+that many calls at once and starts the next as each is recorded. Each call carries its own report and
+brief (a stage variant's call names its `brief.variant-<name>.md`).
 `--route` prints this shape, with the nested or flat `run_dir` it would use, and creates nothing (no
 run dir, no `run.json`, no baseline, no index line).
+
+## Write lock
+
+One writer per checkout. `.sstack/runs/implement.lock` holds every live holder in one JSON object:
+
+```json
+{"holders": [{"owner": ".sstack/runs/20261110-fix-login",
+              "run": ".sstack/runs/20261110-fix-login/dispatch/1610-implement",
+              "role": "implement", "files": ["lib/x.py"], "started": 1794225600.0}]}
+```
+
+Every dispatch of a role that is not read-only (`READONLY_ROLES`: `scout`, `investigate`, `plan`,
+`review`) takes it — `implement` or any custom writer role — including the local route (exit 3) and
+inline steps. Every read-modify-write of the holder list (acquire, stale cleanup, release) runs under
+an `fcntl.flock` on `.sstack/runs/implement.lock.mutex`, the primitive `record` takes on `run.lock`;
+`sstack-workflow done` releases holders the same way (docs/spec/workflow.md). Read-only roles and
+`--dry-run` / `--route` take nothing.
+
+`owner` is the task run folder `--report` sits in, relative to the repo root: `.sstack/runs/<task>`
+for a report anywhere below it (`.sstack/runs/<task>/reviews/r.md` → `.sstack/runs/<task>`), else the
+report's own folder. A dispatch whose owner already holds the lock reuses that holder, so one
+orchestrator serializes its own groups and never waits on itself. A **different** owner is refused —
+exit 5, stderr `BUSY: <holder run> <files>; nothing started`, nothing created or started — when
+
+- the ADE does not isolate write children: `delegate.write_args.isolation` unset (`cursor`, headless,
+  local, a hook), or
+- the live holders reach the step's `max_agents` (`1` when no `--step` named one), or
+- `--files` overlap a holder's. A side with no `--files` is unknown, so it overlaps.
+
+A holder leaves when the run's last `record` returns, when a headless, hook or `ade-cli` run
+returns here, or — for local work, which has no run dir — when `sstack-workflow done` records the
+step that took it. A holder older than `[dispatch] timeout_min` is dropped by the next dispatch. An
+empty holder list removes both files again; a caller that locked a `.mutex` unlinked while it
+waited re-opens the file now at that path and locks again.
 
 ## `record`
 

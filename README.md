@@ -16,15 +16,15 @@
 
 sstack is a set of 14 portable `SKILL.md` skills plus a small stdlib-Python toolkit. It takes an engineering task from "set up this repo" through recon, plan, implement, test, and PR, with a stop for your approval at each gate.
 
-Any phase can be delegated to another harness and model. For example, implement runs on pi + DeepSeek while review runs on a codex + claude panel. Small TOML files, one per role, harness, tier and ADE, control the routing.
+Any step can be delegated to another harness and model. For example, implement runs on pi + DeepSeek while review runs on a codex + claude panel. Small TOML files, one per role, harness, tier and ADE, control the routing.
 
 - **One entry point.** The `sstack` skill routes each request to the right skill or playbook. It also loads repo context and accepted lessons, and enforces the verification and delegation rules.
-- **Gated phases.** `work` runs features, bug fixes, refactors, perf work, and multi-phase migrations through recon → plan → implement → test/fix → PR.
+- **Gated steps.** The workflow is a chain of step folders (`steps/<name>/step.toml`) resolved across four config layers, so a repo can add, disable, reorder or re-gate a step. Out of the box, `work` runs features, bug fixes, refactors, perf work, and multi-phase migrations through recon → plan → implement → gate → review → pr.
 - **A gate that means it.** `sstack-gate` runs the base branch's `verify` commands, blocks edits to protected files, and with `--pr` requires before/after evidence.
 - **Route by role.** `sstack-dispatch` maps the roles `scout`, `investigate`, `plan`, `implement`, and `review` to a harness and model. Inside an ADE (T3 Code, Orca, Conductor) a delegated run becomes that ADE's own child task; elsewhere it runs a headless CLI.
 - **Read-only by default.** Scout, investigate, plan, and review run in read-only mode. The dispatcher warns you if one of them changes the working tree anyway.
 - **Lessons that turn into structure.** `reflect` records your corrections as lessons. A lesson seen twice is proposed as an edit to a skill, `AGENTS.md`, or a check, so it stops being just another note. Repo lessons land in one `## Things agents get wrong` section of `AGENTS.md`, each naming the check that enforces it.
-- **Intent you can trace.** `grill` writes numbered requirements (`R1..Rn`) with the problem, who it affects and the constraints. `work` makes every plan step and every check cite one, and an uncovered requirement blocks the plan gate. Review findings are `Important` or `Nit`; only `Important` blocks.
+- **Intent you can trace.** `grill` writes numbered requirements (`R1..Rn`) with the problem, who it affects and the constraints. `work` makes every plan step and every check cite one, and an uncovered requirement blocks the plan gate. Review findings are `Important` or `Nit` on a 1–10 rubric; a verified `Important`, or a score below the step's `min_score`, blocks.
 - **The repo's own rules first.** Every brief points the child at the `AGENTS.md` files down to the paths it touches, the repo's docs, and the nearest similar file to copy. Review's compliance lens cites the rule a finding breaks.
 - **Local dashboard.** `sstack-ui` edits config per layer and shows the active ADE, run timelines, lessons and the code graph. It runs on 127.0.0.1 and requires a token.
 - **Doctor.** `sstack-doctor` checks the config; `sstack-doctor --smoke` sends a canary through every routed role.
@@ -36,9 +36,9 @@ flowchart LR
     U[Request] --> R[sstack router]
     R --> W[work: playbook]
     R --> O[how / why / review / diagram / ...]
-    W --> P0[0 Recon] --> P1[1 Plan] --> P2[2 Implement] --> P3[3 Test/fix] --> P4[4 PR]
-    P2 -. "dispatch implement (ADE or headless)" .-> H[(pi / codex / claude / cursor<br/>ADE child or headless CLI)]
-    P3 -. review panel .-> H
+    W --> S0[recon] --> S1[plan] --> S2[implement] --> S3[gate] --> S4[review] --> S5[pr]
+    S2 -. "dispatch implement (ADE or headless)" .-> H[(pi / codex / claude / cursor<br/>ADE child or headless CLI)]
+    S4 -. review panel .-> H
 ```
 
 ## Docs
@@ -49,10 +49,11 @@ section.
 
 - [Getting started](docs/guide/getting-started.md): install, check, first dispatch.
 - [Configuration](docs/guide/configuration.md): split layout, four layers, merge rules, migrate, `sstack-config show`.
+- [The workflow](docs/guide/workflow.md): step folders, a custom step, `min_score`, disabling a step.
 - [The gate](docs/guide/gate.md): deterministic `verify`, protected files, and PR evidence checks.
 - [ADEs](docs/guide/ades.md): built-in adapters, detection order, `SSTACK_ADE`, capabilities.
 - [Writing an ADE adapter](docs/guide/writing-an-ade.md): TOML schema, hook JSON contract, worked examples.
-- [Dispatch](docs/guide/dispatch.md): roles, panels, `via`, exit codes 0–4, `record`, run records.
+- [Dispatch](docs/guide/dispatch.md): roles, panels, `via`, exit codes 0–5, `record`, run records, the write lock.
 - [Doctor and smoke test](docs/guide/doctor.md): static checks and the canary smoke test.
 - [Dashboard](docs/guide/dashboard.md): the local config and runs cockpit and its API.
 - [Contributing](docs/guide/contributing.md): repo layout, tests, spec-first rule, PR rules.
@@ -175,7 +176,7 @@ bin/sstack-worktree              # branch, behind/ahead of base, dirty, gitignor
 bin/sstack-worktree copy         # copy only what the primary's .worktreeinclude lists; never overwrites (--dry-run)
 ```
 
-`work` runs it first in Phase 0. `.worktreeinclude` uses gitignore syntax (the same file Claude Code reads), e.g. `.env` and `.env.local`. Secrets are never copied unless you list them there.
+`work` runs it first, in the `recon` step. `.worktreeinclude` uses gitignore syntax (the same file Claude Code reads), e.g. `.env` and `.env.local`. Secrets are never copied unless you list them there.
 
 ### Before/after media on PRs
 
@@ -241,7 +242,7 @@ proves each kind of check.
 |---|---|
 | `sstack` | The entry point: routing, gates, verification, delegation rules |
 | `setup` | Making a repo agent-ready (`product.md`, config, verify commands, graph) |
-| `work` | Features, bug fixes, refactors, perf, multi-phase work through gated phases |
+| `work` | Features, bug fixes, refactors, perf, multi-phase work through the repo's gated steps |
 | `grill` | Brainstorming a fuzzy idea or stress-testing a plan, ending in `decisions.md` that `work` runs from |
 | `review` | Adversarial review of a diff or PR by a different model family |
 | `babysit` | Getting a PR to merge-ready: CI, conflicts, review comments |
@@ -254,35 +255,36 @@ proves each kind of check.
 | `unslop` | Cleaning code slop and AI-sounding prose out of a diff before the PR |
 | `reflect` | Turning corrections into lessons, and repeated lessons into structural edits |
 
-How the skills hand off to each other. The `sstack` router picks one; `work` calls the others at fixed phases. Diamonds are gates: they wait for your yes.
+How the skills hand off to each other. The `sstack` router picks one; `work` calls the others at fixed steps. Diamonds are gates: they wait for your yes. Step names below are the built-in defaults; `sstack-workflow show` prints the chain a repo actually has.
 
 ```mermaid
 flowchart TD
     REQ([Request]) --> SS[sstack router<br/>reads AGENTS.md, product.md, lessons]
     SS -->|set up / onboard this repo| SETUP[setup]
     SS -->|fuzzy idea / grill me| GRILL[grill]
-    SS -->|feature, bug, refactor, perf, migration| P0
+    SS -->|feature, bug, refactor, perf, migration| R0
     SS -->|answer only| ASK[how / why / diagram / swarm / code-graph]
     SS -->|review a diff or PR| REV
     SS -->|open PR needs care| BABY
 
-    GRILL -->|decisions.md| P0
+    GRILL -->|decisions.md| R0
 
-    subgraph WORK [work]
-        P0[Phase 0 Recon] --> G0{Gate 0}
-        G0 --> P1[Phase 1 Plan + answer key] --> G1{Gate 1}
-        G1 --> P2[Phase 2 Implement] --> P3[Phase 3 Test / fix]
-        P3 --> G3{Gate 3}
-        G3 --> P4[Phase 4 PR] --> G4{Gate 4}
+    subgraph WORK [work: the chain resolved from steps/]
+        R0[recon] --> G0{GATE}
+        G0 --> R1[plan + answer key] --> G1{GATE}
+        G1 --> R2[implement] --> R3{gate: sstack-gate}
+        R3 -->|FAIL| R2
+        R3 --> R4[review] --> G3{GATE}
+        G3 --> R5[pr] --> G4{GATE}
     end
 
-    P0 -.->|no definition of done| GRILL
-    P0 -.->|blast radius| CG[code-graph]
-    P0 -.->|many sources| SW[swarm]
-    P2 -.->|"dispatch implement (ADE or headless)"| H[(pi / codex / claude / cursor)]
-    P3 --> REV[review]
-    REV -->|findings| P3
-    P4 --> UN[unslop]
+    R0 -.->|no definition of done| GRILL
+    R0 -.->|blast radius| CG[code-graph]
+    R0 -.->|many sources| SW[swarm]
+    R2 -.->|"dispatch implement (ADE or headless)"| H[(pi / codex / claude / cursor)]
+    R4 --> REV[review]
+    REV -->|findings| R4
+    R5 --> UN[unslop]
     G4 -->|push + PR| BABY[babysit]
     WORK -.->|corrected / dead end| REFL[reflect]
     REFL -.->|accepted lessons| SS

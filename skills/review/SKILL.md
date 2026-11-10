@@ -1,6 +1,6 @@
 ---
 name: review
-description: Adversarial review of a working diff or a PR ("review", "review 142", "are we sure?", "check this before I merge"). Reviewers on a different model family try to break the change; only findings that reproduce against current code survive. Reports findings with evidence; never fixes. Also used by work Phase 3 and for plan critique.
+description: Adversarial review of a working diff or a PR ("review", "review 142", "are we sure?", "check this before I merge"). Reviewers on a different model family try to break the change; only findings that reproduce against current code survive. Reports findings with evidence; never fixes. Also used by work's review step and for plan critique.
 ---
 
 # review
@@ -36,7 +36,9 @@ lenses in [references/lenses.md](references/lenses.md), and this instruction:
 > may be read-only; then say "not run"). Leave out style, naming,
 > and risks that need a future change to matter. Mark each finding `Important`
 > (breaks the intent or a cited rule) or `Nit`, at most 5 nits, and don't inflate
-> severity. "No findings" is a valid result.
+> severity. "No findings" is a valid result. End with your **score, 1–10**, on the
+> anchored rubric at the end of the lenses: 10 nothing found, 7–9 nits only, 5–6 a
+> minor Important, 4 or less breaks the intent.
 
 Dispatch `review` (see [sstack § Delegation](../sstack/SKILL.md#delegation)) with
 this brief, the report path, and `--files` for a PR or committed range
@@ -60,6 +62,21 @@ findings are weighed like any reviewer's, and a missing variant report is a gap.
   drop or reclassify one the current code already handles. Never move an obsolete
   finding onto unrelated lines.
 - Merge findings that share a root cause.
+- Record a `verified` flag per finding: `true` only for one you reproduced in this
+  pass, `false` for one that did not reproduce or that you could not run. Keep each
+  reviewer's own score beside its findings; the caller writes `findings.json` for the
+  run and hands it to the tracker, which recomputes every score after the drops:
+
+  ```json
+  [{"reviewer": "codex/gpt-6.1-sol", "score": 8,
+    "findings": [{"title": "…", "severity": "Important", "verified": true,
+                  "file": "lib/x.py", "where": "42", "evidence": "command + output"}]}]
+  ```
+
+  A verified Important caps that reviewer at 6; a reviewer whose Importants were all
+  unreproduced is raised to at least 7 (10 when nothing verified is left); the final
+  score is the lowest across reviewers. So an inflated score cannot survive a
+  verification pass, and a padded one costs the caller a loop.
 
 ## 4. Then read others' comments
 
@@ -71,11 +88,15 @@ say they came from that reviewer.
 ## Output
 
 - **Intent** — the restatement.
+- **Score** — each reviewer's score and the final one (the lowest across reviewers),
+  with the findings that moved it. `min_score` on the review step (default 5) is the
+  bar: below it, or with any verified `Important` left, the step fails and routes
+  back to `implement`. A change with only nits scores 7–9 and passes.
 - **Scope** — base..head SHAs, files.
 - **Findings** — for each: severity `Important` or `Nit`, `file:line`, command,
-  output, how it breaks the intent or the cited rule, which reviewer found it.
-  At most 5 nits; only an `Important` blocks the caller's gate. "No verified
-  findings" when none survive.
+  output, how it breaks the intent or the cited rule, which reviewer found it, and
+  its `verified` flag. At most 5 nits; only a verified `Important` blocks the
+  caller's gate. "No verified findings" when none survive.
 - **Dropped** — per reviewer, how many findings were dropped and why.
 - **Gaps** — panel members and variants that failed or timed out (from the dispatch index).
 

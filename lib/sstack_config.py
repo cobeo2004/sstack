@@ -15,7 +15,8 @@ READONLY_ROLES = {"scout", "investigate", "plan", "review"}
 VARIANT_STAGES = ("investigate", "plan", "review")  # stages that take roles/<stage>/<name>.toml
 WHOLE = {"role", "harness", "tier"}  # tables whose children are replaced whole
 KINDS = {"harnesses": "harness", "roles": "role", "tiers": "tier"}  # dir → load() table
-LAYOUT = ("config.toml", "project.toml", "harnesses", "roles", "tiers", "ades")
+LAYOUT = ("config.toml", "project.toml", "harnesses", "roles", "tiers", "ades", "steps")
+STEP_FILES = ("step.toml", "brief.md", "run.sh")  # what a steps/<name>/ folder may hold
 LEGACY_TABLES = {"harness", "role", "tier", "project", "transport"}
 MIGRATE = "run `sstack-config migrate` to split it into the new layout (docs/spec/config.md)"
 
@@ -159,13 +160,18 @@ def load(root: Path | None, _ls: list | None = None) -> dict:
 
 def source(root: Path | None, kind: str, name: str | None, _ls: list | None = None) -> tuple[str, Path] | None:
     """(layer, path) of the file that wins for one thing: kind = config | project | harnesses |
-    roles | tiers | ades (name = the file stem, dots allowed; ades also takes "t3.md" / "t3.hook";
-    roles also takes a variant "<stage>/<name>" or "<stage>/<name>.md").
+    roles | tiers | ades | steps (name = the file stem, dots allowed; ades also takes "t3.md" /
+    "t3.hook"; roles also takes a variant "<stage>/<name>" or "<stage>/<name>.md"; steps takes
+    "<step>/<file>" for step.toml, brief.md or run.sh).
     Only names listed in the kind's dir match, so a name can't climb out of it."""
     found = None
-    sub, _, name = (name or "").rpartition("/")
-    if sub and (kind != "roles" or sub not in VARIANT_STAGES):
+    sub, _, tail = (name or "").rpartition("/")
+    if kind == "steps":
+        if not sub or tail not in STEP_FILES:
+            return None
+    elif sub and (kind != "roles" or sub not in VARIANT_STAGES):
         return None
+    name = tail
     for layer, d in _ls or layers(root):
         if kind == "project" and layer not in ("repo", "local"):
             continue
@@ -213,6 +219,42 @@ def variants(root: Path | None, _ls: list | None = None) -> list[dict]:
             lens = source(root, "roles", f"{stage}/{n}.md", ls)
             out.append({"id": f"{stage}/{n}", "stage": stage, "name": n, "layer": layer, "path": path,
                         "spec": spec, "lens_path": lens[1] if lens else None})
+    return out
+
+
+def _step_names(ls: list[tuple[str, Path]]) -> list[str]:
+    names = set()
+    for _, d in ls:
+        base = d / "steps"
+        if not base.is_dir():
+            continue
+        names |= {p.name for p in base.iterdir()
+                  if p.is_dir() and any((p / f).is_file() for f in STEP_FILES)}
+    return sorted(names)
+
+
+def steps(root: Path | None, _ls: list | None = None) -> dict:
+    """The `steps/<name>/` folders of every layer: {"spec": step.toml merged key by key, "source":
+    {key or file: layer}, "brief"/"run": the nearest layer's file or None, "builtin": ships in
+    defaults/steps/}. Read beside load(), never in it, so load() output is unchanged."""
+    ls = _ls or layers(root)
+    out = {}
+    for name in _step_names(ls):
+        spec, src = {}, {}
+        for layer, d in ls:
+            p = d / "steps" / name / "step.toml"
+            if p.is_file():
+                data = _read(p)
+                spec = merge(spec, data)
+                src.update({k: layer for k in data})
+        brief = source(root, "steps", f"{name}/brief.md", ls)
+        run = source(root, "steps", f"{name}/run.sh", ls)
+        if brief:
+            src["brief"] = brief[0]
+        if run:
+            src["run"] = run[0]
+        out[name] = {"spec": spec, "source": src, "brief": brief[1] if brief else None,
+                     "run": run[1] if run else None, "builtin": (DEFAULTS / "steps" / name).is_dir()}
     return out
 
 

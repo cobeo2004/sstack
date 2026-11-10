@@ -33,6 +33,8 @@ Every layer dir may hold any of these. A file's top level is the table itself:
 | `tiers/<tier>.toml` | `harness`, `model`, `effort` | replaced whole |
 | `ades/<name>.toml` | one ADE adapter ([ades.md](ades.md)) | replaced whole |
 | `ades/<name>.hook`, `ades/<name>.md` | optional hook and agent note | nearest layer per file |
+| `steps/<name>/step.toml` | one workflow step: `after`, `role`, `gate`, `on_fail`, `max_loops`, `max_agents`, `min_score`, `enabled` ([workflow.md](workflow.md)) | key by key |
+| `steps/<name>/brief.md`, `steps/<name>/run.sh` | a step's brief (role step) or command (command step) | nearest layer per file |
 
 `config.toml` keys and their built-in values (`defaults/config.toml`):
 
@@ -106,12 +108,16 @@ Lowest first. A later layer wins.
 
 | layer | dir | notes |
 |---|---|---|
-| `defaults` | `<sstack>/defaults/` | ships harnesses `pi`, `codex`, `claude`, `cursor`; roles `scout`, `implement`, `review`; ADEs `t3`, `orca`, `conductor`, `cursor`; no tiers. Never edit it. |
+| `defaults` | `<sstack>/defaults/` | ships harnesses `pi`, `codex`, `claude`, `cursor`; roles `scout`, `implement`, `review`; ADEs `t3`, `orca`, `conductor`, `cursor`; the steps `recon`, `plan`, `implement`, `gate`, `review`, `pr`; no tiers. Never edit it. |
 | `home` | `$SSTACK_HOME`, else `~/.sstack/` | your machine-wide settings |
 | `repo` | `<git root>/.sstack/` | committed with the repo |
 | `local` | `<git root>/.sstack/local/` | personal; add the line `.sstack/local/` to `.gitignore` |
 
 `repo` and `local` exist only inside a git repo.
+
+`steps/` is the workflow: one folder per step, merged per key across the four layers,
+so a repo can add, reorder, disable or re-gate a step without touching a skill. What
+the keys mean and a worked custom step: [workflow.md](workflow.md).
 
 **Worktree fallback.** In a linked git worktree, each of `.sstack/` and `.sstack/local/` falls back to
 the primary checkout's dir when the worktree's own dir holds no config files (a `runs/` dir alone
@@ -277,7 +283,7 @@ then run the smoke test ([doctor.md](doctor.md#run-the-smoke-test)).
 
 ## How to change this
 
-- Loader: `lib/sstack_config.py` (`load`, `layers`, `source`, `legacy`, `ades`, `resolve`).
+- Loader: `lib/sstack_config.py` (`load`, `layers`, `source`, `steps`, `legacy`, `ades`, `resolve`).
 - `sstack-config` CLI: `lib/sstack_configcli.py`, `bin/sstack-config`.
 - Built-in values: `defaults/config.toml`, `defaults/roles/`, `defaults/harnesses/`.
 - Spec first: change [docs/spec/config.md](../spec/config.md), then add a new fixture case under

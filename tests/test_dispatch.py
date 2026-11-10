@@ -577,3 +577,153 @@ class EmptyIndexTests(FakeCliBase):
         code, _, err = self.dispatch("scout")
         self.assertEqual(code, 0, err)
         self.assertEqual(len(idx.read_text().splitlines()), 1)
+
+
+CURSOR = {"SSTACK_ADE": "cursor"}  # tool delegate, no write isolation
+LOCK = Path(".sstack/runs/implement.lock")
+
+
+class StepCapTests(FakeCliBase):
+    """Answer key: `--step` caps concurrency by the step's max_agents (decisions R16, R19)."""
+
+    def step(self, name, toml="", **files):
+        d = self.root / ".sstack" / "steps" / name
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "step.toml").write_text(toml)
+        for fname, text in files.items():
+            (d / fname.replace("_", ".")).write_text(text)
+        return d
+
+    def test_cap_queues_members_instead_of_dropping_them(self):
+        self.example()
+        self.step("review", "max_agents = 1\n")
+        code, out, err = self.dispatch("review", "--step", "review", "--panel", env=T3)
+        self.assertEqual(code, 4, err)
+        d = json.loads(out)
+        self.assertEqual(d["max_parallel"], 1)
+        self.assertEqual(len(d["calls"]), 2)
+
+    def test_cap_never_exceeds_max_parallel(self):
+        self.example()
+        self.repo_cfg("[rules]\nmax_parallel = 2\n")
+        self.step("review", "max_agents = 9\n")
+        _, out, _ = self.dispatch("review", "--step", "review", "--panel", env=T3)
+        self.assertEqual(json.loads(out)["max_parallel"], 2)
+
+    def test_max_agents_zero_runs_inline(self):
+        self.example()
+        self.step("review", "max_agents = 0\n")
+        code, out, _ = self.dispatch("review", "--step", "review", env=T3)
+        self.assertEqual(code, 3)
+        self.assertTrue(out.startswith("local"))
+
+    def test_custom_role_step_brief_defaults_to_its_brief_md(self):
+        self.example()
+        d = self.step("dmm", 'after = "review"\nrole = "review"\n', brief_md="DMM BRIEF\n")
+        code, out, err = self.run_main("review", "--step", "dmm", "--report", str(self.report()), env=T3)
+        self.assertEqual(code, 4, err)
+        self.assertIn(str(d / "brief.md"), json.loads(out)["calls"][0]["args"]["task"])
+
+    def test_without_step_behaviour_is_unchanged(self):
+        self.example()
+        _, out, _ = self.dispatch("review", "--panel", env=T3)
+        self.assertEqual(json.loads(out)["max_parallel"], 4)
+
+
+class WriteLockTests(FakeCliBase):
+    """Answer key: per-checkout write lock (decisions R17, R18; plan A5)."""
+
+    def rep(self, task):
+        p = self.root / ".sstack" / "runs" / task / "r.md"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        return p
+
+    def go(self, role, task, *extra, env=None):
+        return self.run_main(role, "--brief", self.brief(), "--report", str(self.rep(task)), *extra, env=env)
+
+    def holders(self):
+        p = self.root / LOCK
+        return json.loads(p.read_text())["holders"] if p.exists() else []
+
+    def test_second_writer_without_isolation_is_busy(self):
+        self.example()
+        self.assertEqual(self.go("implement", "taskA", env=CURSOR)[0], 4)
+        code, out, err = self.go("implement", "taskB", env=CURSOR)
+        self.assertEqual(code, 5)
+        self.assertIn("BUSY", out + err)
+        self.assertIn("taskA", out + err)
+        self.assertEqual(len(self.holders()), 1)
+
+    def test_isolated_disjoint_files_run_together_overlap_is_busy(self):
+        self.example()
+        d = self.root / ".sstack" / "steps" / "implement"
+        d.mkdir(parents=True)
+        (d / "step.toml").write_text("max_agents = 2\n")
+        self.assertEqual(self.go("implement", "taskA", "--step", "implement", "--files", "a.py", env=T3)[0], 4)
+        self.assertEqual(self.go("implement", "taskB", "--step", "implement", "--files", "b.py", env=T3)[0], 4)
+        self.assertEqual(self.go("implement", "taskC", "--step", "implement", "--files", "b.py", env=T3)[0], 5)
+
+    def test_isolated_but_over_max_agents_is_busy(self):
+        self.example()
+        self.assertEqual(self.go("implement", "taskA", "--files", "a.py", env=T3)[0], 4)
+        self.assertEqual(self.go("implement", "taskB", "--files", "b.py", env=T3)[0], 5)
+
+    def test_stale_holder_is_ignored(self):
+        self.example()
+        (self.root / LOCK).parent.mkdir(parents=True, exist_ok=True)
+        (self.root / LOCK).write_text(json.dumps({"holders": [
+            {"owner": ".sstack/runs/taskA", "run": "x", "role": "implement", "files": [], "started": 0}]}))
+        self.assertEqual(self.go("implement", "taskB", env=CURSOR)[0], 4)
+
+    def test_last_record_releases(self):
+        self.example()
+        _, out, _ = self.go("implement", "taskA", env=CURSOR)
+        call = json.loads(out)["calls"][0]
+        self.rep("taskA").write_text("PASS\n")
+        self.record(call, 0, env=CURSOR)
+        self.assertEqual(self.holders(), [])
+        self.assertEqual(self.go("implement", "taskB", env=CURSOR)[0], 4)
+
+    def test_headless_return_releases(self):
+        self.glob_cfg(FAKE + '[role.implement]\nharness="fake"\nmodel="echo"\n')
+        self.assertEqual(self.go("implement", "taskA")[0], 0)
+        self.assertEqual(self.go("implement", "taskB")[0], 0)
+        self.assertEqual(self.holders(), [])
+
+    def test_custom_writer_role_and_implement_exclude_each_other(self):
+        self.example()
+        self.repo_cfg('[role.writer]\nharness = "claude"\nmodel = "sonnet"\n')
+        self.assertEqual(self.go("implement", "taskA", env=CURSOR)[0], 4)
+        self.assertEqual(self.go("writer", "taskB", env=CURSOR)[0], 5)
+        (self.root / LOCK).unlink()
+        self.assertEqual(self.go("writer", "taskB", env=CURSOR)[0], 4)
+        self.assertEqual(self.go("implement", "taskA", env=CURSOR)[0], 5)
+
+    def test_readonly_roles_take_no_lock(self):
+        self.example()
+        self.assertEqual(self.go("implement", "taskA", env=CURSOR)[0], 4)
+        self.assertEqual(self.go("scout", "taskB", env=CURSOR)[0], 4)
+
+    def test_local_holds_until_done_and_reuses_its_own_holder(self):
+        import subprocess
+        self.example()
+        self.assertEqual(self.go("implement", "taskA", "--via", "local")[0], 3)
+        self.assertEqual(self.go("implement", "taskA", "--via", "local")[0], 3)  # same owner: no self-deadlock
+        self.assertEqual(self.go("implement", "taskB", "--via", "local")[0], 5)
+        r = subprocess.run([sys.executable, str(REPO / "bin/sstack-workflow"), "done", "implement", "--run",
+                            str(self.root / ".sstack/runs/taskA")], cwd=self.root,
+                           env=dict(NO_T3, HOME=str(self.home)), capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.holders(), [])
+        self.assertEqual(self.go("implement", "taskB", "--via", "local")[0], 3)
+
+    def test_simultaneous_dispatches_admit_exactly_one(self):
+        import subprocess
+        self.example()
+        env = dict(NO_T3, HOME=str(self.home))
+        procs = [subprocess.Popen([str(REPO / "bin/sstack-dispatch"), "implement", "--via", "local", "--brief",
+                                   self.brief(), "--report", str(self.rep(t))], cwd=self.root, env=env,
+                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE) for t in ("taskA", "taskB")]
+        codes = sorted(p.wait(timeout=30) for p in procs)
+        self.assertEqual(codes, [3, 5])
+        self.assertEqual(len(self.holders()), 1)

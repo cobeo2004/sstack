@@ -22,6 +22,22 @@ function runMeta(group) {
   return el("div", { class: "run-meta" }, ...meta.map((text) => el("span", { text })));
 }
 
+function workflowMeta(task) {
+  const workflow = task.workflow;
+  if (!workflow || typeof workflow.current !== "string" || !workflow.current) return null;
+  const steps = workflow.steps && typeof workflow.steps === "object" ? workflow.steps : {};
+  const parts = [`step: ${workflow.current}`];
+  const looped = Object.entries(steps)
+    .filter(([, step]) => step && Number(step.loops) > 0)
+    .sort((a, b) => Number(b[1].loops) - Number(a[1].loops))[0];
+  if (looped) parts.push(`(${looped[0]} loop ${looped[1].loops})`);
+  const review = steps.review;
+  if (review && Number.isFinite(review.score)) parts.push(`review score ${review.score}`);
+  return el("div", { class: "run-meta workflow" },
+    ...parts.map((text) => el("span", { text })),
+  );
+}
+
 function warningList(warnings) {
   return el("div", { class: "readonly-alert" },
     el("strong", { text: "Read-only run changed files" }),
@@ -76,6 +92,7 @@ function taskGroup(task) {
       el("h2", { text: task.task }),
       el("span", { class: "mono", text: `${task.children.length} run${task.children.length === 1 ? "" : "s"} / ${lines} line${lines === 1 ? "" : "s"}` }),
     ),
+    workflowMeta(task),
   );
   const children = el("div", { class: "run-children" });
   for (const child of task.children) children.append(runGroup(child));

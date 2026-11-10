@@ -35,7 +35,7 @@ the repo there. `repo=global` means no repo layers (home and defaults only).
 |---|---|---|
 | Config | every thing (`config`, `project`, `harnesses/*`, `roles/*`, `tiers/*`, `ades/*`) with its winning layer | save to `home`, `repo` or `local`; reset to inherited (deletes that layer's file) |
 | ADE | the `sstack-dispatch ade` output and the note text | nothing |
-| Runs | `index.jsonl` grouped by top-level task, newest first; each task lists its dispatch runs with their `run.json` | nothing |
+| Runs | `index.jsonl` grouped by top-level task, newest first; each task lists its dispatch runs with their `run.json` and shows its current step from `workflow.json` | nothing |
 | Lessons | `.sstack/lessons.md` and `~/.sstack/lessons.md` | accept, forget |
 | Graph | code graph status | rebuild (runs `code-review-graph build` or `update`) |
 

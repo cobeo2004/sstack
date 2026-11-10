@@ -27,3 +27,21 @@ Give every reviewer all of these. Each finding still needs a run that proves it.
 
 How sure (say where each key claim stopped): said so < pointed at `file:line` <
 walked the failure and it can't happen < **ran it** < reproduced in the running app.
+
+## Score 1–10
+
+End every review with one number on this anchored rubric, then the finding that
+justifies it. The caller recomputes it after verification and keeps the lowest
+across reviewers, so report what you can prove, not what you fear.
+
+- **10** — nothing found. Also 10 when everything you found did not reproduce.
+- **7–9** — nits only. 9 for one cosmetic nit, 7 for a handful or a real usability
+  wrinkle that still is not a `Nit`-and-a-half.
+- **5–6** — at least one `Important`, but a small one: a narrow edge case, a
+  message that misleads, a gap a later change can close without breaking intent.
+- **4 or less** — the change breaks the intent, a cited rule, or something the user
+  relies on; or the whole approach is wrong. Say which.
+
+Use 5 when in doubt between a small `Important` and a nit that matters: the caller's
+`min_score` is 5, so a 5 fails only where the reviewer says it should. A score with
+no finding behind it is a style opinion; don't send one.

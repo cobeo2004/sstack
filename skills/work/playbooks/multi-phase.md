@@ -1,6 +1,6 @@
 # Multi-phase
 
-Work that spans several phases or PRs (a migration, a large feature). The plan is
+Work that spans several PRs (a migration, a large feature). The plan is
 the deliverable of the first pass; don't implement until it's approved.
 
 1. One or two files with an obvious approach → skip this playbook, use `feature`.
@@ -13,9 +13,9 @@ the deliverable of the first pass; don't implement until it's approved.
    tests); live check on the real surface; perf check if it touches a hot path;
    which PRs it depends on.
 5. `review` the plan (role `review`) for gaps and ordering; fix what reproduces.
-6. **Plan gate.** Stop with the plan path. Execution starts on the user's go.
+6. **The gate after `plan`.** Stop with the plan path. Execution starts on the user's go.
 7. Then run each PR as its own `work` run (feature / refactor / bug-fix playbook),
-   in order, each with its own gates. A PR is verified only when its answer key,
+   in order, each with its own chain of steps and gates. A PR is verified only when its answer key,
    live check and (if any) perf check all pass.
 
 **Reply:** plan path, PR order, what each PR proves, open decisions.

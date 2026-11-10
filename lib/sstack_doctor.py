@@ -14,7 +14,9 @@ from pathlib import Path
 import sstack_ade as A
 import sstack_dispatch as D
 import sstack_skills as S
-from sstack_config import READONLY_ROLES, ConfigError, ades, git_root, layers, legacy, load, resolve, variants
+import sstack_workflow as W
+from sstack_config import (READONLY_ROLES, ConfigError, ades, git_root, layers, legacy, load, resolve,
+                           steps as step_folders, variants)
 import sstack_route as R
 
 DISPATCH = Path(__file__).resolve().parent.parent / "bin" / "sstack-dispatch"
@@ -140,8 +142,56 @@ def _skills(root):
     return ", ".join(names) or "none configured"
 
 
+def _workflow(root):
+    """Step folders (docs/spec/workflow.md): a chain that can run, and caps under the global ceiling."""
+    specs, ceiling = step_folders(root), int(load(root).get("rules", {}).get("max_parallel", 4))
+    on, chain, problems, warns = W.enabled(specs), W.order(specs), [], []
+    for n in sorted(specs):
+        s, spec = specs[n], specs[n]["spec"]
+        after, on_fail = spec.get("after") or "", spec.get("on_fail")
+        if after and after not in specs:
+            problems.append(f"{n}: after {after!r} is not a step")
+        if on_fail and on_fail not in specs:
+            problems.append(f"{n}: on_fail {on_fail!r} is not a step")
+        elif on_fail and on_fail not in on:
+            problems.append(f"{n}: on_fail {on_fail!r} is disabled")
+        files = [f for f, p in (("brief.md", s["brief"]), ("run.sh", s["run"])) if p]
+        if not s["builtin"] and len(files) != 1:
+            problems.append(f"steps/{n}: needs exactly one of brief.md or run.sh "
+                            f"(has {' and '.join(files) or 'neither'})")
+        if s["brief"] and not spec.get("role"):
+            problems.append(f'steps/{n}: a brief.md needs role = "<role>"')
+        level = spec.get("min_score")
+        if level is not None and not (isinstance(level, int) and 1 <= level <= 10):
+            problems.append(f"{n}: min_score {level} is outside 1..10")
+        if n == "pr":
+            if spec.get("gate") is False:
+                problems.append("pr: gate = false; the yes before commit/push/PR cannot be disabled")
+            if spec.get("enabled") is False:
+                problems.append("pr: enabled = false; the PR step cannot be dropped")
+        try:
+            cap = int(spec.get("max_agents", 1))
+        except (TypeError, ValueError):
+            problems.append(f"{n}: max_agents {spec.get('max_agents')!r} is not an integer")
+        else:
+            if cap > ceiling:
+                warns.append(f"{n}: max_agents {cap} > rules.max_parallel {ceiling}")
+    if not chain:
+        problems.append("no steps: defaults/steps/ is missing, or every step is disabled")
+    firsts = [n for n in sorted(specs) if n in on and not (specs[n]["spec"].get("after") or "")]
+    if len(firsts) > 1:
+        problems.append(f"two first steps: {', '.join(firsts)} (one step needs after = \"\")")
+    if left := sorted(on - set(chain)):
+        problems.append(f"cycle: {', '.join(left)} is not reachable from the first step")
+    if problems:
+        raise ConfigError("; ".join(problems))
+    if warns:
+        raise Warn("; ".join(warns))
+    return f"{len(chain)} steps: {' → '.join(chain)}"
+
+
 CHECKS = [("config loads", _loads), ("no legacy files", _legacy), ("roles resolve", _roles),
-          ("stage variants", _variants),
+          ("stage variants", _variants), ("workflow", _workflow),
           ("harness CLIs", _clis), ("active ADE", _ade), ("hooks executable", _hooks),
           ("entry pointers", _pointers),
           ("skills resolve", _skills)]
