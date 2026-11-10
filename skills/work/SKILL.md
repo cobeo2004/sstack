@@ -118,8 +118,8 @@ of lane by the user; nits listed. Report commands + results, findings + outcome.
 ## Phase 4 — PR → gate
 
 1. `unslop` the diff and the PR text. Use the repo's PR template if it has one.
-2. Rebase/merge base and run `<sstack>/bin/sstack-gate --run <run> --pr` on the
-   result; FAIL → Phase 2/3. Show any `MEDIA WAIVED: <reason>` line at Gate 4.
+2. Rebase/merge base; re-run the answer key and `<sstack>/bin/sstack-gate --run
+   <run> --pr` on the result; either fails → Phase 2/3. Show any `MEDIA WAIVED: <reason>` line at Gate 4.
 3. **Gate 4:** the user's explicit yes before commit, push or PR, and before
    publishing media. Then push, open the PR, and run
    `<sstack>/bin/sstack-pr-media <pr> <run>/media/* --edit-body` right after opening,

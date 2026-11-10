@@ -335,6 +335,9 @@ def prune(root: Path, days: int, yes: bool) -> int:
     runs = root / RUNS
     if not runs.is_dir():
         return 0
+    if runs.resolve() != root.resolve() / RUNS:
+        print(f"FAIL prune: {runs} resolves outside the repo, nothing deleted")
+        return 1
     cutoff = time.time() - days * 86400
     for p in sorted(runs.iterdir(), key=lambda x: x.name):
         if p.name in PRUNE_SKIP or p.is_symlink() or not p.is_dir():

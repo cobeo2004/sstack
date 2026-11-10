@@ -323,11 +323,9 @@ def _evaluate(run: Path | None, pr: bool) -> tuple[int, str, str]:
     verify_cmds = _strings(config.get("verify"), "verify")
     protected = _strings(config.get("protected"), "protected") + [PROJECT]
     base_sha = _merge_base(root, base)
-    changes = _changed(root, base_sha)
-
-    errors = _protected(changes, protected)
     ok, verify_label, verify_errors, log = _run_verify(root, verify_cmds)
-    errors += verify_errors
+    changes = _changed(root, base_sha)  # after verify, so files it rewrites count too
+    errors = _protected(changes, protected) + verify_errors
     run_label = None
     if run is not None:
         manifest_errors, manifest_label = _manifest(run, root)
