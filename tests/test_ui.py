@@ -175,6 +175,15 @@ class ServerTests(TempEnv):
         self.assertEqual(review["readonly_warning"], ["lib/sstack_config.py", "scratch.txt"])
         self.assertEqual([line["harness"] for line in review["lines"]], ["codex", "claude"])
 
+    def test_run_group_shows_current_step(self):
+        """Answer key (R20): a task group carries its workflow.json state."""
+        shutil.copytree(FIXTURES / "runs", self.root / ".sstack/runs")
+        state = {"current": "implement", "steps": {"review": {"status": "fail", "loops": 1, "score": 4}}}
+        (self.root / ".sstack/runs/task-review/workflow.json").write_text(json.dumps(state))
+        runs = {r["task"]: r for r in self.get(f"/api/runs?repo={self.root}")["runs"]}
+        self.assertEqual(runs[".sstack/runs/task-review"]["workflow"], state)
+        self.assertIsNone(runs[".sstack/runs/task-implement"]["workflow"])
+
     def test_lessons_accept_and_forget(self):
         p = self.write(self.root, ".sstack/lessons.md",
                        "# Lessons\n\n- [pending] seen=1 id=L1 | x\n")

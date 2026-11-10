@@ -131,3 +131,25 @@ class HookRows(unittest.TestCase):
             text = f.read_text()
             for row in HOOK_ROWS:
                 self.assertIn(row, text, f"{f}: add a row (snippet, or `none: <reason>`)")
+
+
+class WorkflowSkillText(unittest.TestCase):
+    """Answer key: skill text follows the step folders (decisions R4, R8, R16, R17)."""
+
+    def test_work_keeps_playbook_overrides_and_routes_through_steps(self):
+        work = (SKILLS / "work" / "SKILL.md").read_text()
+        self.assertIn("## Repo playbook overrides", work)
+        self.assertIn("steps.md", work)
+        steps = (SKILLS / "work" / "steps.md").read_text()
+        for needle in ("sstack-workflow", "exit 5", "run gate", "findings.json", "STOP", "GATE"):
+            self.assertIn(needle, steps, needle)
+        self.assertNotIn("Phase 0", work + steps)
+
+    def test_review_scores_on_the_rubric(self):
+        review = (SKILLS / "review" / "SKILL.md").read_text()
+        self.assertIn("min_score", review)
+        self.assertIn("findings.json", review)
+        lenses = (SKILLS / "review" / "references" / "lenses.md").read_text()
+        self.assertRegex(lenses, r"1[–-]10")
+        for anchor in ("10", "7", "5", "4"):
+            self.assertIn(anchor, lenses)

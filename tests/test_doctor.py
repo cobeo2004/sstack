@@ -298,3 +298,68 @@ class EntryPointerErrorTests(DoctorBase):
             os.chmod(self.home / ".codex", 0o755)
         self.assertEqual(code, 0, out)
         self.assertNotIn("FAIL entry pointers", out)
+
+
+class WorkflowDoctorTests(DoctorBase):
+    """Answer key: doctor validates step folders (decisions R6, R7, R19)."""
+
+    def step(self, name, toml="", **files):
+        d = self.root / ".sstack" / "steps" / name
+        d.mkdir(parents=True, exist_ok=True)
+        if toml:
+            (d / "step.toml").write_text(toml)
+        for fname, text in files.items():
+            (d / fname.replace("_", ".")).write_text(text)
+
+    def check(self, want):
+        self.glob_cfg(roles())
+        code, out, _ = self.doctor()
+        self.assertIn(f"{want} workflow", out)
+        return code, out
+
+    def test_defaults_pass(self):
+        code, _ = self.check("PASS")
+        self.assertEqual(code, 0)
+
+    def test_pr_gate_cannot_be_disabled(self):
+        self.step("pr", "gate = false\n")
+        code, _ = self.check("FAIL")
+        self.assertEqual(code, 1)
+
+    def test_pr_step_cannot_be_disabled(self):
+        self.step("pr", "enabled = false\n")
+        self.assertEqual(self.check("FAIL")[0], 1)
+
+    def test_unknown_on_fail(self):
+        self.step("review", 'on_fail = "nowhere"\n')
+        self.assertEqual(self.check("FAIL")[0], 1)
+
+    def test_unknown_after(self):
+        self.step("dmm", 'after = "nowhere"\n', run_sh="#!/bin/sh\n")
+        self.assertEqual(self.check("FAIL")[0], 1)
+
+    def test_on_fail_to_a_disabled_step(self):
+        self.step("plan", "enabled = false\n")
+        self.step("review", 'on_fail = "plan"\n')
+        self.assertEqual(self.check("FAIL")[0], 1)
+
+    def test_custom_step_with_both_brief_and_run(self):
+        self.step("dmm", 'after = "implement"\nrole = "review"\n', brief_md="x\n", run_sh="#!/bin/sh\n")
+        self.assertEqual(self.check("FAIL")[0], 1)
+
+    def test_custom_step_with_neither(self):
+        self.step("dmm", 'after = "implement"\n')
+        self.assertEqual(self.check("FAIL")[0], 1)
+
+    def test_role_step_without_role(self):
+        self.step("dmm", 'after = "implement"\n', brief_md="x\n")
+        self.assertEqual(self.check("FAIL")[0], 1)
+
+    def test_min_score_out_of_range(self):
+        self.step("review", "min_score = 11\n")
+        self.assertEqual(self.check("FAIL")[0], 1)
+
+    def test_max_agents_over_max_parallel_warns(self):
+        self.step("review", "max_agents = 9\n")
+        code, _ = self.check("WARN")
+        self.assertEqual(code, 0)
