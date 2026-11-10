@@ -83,18 +83,19 @@ def _merge_base(root: Path, base: str) -> str:
 
 def _changed(root: Path, base_sha: str) -> list[tuple[str, str]]:
     """(path, name-status) against the working tree, including untracked files as added."""
-    r = _git(root, "diff", "--name-status", "--no-renames", base_sha)
+    # -z: literal paths; without it git quotes non-ASCII names and globs never match them
+    r = _git(root, "diff", "--name-status", "--no-renames", "-z", base_sha)
     if r.returncode:
         raise SetupError(f"git diff {base_sha}: {r.stderr.strip()}")
     changes: dict[str, str] = {}
-    for line in r.stdout.splitlines():
-        parts = line.split("\t")
-        if len(parts) >= 2 and parts[1]:
-            changes[parts[1]] = parts[0][:1]
-    r = _git(root, "ls-files", "--others", "--exclude-standard")
+    fields = r.stdout.split("\0")
+    for status, path in zip(fields[::2], fields[1::2]):
+        if path:
+            changes[path] = status[:1]
+    r = _git(root, "ls-files", "--others", "--exclude-standard", "-z")
     if r.returncode:
         raise SetupError(f"git ls-files --others: {r.stderr.strip()}")
-    for path in r.stdout.splitlines():
+    for path in filter(None, r.stdout.split("\0")):
         changes.setdefault(path, "A")
     return sorted(changes.items())
 
@@ -147,6 +148,9 @@ def _manifest(run: Path, root: Path) -> tuple[list[str], str]:
             errors.append(f"{manifest}:{n}: path must stay inside the repo: {rel}")
             continue
         path = root / rel_path
+        if not path.resolve().is_relative_to(root.resolve()):
+            errors.append(f"{rel}: resolves outside the repo")
+            continue
         if not path.is_file():
             errors.append(f"{rel}: protected file is missing")
             continue
