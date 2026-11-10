@@ -13,7 +13,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "lib"))
 from sstack_ade import kill_group  # noqa: E402
-from sstack_config import ConfigError, _primary, git_root, home_dir, load  # noqa: E402
+from sstack_config import ConfigError, git_root, home_dir, load, trusted  # noqa: E402
 
 HARNESSES = ("claude", "codex", "cursor", "pi")
 PATCH_FILE = re.compile(r"^\*\*\* (?:Add File|Update File|Move to): (.+?)\s*$", re.M)
@@ -48,10 +48,8 @@ def post_edit(n: dict) -> int:
         return 0
     if not check:
         return 0
-    f = home_dir() / "repos.txt"
-    trusted = {l.strip() for l in f.read_text().splitlines()} if f.is_file() else set()
-    if not {str(root), str(_primary(root))} & trusted:  # check is repo-supplied shell: registered repos only
-        print(f"sstack-hook: {root} is not in {f}; check skipped", file=sys.stderr)
+    if not trusted(root):  # check is repo-supplied shell: registered repos only
+        print(f"sstack-hook: {root} is not in {home_dir() / 'repos.txt'}; check skipped", file=sys.stderr)
         return 0
     failed = False
     for f in n["files"]:

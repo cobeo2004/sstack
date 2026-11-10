@@ -87,7 +87,7 @@ top (see `work`).
 Run the check, read its output, then claim. Never claim from "should work", a
 child's summary, or a truncated tail. Check order:
 
-1. The repo's existing tests (`[project].verify` in `.sstack/project.toml` first).
+1. The repo's existing tests (`verify` in `.sstack/project.toml` first).
 2. Typecheck / build.
 3. A narrow command that exercises the change directly.
 4. Manual check of the real surface (run the app, call the endpoint).

@@ -72,6 +72,17 @@ def home_dir() -> Path:
     return Path(os.environ.get("SSTACK_HOME") or Path.home() / ".sstack")
 
 
+def trusted(root: Path) -> bool:
+    """Whether this checkout (or its primary) is listed in `~/.sstack/repos.txt`."""
+    f = home_dir() / "repos.txt"
+    entries = set()
+    if f.is_file():
+        for line in f.read_text().splitlines():
+            if line.strip():
+                entries.add(str(Path(line.strip()).expanduser().resolve()))
+    return bool({str(root.resolve()), str(_primary(root).resolve())} & entries)
+
+
 def layers(root: Path | None) -> list[tuple[str, Path]]:
     """[(name, dir)] lowest first: defaults, home, then repo and local when in a git repo."""
     out = [("defaults", DEFAULTS), ("home", home_dir())]

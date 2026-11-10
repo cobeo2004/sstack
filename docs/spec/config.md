@@ -20,8 +20,21 @@ A file's top level is the table itself: `roles/implement.toml` holds `harness = 
 `[role.implement]`.
 
 `project.toml` keys are read by skills (template: `skills/setup/templates/project.toml`), except
-`check`: a fast file-scoped shell command with a `{path}` placeholder, run by `sstack-hook post-edit`
-on each edited file ([hooks.md](hooks.md)). Unset or empty → no check.
+`check`, `verify` and `protected`: `check` is a fast file-scoped shell command with a `{path}`
+placeholder, run by `sstack-hook post-edit` on each edited file ([hooks.md](hooks.md)); `verify` and
+`protected` are read by `sstack-gate` ([gate.md](gate.md)). Unset or empty → no check / no commands /
+no protected globs beyond `.sstack/project.toml`.
+
+`verify` is a string or a list of strings, run with `sh -c` in the repo root, in order. The gate
+reads the base branch's copy; `protected` is a list of globs where a modified or deleted file fails.
+`.sstack/project.toml` is always protected. A new file under a protected glob passes.
+
+```toml
+# project.toml
+verify = ["pnpm lint", "pnpm test"]  # string or list; the base branch's copy is authoritative
+protected = ["lib/core/*"]           # modified/deleted files fail; .sstack/project.toml is implicit
+check = "ruff check {path}"          # fast single-file check, run by the post-edit hook
+```
 
 ```toml
 # config.toml
@@ -94,6 +107,7 @@ load(root: Path | None) -> dict
 # {"ade": "auto", "dispatch": {...}, "rules": {...}, "reflect": {...},
 #  "harness": {"pi": {...}}, "role": {"scout": {...}}, "tier": {...}, "project": {...}}
 layers(root) -> [(name, dir)]            # [("defaults", …), ("home", …), ("repo", …), ("local", …)]
+trusted(root) -> bool                     # root or its primary is listed in ~/.sstack/repos.txt
 source(root, kind, name) -> (layer, path) | None
 # kind: config | project | harnesses | roles | tiers | ades; name = file stem, dots allowed ("ui.fast")
 # or, for ades, a file name ("t3.md" / "t3.hook"). Only names listed in that dir match (no "../").

@@ -42,9 +42,9 @@ skills or plugins installed beside an sstack skill that do the same job (`~/.cla
 One table, still nothing written: `#`, action, where, current → proposed, why, and default
 (`recommended` or `optional`) — one row per change, from the audit only, no invented stack and no
 install unasked. Typical rows: `product.md`, the `project.toml` keys (`brief`, `docs`, `verify`,
-`graph`, one `[test.<surface>]` per surface), the ignore entries, the `AGENTS.md` row, the repo
-registration, the code graph, and the machine rows the audit found (instruction files, duplicate
-skills).
+`protected`, `graph`, one `[test.<surface>]` per surface), the ignore entries, the `AGENTS.md` row,
+the repo registration, the code graph, and the machine rows the audit found (instruction files,
+duplicate skills).
 
 ## 3. Choose
 
@@ -66,14 +66,16 @@ Only the chosen rows.
    If a fact lives in a file an agent can read, point at the file. Under about 60 lines.
 2. **The repo config in the split layout** ([config spec](../../docs/spec/config.md)):
    `.sstack/project.toml` from [templates/project.toml](templates/project.toml) (`brief`, `docs`,
-   `verify`, `graph`, one `[test.<surface>]` per surface the app has — code, browser, mobile; see
+   `verify`, `protected`, `graph`, one `[test.<surface>]` per surface the app has — code, browser,
+   mobile; see
    [work/testing.md](../work/testing.md) — with its framework, where its tests live, and the run /
    serve / build commands; leave out absent surfaces). `dispatch`, `rules` or `reflect` changes go in
    `.sstack/config.toml`, role overrides in `.sstack/roles/<role>.toml`, harness overrides in
    `.sstack/harnesses/<name>.toml`, machine-local overrides in `.sstack/local/`. Add `.sstack/local/`
    and `.sstack/runs/` to `.gitignore`, or to `.git/info/exclude` if the user doesn't want
    `.gitignore` touched. Ask whether `project.toml` and `product.md` should be committed.
-3. **The verify commands** from the audit in `verify`, with their results. Then run `practices`
+3. **The verify commands and protected globs** from the audit in `verify`/`protected`, with their
+   results. Then run `practices`
    with the audit's stack: it proposes `[practices]` in `project.toml` (globs → skills or docs that
    dispatched children read) and writes only on the user's yes. Drop any that need a
    service you don't have; add none the user didn't see at Choose.

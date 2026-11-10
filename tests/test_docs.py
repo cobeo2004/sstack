@@ -16,11 +16,11 @@ SETUP = re.compile(r"^## (Install|Before you start)\n", re.M)
 ADE_ENV = ("T3CODE_THREAD_ID", "ORCA_AGENT_SESSION_ID", "CONDUCTOR_SESSION_ID", "SSTACK_ADE")
 # Flags in prose and tables belong to the page's main command.
 PAGE_CMD = {"getting-started.md": "sstack-install", "configuration.md": "sstack-config",
-            "ades.md": "sstack-dispatch", "writing-an-ade.md": "sstack-dispatch",
-            "dispatch.md": "sstack-dispatch", "doctor.md": "sstack-doctor", "dashboard.md": "sstack-ui",
-            "contributing.md": None}
+            "gate.md": "sstack-gate", "ades.md": "sstack-dispatch",
+            "writing-an-ade.md": "sstack-dispatch", "dispatch.md": "sstack-dispatch",
+            "doctor.md": "sstack-doctor", "dashboard.md": "sstack-ui", "contributing.md": None}
 SPEC_OF = {"sstack-dispatch": "dispatch.md", "sstack-doctor": "doctor.md", "sstack-config": "config.md",
-           "sstack-ui": "ui.md"}
+           "sstack-gate": "gate.md", "sstack-ui": "ui.md"}
 # Subcommands handled before argparse, so not in the usage line; None = takes no flags.
 SUBS = {"sstack-dispatch": {"record": "record", "routes": None, "ade": None}}
 # Stand-in for every harness CLI: echoes the brief, or answers a doctor smoke canary.

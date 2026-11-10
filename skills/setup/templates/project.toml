@@ -2,6 +2,8 @@
 brief  = ".sstack/product.md"
 docs   = []          # links to deeper docs, e.g. [".docs/spec/functional-spec.md", ".docs/architecture/"]
 verify = []          # confirmed with the user, e.g. ["pnpm lint", "pnpm test"]
+protected = []       # globs whose existing files sstack-gate must not see changed or deleted
+                     # .sstack/project.toml is always protected; e.g. ["lib/core/*"]
 graph  = true        # false if code-review-graph isn't installed
 check  = ""          # fast check of one edited file, run by the post-edit hook; e.g. "ruff check {path}"
 

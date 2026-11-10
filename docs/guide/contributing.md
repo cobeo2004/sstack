@@ -19,12 +19,12 @@ export PATH="$HOME/sstack/bin:$PATH"   # where getting-started.md cloned sstack
 
 | path | holds |
 |---|---|
-| `bin/` | entry points: `sstack-dispatch`, `sstack-config`, `sstack-doctor`, `sstack-ui`, `sstack-lessons`, `sstack-worktree`, `sstack-install`, `sstack-pr-media`, `sstack-hook`, `sstack-reflect-hook` |
-| `lib/` | the code behind them: `sstack_config.py` (loader), `sstack_configcli.py`, `sstack_ade.py`, `sstack_dispatch.py`, `sstack_route.py`, `sstack_doctor.py`, `sstack_ui.py`, `sstack_lessons.py`, `sstack_worktree.py` |
+| `bin/` | entry points: `sstack-dispatch`, `sstack-config`, `sstack-doctor`, `sstack-ui`, `sstack-lessons`, `sstack-worktree`, `sstack-install`, `sstack-gate`, `sstack-pr-media`, `sstack-hook`, `sstack-reflect-hook` |
+| `lib/` | the code behind them: `sstack_config.py` (loader), `sstack_configcli.py`, `sstack_ade.py`, `sstack_dispatch.py`, `sstack_route.py`, `sstack_gate.py`, `sstack_doctor.py`, `sstack_ui.py`, `sstack_lessons.py`, `sstack_worktree.py` |
 | `defaults/` | the built-in config layer: `config.toml`, `harnesses/`, `roles/`, `ades/`; `hooks/pi-sstack.ts` (pi hook extension) |
 | `skills/<name>/SKILL.md` | the 14 skills; `skills/sstack/` is the router |
 | `ui/` | dashboard front end (`index.html`, `app.js`, `pages/*.js`, `tokens.css`) |
-| `docs/spec/` | contracts: `config.md`, `ade.md`, `dispatch.md`, `doctor.md`, `hooks.md`, `ui.md` |
+| `docs/spec/` | contracts: `config.md`, `gate.md`, `ade.md`, `dispatch.md`, `doctor.md`, `hooks.md`, `ui.md` |
 | `docs/guide/` | these user and agent guides |
 | `docs/design.md` | design history and rationale |
 | `tests/` | `test_*.py` (stdlib `unittest`), `helpers.py`, `fakes/`, `fixtures/` |
@@ -50,6 +50,7 @@ Run one area while you work:
 | ADE detection, hooks | `test_ade.py` |
 | harness hooks (`sstack-hook`) | `test_hooks.py` |
 | dispatch, record, run dir | `test_dispatch.py`, `test_route.py`, `test_integration.py` |
+| gate, protected files, PR evidence | `test_gate.py` |
 | doctor, smoke | `test_doctor.py` |
 | dashboard | `test_ui.py` |
 | skills lint | `test_skills.py` |

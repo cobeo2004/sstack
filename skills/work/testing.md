@@ -37,7 +37,7 @@ for the right reason**: the missing behaviour, not an import error. For a bug
 fix, the test reproduces the reported failure.
 
 **Run.** Narrow first (`run` with the test's path or name), then the whole suite
-(`[project].verify`). Redirect long output to `.sstack/runs/<run-id>/`.
+(`verify` in `.sstack/project.toml`). Redirect long output to `.sstack/runs/<run-id>/`.
 
 **Proof.** The command, plus pass/fail counts and the decisive assertion, trimmed.
 New tests show RED then GREEN. A test that passed before the change proves
@@ -104,7 +104,9 @@ the shell, into `.sstack/runs/<run-id>/media/`:
 
 Any change a user can see ships with before/after media for the PR. A backend
 change (API, service, job, data flow) ships with diagrams instead; see
-[Backend diagrams](#backend-diagrams).
+[Backend diagrams](#backend-diagrams). `sstack-gate --run <run> --pr` enforces
+this ([gate guide](../../docs/guide/gate.md)): `media/skip.md` waives the check
+with a reason, and `media/no-before.md` explains a missing before side.
 
 1. **After:** while running the live self-check on the change, save a screenshot
    at each key step as `.sstack/runs/<run-id>/media/after-<step>.png`. Record
