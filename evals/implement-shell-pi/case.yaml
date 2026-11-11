@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: implement-shell-pi
+context:
+  scaffold_script: fixture.sh

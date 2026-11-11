@@ -29,6 +29,8 @@ sstack-config sync >/dev/null          # your ~/.sstack profile, as sstack-insta
 | `docs/guide/` | these user and agent guides |
 | `docs/design.md` | design history and rationale |
 | `tests/` | `test_*.py` (stdlib `unittest`), `helpers.py`, `fakes/`, `fixtures/` |
+| `evals/` | behaviour evals: real Claude Code runs of `work`, graded on whether it dispatched ([evals/README.md](../../evals/README.md)) |
+| `.claude-plugin/` | `plugin.json`, so `claude plugin eval` loads `skills/` as the `sstack` plugin |
 
 ## Run the tests
 
@@ -41,6 +43,10 @@ Expected: `OK` and exit 0. Each test uses a temporary `HOME` and git repo
 (`tests/helpers.py` `TempEnv`). Harness CLIs are replaced by `tests/fakes/fake_agent.py`; ADE CLIs
 (`t3`, `orca`, `conductor`) by `tests/fakes/fake_cli.py` through env vars such as
 `T3CODE_CLI_PATH`. Never point a test at the real `t3` CLI or at `~/.sstack`.
+
+The unit tests never run a model. To check that a real agent follows the workflow and starts the
+configured subagent, run `evals/run.sh`. It is paid, so it isn't in CI (see
+[evals/README.md](../../evals/README.md)).
 
 Run one area while you work:
 
