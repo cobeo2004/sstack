@@ -1,0 +1,14 @@
+{
+  "name": "sstack",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Skills plus stdlib-Python commands for routing coding-agent work",
+  "pi": {
+    "skills": [
+      "./skills"
+    ],
+    "extensions": [
+      "./defaults/hooks/pi-sstack.ts"
+    ]
+  }
+}

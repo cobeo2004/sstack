@@ -69,6 +69,9 @@ git clone https://github.com/cobeo2004/sstack.git ~/sstack
 ~/sstack/bin/sstack-install             # link the skills and add the router line
 ```
 
+Or install it as a plugin in Claude Code, Codex, pi or Gemini CLI:
+[Install as a plugin](docs/guide/getting-started.md#install-as-a-plugin).
+
 Prerequisites, what the installer changes, checking the install and a first dispatch:
 [docs/guide/getting-started.md](docs/guide/getting-started.md).
 

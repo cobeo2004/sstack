@@ -30,7 +30,11 @@ sstack-config sync >/dev/null          # your ~/.sstack profile, as sstack-insta
 | `docs/design.md` | design history and rationale |
 | `tests/` | `test_*.py` (stdlib `unittest`), `helpers.py`, `fakes/`, `fixtures/` |
 | `evals/` | behaviour evals: real Claude Code runs of `work`, graded on whether it dispatched ([evals/README.md](../../evals/README.md)) |
-| `.claude-plugin/` | `plugin.json`, so `claude plugin eval` loads `skills/` as the `sstack` plugin |
+| `.claude-plugin/` | `plugin.json` (Claude Code manifest; it also lets `claude plugin eval` load `skills/`) and `marketplace.json` (the repo as its own marketplace) |
+| `plugin.json` | Agent Plugins manifest, loaded by Codex and Cursor |
+| `.agents/plugins/marketplace.json` | Codex marketplace pointing at this repo |
+| `package.json` | pi package: `skills/` plus the `defaults/hooks/pi-sstack.ts` extension; never npm-published |
+| `gemini-extension.json` | Gemini CLI extension manifest |
 
 ## Run the tests
 
@@ -62,6 +66,7 @@ Run one area while you work:
 | doctor, smoke | `test_doctor.py` |
 | dashboard | `test_ui.py` |
 | skills lint | `test_skills.py` |
+| plugin manifests | `test_plugins.py` |
 | these guides | `test_docs.py` |
 
 Use `python3 -m unittest discover -s tests -p <file>` for one file.
