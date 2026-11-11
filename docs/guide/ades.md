@@ -2,9 +2,11 @@
 
 ## What this is
 
-An ADE (agentic dev environment) is the app your agent runs in: T3 Code, Orca, Conductor, Cursor,
-or none (a plain terminal). sstack detects the active ADE and uses it to delegate a role as that
-ADE's own child task instead of a headless CLI. An ADE adapter is `ades/<name>.toml`, an optional
+An ADE (Agent Development Environment) is a workspace or control plane built to run, coordinate and
+review coding agents: T3 Code, Orca, Conductor, Cursor. A harness (Claude Code, Codex, pi) is the
+agent CLI itself, not an ADE. sstack detects the active ADE and uses it to delegate a role as that
+ADE's own child task instead of a headless CLI. With no ADE, the harness running your session can
+still start children itself: see [Session harness](#session-harness-no-ade). An ADE adapter is `ades/<name>.toml`, an optional
 executable `ades/<name>.hook`, and an optional note `ades/<name>.md` that tells the agent how
 browser, device and capture work there. `sstack-dispatch ade` prints the active one. The contract
 is [docs/spec/ade.md](../spec/ade.md).
@@ -30,11 +32,10 @@ They ship in the template `<sstack>/defaults/ades/`; `sstack-config sync` copies
 | `orca` | env `ORCA_AGENT_SESSION_ID` | hook (`orca.hook`, async) | `instructed` | commands: `orca goto/snapshot/…` / `orca emulator` / `orca screenshot` |
 | `conductor` | env `CONDUCTOR_SESSION_ID` | hook (`conductor.hook`); no `CONDUCTOR_API_KEY` → headless with a note | `instructed` | none |
 | `cursor` | never auto-detected (`auto = false`) | tool `Task` with `readonly: true` | `instructed` | tool: Browser subagent / none / none |
-| `claude` | env `CLAUDECODE`, only when no other ADE matches (`fallback = true`) | tool `Agent` for Claude members, background `Bash` for the rest | `instructed` | none |
 
 Each built-in has a note beside it ([t3.md](../../defaults/ades/t3.md),
 [orca.md](../../defaults/ades/orca.md), [conductor.md](../../defaults/ades/conductor.md),
-[cursor.md](../../defaults/ades/cursor.md), [claude.md](../../defaults/ades/claude.md)) with `## Delegation`, `## Browser`, `## Device` and
+[cursor.md](../../defaults/ades/cursor.md)) with `## Delegation`, `## Browser`, `## Device` and
 `## Capture` sections. The agent reads the active one at task start.
 
 ## Detection order
@@ -46,13 +47,21 @@ The first rule that applies picks the ADE:
    `auto = false`);
 3. `ade = "auto"` (the default): walk the adapters in order and take the first match. Order: the
    `local` layer, then `repo`, then `home`; within a layer your own adapters alphabetically, then
-   the built-ins (alphabetical), except that adapters with `fallback = true` (`claude`) come last of
-   all. Adapters with `auto = false` are skipped. A match is any `[detect] env` variable
-   being set, or `[detect] hook = true` and `<hook> detect` exiting 0. T3 Code, Orca and Conductor
-   run Claude Code too and set `CLAUDECODE`: they match first, so the outer environment wins.
+   the built-ins (alphabetical). Adapters with `auto = false` are skipped. A match is any
+   `[detect] env` variable being set, or `[detect] hook = true` and `<hook> detect` exiting 0.
 
-No match means no ADE: delegation runs the harness headless. A user `ades/t3.toml` replaces the
-built-in `t3.toml` whole.
+No match means no ADE. Delegation then uses the session harness if one is detected, else it runs
+the harness headless. A user `ades/t3.toml` replaces the built-in `t3.toml` whole.
+
+## Session harness (no ADE)
+
+T3 Code, Orca and Conductor run Claude Code too, so `CLAUDECODE` is set inside them. They win:
+a detected ADE always beats the session harness. With no ADE, a harness whose `[session].detect`
+env marker is set starts the children itself. Claude Code ships one, in `harnesses/claude.toml`:
+a Claude member becomes an `Agent` call, any other harness's member a backgrounded `Bash` call.
+The exit 4 payload then has `"ade": null` and `"session": "claude"`. `sstack-dispatch ade` lists
+ADEs only, so it prints `name: null` there. The table is in
+[docs/spec/dispatch.md](../spec/dispatch.md#session-harness).
 
 ## Show the active ADE
 
@@ -113,15 +122,15 @@ Expected, in order, all exit 0 (`<sstack>` is where sstack is cloned):
   "note": "<home>/.sstack/ades/cursor.md"
 }
 {
-  "name": "claude",
-  "why": "env CLAUDECODE",
-  "layer": "home",
-  "delegate": "tool Agent",
-  "readonly": "instructed",
-  "browser": "none",
-  "device": "none",
-  "capture": "none",
-  "note": "<home>/.sstack/ades/claude.md"
+  "name": null,
+  "why": "no adapter detected",
+  "layer": null,
+  "delegate": null,
+  "readonly": null,
+  "browser": null,
+  "device": null,
+  "capture": null,
+  "note": null
 }
 ```
 
@@ -166,10 +175,9 @@ T3 plan mode). `"enforced"` means the ADE blocks writes itself. Both get the sam
 compares the working tree with a baseline and appends a warning to the report if a read-only role
 changed anything.
 
-**Shell members.** An adapter with a `[delegate.shell]` table (`claude`) hosts only the harnesses
-in its `[providers]` itself: the `Agent` tool starts Claude, nothing else. A member of any other
-harness (pi, codex) gets a call to the shell tool instead (`Bash`, `run_in_background = true`)
-carrying that harness's headless command line, with the brief on stdin and the report on stdout.
+**Shell members.** An adapter with a `[delegate.shell]` table hosts only the harnesses in its
+`[providers]` itself. A member of any other harness gets a call to the shell tool instead
+(for example `Bash` with `run_in_background = true`) carrying that harness's headless command line, with the brief on stdin and the report on stdout.
 Because that child edits this checkout, a run with a shell member is not isolated, and the write
 lock serializes it ([dispatch spec](../spec/dispatch.md)).
 

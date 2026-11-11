@@ -87,9 +87,11 @@ def _detects(a: dict, env: Mapping[str, str]) -> str | None:
     return None
 
 
+NO_ADE = "no adapter detected"
+
+
 def active(root: Path | None, cfg: dict, env: Mapping[str, str]) -> tuple[dict | None, str]:
-    """(adapter or None, why): SSTACK_ADE > config `ade` > auto-detect (first match, auto = true only;
-    `fallback = true` adapters are tried after every other, so the outer environment wins)."""
+    """(adapter or None, why): SSTACK_ADE > config `ade` > auto-detect (first match, auto = true only)."""
     all_ = ades(root)
     by_name = {a["name"]: a for a in all_}
     for forced, why in ((env.get("SSTACK_ADE"), "SSTACK_ADE={}"), (cfg.get("ade", "auto"), "ade = {}")):
@@ -100,10 +102,31 @@ def active(root: Path | None, cfg: dict, env: Mapping[str, str]) -> tuple[dict |
         if forced not in by_name:
             raise ConfigError(f"{why.format(forced)}: no ades/{forced}.toml in any layer")
         return by_name[forced], why.format(forced)
-    for a in sorted(all_, key=lambda a: bool(a["toml"].get("fallback"))):  # stable: order kept within each
+    for a in all_:
         if a["auto"] and (why := _detects(a, env)):
             return a, why
-    return None, "no adapter detected"
+    return None, NO_ADE
+
+
+def session_adapter(cfg: dict, harness: str) -> dict:
+    """The harness's `[session]` table as an adapter-shaped dict, so the tool-call, shell and isolation
+    code is shared with ADEs. Private: it has no name (`ade` stays null) and `session` is the harness.
+    The agent tool hosts only this harness's own members; any other member goes through `[session.shell]`."""
+    s = cfg["harness"][harness]["session"]
+    ag = dict(s["agent"])
+    models = ag.pop("models", {})
+    return {"name": None, "session": harness, "layer": None, "hook_path": None, "note_path": None, "auto": True,
+            "toml": {"delegate": {"kind": "tool", **ag, "shell": s["shell"]},
+                     "providers": {harness: harness}, "models": {harness: models}}}
+
+
+def session(cfg: dict, env: Mapping[str, str]) -> dict | None:
+    """The session harness's adapter: the first harness whose `[session].detect` env marker is set."""
+    for h, v in cfg.get("harness", {}).items():
+        s = v.get("session")
+        if isinstance(s, dict) and any(m in env for m in s.get("detect", [])):
+            return session_adapter(cfg, h)
+    return None
 
 
 def describe(a: dict | None, why: str) -> dict:

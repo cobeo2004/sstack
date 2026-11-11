@@ -35,6 +35,7 @@ PASS roles resolve: …
 PASS stage variants: …
 PASS harness CLIs: claude, codex, pi
 PASS active ADE: …
+PASS session harness: claude
 PASS hooks executable: ok
 PASS skills resolve: …
 ```
@@ -54,6 +55,7 @@ pointers` warns when an agent's global instruction file (`~/.claude/CLAUDE.md`,
 | `stage variants` | no `roles/implement/` folder in any layer; every variant `.toml` has its `.md` lens (WARN, not FAIL) | move implement routing to `roles/implement.toml` `[hint.*]`; write the `.md` |
 | `harness CLIs` | argv[0] of each used harness's `headless` / `headless_readonly` is on `PATH` | install that CLI or route the role elsewhere |
 | `active ADE` | `sstack-dispatch ade` runs | fix the adapter file it names |
+| `session harness` | each harness's `[session]` table is well formed (`detect`, `agent`, `shell`); WARN when the template gives a harness a `[session]` and yours has none | copy the table from the template into `harnesses/<name>.toml` |
 | `hooks executable` | every `ades/*.hook` in use is executable | `chmod +x <hook>` |
 | `entry pointers` | read-only: each agent's global instruction file that exists carries the sstack pointer above any competing "… first" / "without asking" rule | run `setup` and pick its machine rows, or put the sstack rule above the one it names; `WARN` keeps the exit code |
 | `skills resolve` | every skill named in a role, `[skills.kinds]` or `[practices]` has a `SKILL.md` on the skill path (WARN, not FAIL) | install the skill, or drop the name |

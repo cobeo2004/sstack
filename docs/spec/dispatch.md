@@ -7,7 +7,7 @@ Owner: `lib/sstack_dispatch.py` (B2). Fixtures: `tests/fixtures/payloads/*.json`
 
 | via | behaviour |
 |---|---|
-| `auto` (default) | active ADE's delegate (docs/spec/ade.md); no ADE or `kind = "none"` → headless. `delegate.kind` must be `tool`, `hook` or `none`; anything else is a config error (exit 1, nothing runs). `auto` never runs `[cli]` |
+| `auto` (default) | active ADE's delegate (docs/spec/ade.md); no ADE → the session harness's `[session]` ([below](#session-harness)); neither, or `kind = "none"` → headless. `delegate.kind` must be `tool`, `hook` or `none`; anything else is a config error (exit 1, nothing runs). `auto` never runs `[cli]` |
 | `headless` | the harness's `headless`/`headless_readonly` argv, always. Hooks and CI use this (`--via headless`) |
 | `local` | nothing runs; exit 3 (the agent does it in-session) |
 | `ade-cli` | opt-in: the active ADE's `[cli] cmd` (T3: `t3 thread start …`, a new top-level thread) |
@@ -191,7 +191,8 @@ sentence). Placeholders in fixtures: `<RUN_DIR>`,
 `<BRIEF>`, `<REPORT>` (the `--report` path), `<REPORT_BASE>` (`report_base`); `{exit}` is filled by
 the agent. A member the ADE cannot host (`[delegate.shell]`, docs/spec/ade.md) gets the shell
 tool's call instead: `tool` = its `name`, `args` = `[delegate.shell.args]` with `{command}` the
-member's headless line.
+member's headless line. A session-harness payload has `"ade": null` and `"session": "<harness>"`;
+with an ADE it has no `session` key.
 
 ```json
 {"ade": "t3", "role": "scout", "readonly": true, "run_dir": "<RUN_DIR>", "max_parallel": 4,
@@ -209,6 +210,34 @@ that many calls at once and starts the next as each is recorded. Each call carri
 brief (a stage variant's call names its `brief.variant-<name>.md`).
 `--route` prints this shape, with the nested or flat `run_dir` it would use, and creates nothing (no
 run dir, no `run.json`, no baseline, no index line).
+
+## Session harness
+
+Claude Code is a harness, not an ADE (an ADE is a workspace or control plane for running agents,
+docs/spec/ade.md). Its own `[session]` table in `harnesses/<h>.toml` covers the no-ADE case:
+
+```toml
+[session]
+detect = ["CLAUDECODE"]          # env markers: any one set → this harness runs the session
+
+[session.agent]                  # starts only this harness's own members
+name = "Agent"                   # the tool; load_hint, readonly = "instructed" as in [delegate]
+[session.agent.args]             # args / write_args / models: as [delegate.args], [delegate.write_args], [models.<h>]
+[session.agent.write_args]       # write roles: isolation = "worktree"
+[session.agent.models]           # sstack alias → the tool's model
+
+[session.shell]                  # every other harness's member: its headless command, backgrounded
+name = "Bash"
+[session.shell.args]             # {command} {title}
+```
+
+Only `via = auto` reads it, and only when no ADE is active (a detected ADE always wins; `ade = none`
+and `SSTACK_ADE=none` also mean headless). The first harness whose `detect` marker is set is the
+session harness. Dispatch builds the same tool calls as for an ADE from it, so isolation, shell
+members and the write lock behave as docs/spec/ade.md says: a shell child edits this checkout and
+is not isolated. `run.json` records `session`; `record` uses it to escalate. `sstack-dispatch ade`
+reports ADEs only. `sstack-doctor` validates the table and WARNs when a template harness's
+`[session]` is missing from yours (sync never rewrites an existing file).
 
 ## Write lock
 
@@ -233,9 +262,9 @@ report's own folder. A dispatch whose owner already holds the lock reuses that h
 orchestrator serializes its own groups and never waits on itself. A **different** owner is refused —
 exit 5, stderr `BUSY: <holder run> <files>; nothing started`, nothing created or started — when
 
-- the ADE does not isolate write children: `delegate.write_args.isolation` unset (`cursor`, headless,
-  local, a hook), or any member is one the ADE runs as a shell command (`[delegate.shell]`,
-  docs/spec/ade.md), or
+- the ADE or session harness does not isolate write children: `write_args.isolation` unset (`cursor`,
+  headless, local, a hook), or any member is one it runs as a shell command (`[delegate.shell]`,
+  `[session.shell]`), or
 - the live holders reach the step's `max_agents` (`1` when no `--step` named one), or
 - `--files` overlap a holder's. A side with no `--files` is unknown, so it overlaps.
 
@@ -302,4 +331,5 @@ Panel index (`bin/sstack-reflect-hook` parses `: exit 0 → (.+)$`):
  "note": "~/.sstack/ades/t3.md"}
 ```
 
-No ADE → `{"name": null, "why": "no adapter detected", …}` with the other fields null.
+No ADE → `{"name": null, "why": "no adapter detected", …}` with the other fields null. A session
+harness is not an ADE and never shows here.

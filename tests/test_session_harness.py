@@ -1,15 +1,17 @@
-"""Answer key: bare Claude Code dispatches through its own subagents (workflow-adherence R7-R9).
+"""Answer key: bare Claude Code dispatches through its own subagents (workflow-adherence R7-R10).
 
-The active environment decides how a child starts: T3 → delegate_task, bare Claude Code → the
-native `Agent` tool for Claude members and a backgrounded `Bash` call for members Claude can't host."""
+The active environment decides how a child starts: an ADE (T3 → delegate_task) when one is detected,
+else the session harness's `[session]` table (Claude Code → `Agent` for Claude members, a backgrounded
+`Bash` call for the rest). Claude Code is a harness, not an ADE: it is never on the ADE list."""
 import json
 
+from helpers import REPO
 from test_dispatch import FakeCliBase, T3
 
 CLAUDE = {"CLAUDECODE": "1"}
 
 
-class ClaudeAdeTests(FakeCliBase):
+class SessionHarnessTests(FakeCliBase):
     def setUp(self):
         super().setUp()
         self.example()
@@ -19,22 +21,33 @@ class ClaudeAdeTests(FakeCliBase):
         self.assertEqual(code, 0, err)
         return json.loads(out)["name"]
 
+    def payload(self, *args, env):
+        code, out, err = self.dispatch(*args, env=env)
+        self.assertEqual(code, 4, out + err)
+        return json.loads(out)
+
     def call(self, *args):
         code, out, err = self.dispatch(*args, env=CLAUDE)
         self.assertEqual(code, 4, out + err)
         d = json.loads(out)
-        self.assertEqual(d["ade"], "claude")
+        self.assertIsNone(d["ade"])
+        self.assertEqual(d["session"], "claude")
         return d["calls"][0]
 
-    def test_bare_claude_code_is_detected(self):
-        self.assertEqual(self.ade(CLAUDE), "claude")
+    def test_claude_code_is_not_an_ade(self):
+        self.assertIsNone(self.ade(CLAUDE))
+        self.assertFalse((REPO / "defaults" / "ades" / "claude.toml").exists())
 
-    def test_t3_wins_over_claude_code(self):
-        """T3 (and Orca, Conductor) run Claude Code too: the outer environment wins."""
-        self.assertEqual(self.ade({**CLAUDE, **T3}), "t3")
+    def test_t3_wins_over_the_session_harness(self):
+        """T3 (and Orca, Conductor) run Claude Code too: a detected ADE wins."""
+        d = self.payload("scout", env={**CLAUDE, **T3})
+        self.assertEqual((d["ade"], d.get("session")), ("t3", None))
+        self.assertEqual(d["calls"][0]["tool"], "delegate_task")
 
     def test_no_marker_stays_headless(self):
         self.assertIsNone(self.ade({}))
+        code, _, _ = self.dispatch("scout", env={})
+        self.assertNotEqual(code, 4)
 
     def test_readonly_claude_member_is_a_native_agent(self):
         c = self.call("scout")

@@ -1,7 +1,9 @@
 # ADE adapters — contract
 
-An ADE (agentic dev environment: T3 Code, Orca, Conductor, Cursor…) is
-`ades/<name>.toml` + optional `ades/<name>.hook` (executable) + optional `ades/<name>.md` (note for
+An ADE (Agent Development Environment) is a workspace or control plane built to run, coordinate and
+review coding agents: T3 Code, Orca, Conductor, Cursor. Claude Code, Codex and pi are harnesses, not
+ADEs; a harness's own `[session]` table covers the no-ADE case (docs/spec/dispatch.md § Session
+harness). An ADE is `ades/<name>.toml` + optional `ades/<name>.hook` (executable) + optional `ades/<name>.md` (note for
 the agent: how browser/device/capture work there). Loaded by `sstack_config.ades()`
 (docs/spec/config.md); acted on by `lib/sstack_ade.py` (B2). Fixtures: `tests/fixtures/ades/<case>/`
 (`home/ades/*` + `expected.json`: `order`; `checks` = detection cases; hook cases: `delegate_exit`,
@@ -13,16 +15,15 @@ the agent: how browser/device/capture work there). Loaded by `sstack_config.ades
 Active ADE, first rule that applies:
 1. env `SSTACK_ADE=<name>|none`;
 2. config `ade = "<name>"|"none"` (forces, even when `auto = false`);
-3. `ade = "auto"`: walk `ades()` in order, skip `auto = false`, first match wins; adapters with
-   `fallback = true` come after every other one (order kept within each group). Match =
+3. `ade = "auto"`: walk `ades()` in order, skip `auto = false`, first match wins. Match =
    any `[detect] env` variable set, or `[detect] hook = true` and `<hook> detect` exits 0.
-No match → no ADE (delegation is headless).
+No match → no ADE. Delegation then uses the session harness if one is detected, else it is
+headless. A detected ADE always wins over the session harness.
 
 ## TOML
 
 ```toml
 auto = true                     # false: never auto-detected (cursor ships this way)
-# fallback = true               # tried after every non-fallback adapter (claude ships this way)
 
 [detect]
 env = ["T3CODE_THREAD_ID"]      # any present → match
@@ -80,7 +81,8 @@ summary = "preview_* tools (see t3.md)"
 Read-only payloads never ask for worktree isolation.
 
 **Shell members.** With a `[delegate.shell]` table, a member whose harness is not a key of
-`[providers]` is not hosted by the ADE's agent tool (Claude Code's `Agent` starts only Claude). Its
+`[providers]` is not hosted by the ADE's agent tool (an agent tool that starts only one harness's
+members). No built-in ADE sets it; a harness's `[session.shell]` has the same shape. Its
 call uses the shell tool instead: `command` = `cd <repo root> && SSTACK_REFLECT=1 <the harness's
 headless argv> < <brief> > <report> 2> <report>.err`, shell-quoted. The agent runs it in the
 background, waits for it to end, then runs the call's `record`. Without `[delegate.shell]` every
@@ -122,8 +124,8 @@ never in the cwd.
 ```
 
 Hook missing or not executable, non-zero exit or bad JSON from `delegate`, or `action: "none"` →
-the member runs headless, with a note (the hook's `note`, or what went wrong). (`fallback = true`
-in the TOML is about detection order only.) `[dispatch] timeout_min` covers start → collect; on expiry dispatch calls `cancel`
+the member runs headless, with a note (the hook's `note`, or what went wrong). There is no
+`fallback` key. `[dispatch] timeout_min` covers start → collect; on expiry dispatch calls `cancel`
 and exits 2.
 
 ## Built-ins (`defaults/ades/`)
@@ -134,4 +136,3 @@ and exits 2.
 | orca | `ORCA_AGENT_SESSION_ID` | hook (task-create → worker-start, check --wait, collect) | yes |
 | conductor | `CONDUCTOR_SESSION_ID` | hook (CLI/API; no `CONDUCTOR_API_KEY` → none + note) | yes |
 | cursor | — | tool `Task` (`readonly: true`) | no: set `ade = "cursor"` |
-| claude | `CLAUDECODE`, after the others (`fallback`) | tool `Agent` for Claude members (worktree-isolated when writing); `Bash` in the background for the rest | yes |

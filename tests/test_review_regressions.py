@@ -5,7 +5,7 @@ import time
 
 from test_workflow import WorkflowBase
 from test_dispatch import DispatchBase, FakeCliBase, T3
-from test_ade_claude import CLAUDE
+from test_session_harness import CLAUDE
 
 
 class StaleLockTests(WorkflowBase):

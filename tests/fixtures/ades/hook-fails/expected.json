@@ -1,1 +1,1 @@
-{"order": [["fake", "home"], ["claude","home"],["conductor","home"], ["cursor", "home"], ["orca", "home"], ["t3", "home"]], "delegate_exit": 1, "falls_back_to": "headless"}
+{"order": [["fake", "home"], ["conductor", "home"], ["cursor", "home"], ["orca", "home"], ["t3", "home"]], "delegate_exit": 1, "falls_back_to": "headless"}

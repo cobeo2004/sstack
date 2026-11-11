@@ -37,7 +37,41 @@
         "{model}",
         "--permission-mode",
         "plan"
-      ]
+      ],
+      "session": {
+        "detect": [
+          "CLAUDECODE"
+        ],
+        "agent": {
+          "name": "Agent",
+          "load_hint": "built in",
+          "readonly": "instructed",
+          "args": {
+            "description": "{title}",
+            "prompt": "{task}",
+            "model": "{model}",
+            "subagent_type": "general-purpose"
+          },
+          "write_args": {
+            "isolation": "worktree"
+          },
+          "models": {
+            "haiku": "haiku",
+            "sonnet": "sonnet",
+            "opus": "opus",
+            "fable": "fable"
+          }
+        },
+        "shell": {
+          "name": "Bash",
+          "load_hint": "built in",
+          "args": {
+            "command": "{command}",
+            "run_in_background": true,
+            "description": "{title}"
+          }
+        }
+      }
     },
     "codex": {
       "headless": [

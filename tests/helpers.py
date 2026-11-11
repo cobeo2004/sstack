@@ -58,7 +58,7 @@ class TempEnv(unittest.TestCase):
         stub.chmod(0o755)
         os.environ["PATH"] = f"{stub.parent}{os.pathsep}{os.environ.get('PATH', '')}"
         os.environ.pop("SSTACK_HOME", None)
-        os.environ.pop("CLAUDECODE", None)  # the test host may be Claude Code: that is the claude ADE
+        os.environ.pop("CLAUDECODE", None)  # the test host may be Claude Code: that is the session harness
         self.profile(self.home / ".sstack")  # as sstack-install does
 
     def tearDown(self):

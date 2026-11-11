@@ -436,8 +436,8 @@ def payload(ade: dict, role: str, members: list[dict], run_dir: str, title: str,
         rec = " ".join(shlex.quote(x) for x in ("sstack-dispatch", "record", role, "--report", rp, "--member", key(m)))
         rec += f" --exit {{exit}} --run-dir {shlex.quote(run_dir)}"
         calls.append(member_call(ade, cfg, root, role, m, title, str((briefs or {}).get(key(m), brief)), rp, rec))
-    return {"ade": ade["name"], "role": role, "readonly": readonly, "run_dir": run_dir, "max_parallel": cap,
-            "calls": calls}
+    return {"ade": ade["name"], **({"session": ade["session"]} if ade.get("session") else {}), "role": role,
+            "readonly": readonly, "run_dir": run_dir, "max_parallel": cap, "calls": calls}
 
 
 def _escalate(root: Path, run_dir: Path, run: dict, failed: dict, report: Path, code: int, cfg: dict,
@@ -522,7 +522,8 @@ def _record(a, root: Path, run_dir: Path) -> int:
         failed = unkey(a.member)
         try:
             cfg = load(git_root(root))
-            ade = next((x for x in ades(git_root(root)) if x["name"] == run.get("ade")), None)
+            ade = next((x for x in ades(git_root(root)) if x["name"] == run.get("ade")), None) or \
+                (A.session_adapter(cfg, run["session"]) if run.get("session") else None)
             isolated = not run["readonly"] and isolates(ade, [failed])
             up = _escalate(root, run_dir, run, failed, report, code, cfg, isolated, ade) if A.kind(ade) == "tool" else None
         except ConfigError as e:
@@ -620,6 +621,8 @@ def main(argv: list[str] | None = None) -> int:
         if step and step["max_agents"] == 0:  # inline: the agent does the step itself, no subagent
             members, vs = None, {}
         ade, why = A.active(gr, cfg, os.environ) if via in ("auto", "ade-cli") else (None, f"via {via}")
+        if ade is None and via == "auto" and why == A.NO_ADE and (ade := A.session(cfg, os.environ)):
+            why = f"session harness {ade['session']}"  # no ADE: the harness running this session starts the children
         # the whitelist: only via = ade-cli ever runs the adapter's [cli] (T3: a new top-level thread)
         shape = {"tool": "tool", "hook": "hook", "none": "headless"}[A.kind(ade)] if via == "auto" else \
             "ade-cli" if via == "ade-cli" else "headless"
@@ -687,8 +690,10 @@ def main(argv: list[str] | None = None) -> int:
     brief_p = Path(a.brief).resolve()
     report = Path(a.report).resolve()
     ade_name = ade["name"] if ade and shape != "headless" else None
+    sess = ade["session"] if ade and ade.get("session") and shape != "headless" else None
     run_dir = new_run(root, a.role, members, report, readonly,
                       {"title": title, "brief": rel(root, brief_p), "route": route, "ade": ade_name,
+                       **({"session": sess} if sess else {}),
                        "via": "headless" if shape == "headless" else via, "hint": a.hint,
                        "no_escalate": a.no_escalate, "step": a.step, "max_agents": cap})
     run = json.loads((run_dir / "run.json").read_text())
