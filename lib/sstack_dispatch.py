@@ -807,12 +807,12 @@ def main(argv: list[str] | None = None) -> int:
             lock_release(root, lock_owner(root, report))
         return code
 
-    def member(m: dict, text: str, deadline: float, rp: Path, sx: dict | None = None) -> tuple[int, str | None, str]:
-        """(exit, ade used, via) for one member; one deadline across delegate → run → wait → collect.
-        `sx`: the attempt's session capture (headless only)."""
+    def member(m: dict, text: str, deadline: float, rp: Path, sx: dict | None = None) -> tuple[int, str | None, str, dict | None]:
+        """(exit, ade used, via, session capture used) for one member; one deadline across delegate → run → wait → collect.
+        `sx`: the headless attempt's session capture; a hook's headless fallback makes its own, its run/async none."""
         if shape != "hook":
             argv = with_args(plans[key(m)], sx["args"]) if sx else plans[key(m)]
-            return run_member(argv, root, text, deadline, rp, sx and sx.get("events")), ade_name, run["via"]
+            return run_member(argv, root, text, deadline, rp, sx and sx.get("events")), ade_name, run["via"], sx
         v = m.get("variant")
         state = run_dir / (f"hook.{m['harness']}-{slug(m['model'])}" + (f"-{v.partition('/')[2]}" if v else ""))
         state.mkdir(exist_ok=True)
@@ -821,25 +821,28 @@ def main(argv: list[str] | None = None) -> int:
         try:
             act, note = A.delegate(ade, stdin, state, os.environ, deadline)
         except A.HookTimeout:
-            return 2, ade_name, run["via"]
+            return 2, ade_name, run["via"], None
         if act is None:
             print(f"sstack-dispatch: note: {note}", file=sys.stderr)
             try:
                 argv = headless_argv(cfg, a.role, m, title)
             except ConfigError as e:
                 print(f"sstack-dispatch: {e}", file=sys.stderr)
-                return 1, None, "headless"
-            return run_member(argv, root, text, deadline, rp), None, "headless"
+                return 1, None, "headless", None
+            sx = session_setup(m["harness"], cfg["harness"][m["harness"]], rp)
+            if sx:
+                argv = with_args(argv, sx["args"])
+            return run_member(argv, root, text, deadline, rp, sx and sx.get("events")), None, "headless", sx
         if act["action"] == "run":
-            return run_member(act["argv"], root, text, deadline, rp), ade_name, run["via"]
-        return A.run_async(ade, str(act["id"]), state, os.environ, deadline, rp), ade_name, run["via"]
+            return run_member(act["argv"], root, text, deadline, rp), ade_name, run["via"], None
+        return A.run_async(ade, str(act["id"]), state, os.environ, deadline, rp), ade_name, run["via"], None
 
     def go(m: dict, text: str) -> int:
         rp = report_path(report, m, members)
         t = time.monotonic()
         sx = session_setup(m["harness"], cfg["harness"][m["harness"]], rp) if shape == "headless" else None
         try:
-            code, used, how = member(m, text, t + timeout_s, rp, sx)
+            code, used, how, sx = member(m, text, t + timeout_s, rp, sx)
         except Exception as e:  # one member's crash must not lose the others' records or the panel index
             print(f"sstack-dispatch: {key(m)}: {type(e).__name__}: {e}", file=sys.stderr)
             code, used, how = 1, ade_name, run["via"]

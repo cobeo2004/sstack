@@ -327,6 +327,7 @@ the report) captures a session, from keys in `harnesses/<h>.toml`; a harness wit
 user's own) behaves as before. The `claude` and `codex` keys below are built in (`SESSION_ARGS`,
 overridden key by key by the harness file; `[]` turns one off). The dry run and `shell_command` never
 show these args.
+A hook's headless fallback (no action, or a failed hook) captures like headless; a hook's own `run` or async action records none.
 
 - `session_id_args` (claude: `["--session-id", "{session_id}"]`): sstack makes up a UUID per attempt
   (an escalated retry has its own), adds the args before a trailing `-` or at the end, and records

@@ -101,6 +101,16 @@ class HookLifecycle(FakeCliBase):
     def test_fails_falls_back_to_headless(self):
         self.check_headless("hook-fails", "hook delegate exit 1")
 
+    def test_headless_fallback_captures_a_session(self):
+        self.check_headless("hook-fails", "hook delegate exit 1")
+        [rec] = self.index()
+        sid = self.log().split("--session-id ")[1].split()[0]
+        self.assertEqual(rec["session"], {"id": sid, "kind": "claude"})
+
+    def test_hook_run_action_records_no_session(self):
+        self.run_case("hook-sync")
+        self.assertNotIn("session", self.index()[0])
+
     def test_bad_json_falls_back_to_headless(self):
         self.check_headless("hook-bad-json", "no valid action")
 
