@@ -15,6 +15,24 @@ model. `run.sh` copies the checkout's tracked and new files to a temp dir and ru
 `claude plugin eval` there. Local state (`.sstack/runs`, `.omc`, old results) never loads.
 Results and every run's trace land in `evals/results/<stamp>/`, which git ignores.
 
+## CI
+
+`.github/workflows/evals.yml` runs static evals only. It calls no model and needs no secret. It
+runs on PRs that touch `evals/`, `skills/`, `lib/`, `bin/` or `defaults/`, and on pushes to main.
+Two things must hold:
+
+- Every case's scaffold builds its fixture.
+- The graders are re-scored against recorded real runs in `_fixture/traces/`. Those are the
+  orchestrator's tool calls only, trimmed, with paths scrubbed. Each `<case>.pass.jsonl` comes
+  from a run that followed the workflow, and it must pass every grader.
+  `implement-shell-pi.skip.jsonl` is a run that skipped its dispatch with `--no-dispatch`, and it
+  must fail `dispatched`, `no-skip`, `recorded` and `shell-child`.
+
+A grader edit that stops catching the skip, or starts failing a good run, breaks CI. The paid
+model runs stay local (`evals/run.sh`). When you add a case, record one run of it with
+`evals/run.sh --case <name> --runs 1`. Trim its trace from `evals/results/<stamp>/traces/` into
+`_fixture/traces/<name>.pass.jsonl`, keeping one JSON object with `name` and `input` per tool call.
+
 ## Cases
 
 Every case runs in bare Claude Code, so `CLAUDECODE` is set and the `claude` harness's

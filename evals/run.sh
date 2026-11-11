@@ -13,7 +13,7 @@ mkdir -p "$out/traces"
 code=0
 (cd "$tmp" && claude plugin eval . --scaffold --trust-plugin --ablation none --no-publish --keep-temp \
   --allow-tools Bash Write Edit --output-dir "$out" --json "$out/result.json" "$@" < /dev/null) || code=$?
-python3 - "$out" <<'PY'
+[ -f "$out/result.json" ] && python3 - "$out" <<'PY'
 import json, os, shutil, subprocess, sys
 out = sys.argv[1]
 for c in json.load(open(f"{out}/result.json"))["cases"]:
