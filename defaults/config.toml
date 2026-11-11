@@ -30,3 +30,9 @@ merge_with_assumptions = false   # true: merge even when the run decided assumpt
 on_question = "decide"           # decide | park
 on_stuck = "draft"               # draft | park
 stop_at = ""                     # "" or local HH:MM; no new run starts after it
+
+# Unattended mode (docs/spec/config.md): work and setup run with nobody in the thread. Left commented
+# so `load()` and `sstack-config sync` are unchanged; code defaults are enabled = false, plan_gate = "inbox".
+# [unattended]
+# enabled = false                # true = SSTACK_UNATTENDED=1
+# plan_gate = "inbox"            # auto | inbox; SSTACK_PLAN_GATE overrides it for one process

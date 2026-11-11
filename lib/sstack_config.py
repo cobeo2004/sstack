@@ -169,6 +169,24 @@ def load(root: Path | None, _ls: list | None = None) -> dict:
     return cfg
 
 
+PLAN_GATES = ("auto", "inbox")
+
+
+def unattended(cfg: dict, env=None) -> dict:
+    """{"enabled": bool, "plan_gate": "auto" | "inbox"} from `[unattended]` in the merged config (any
+    layer, the local one included) and the env: SSTACK_UNATTENDED=1 turns it on, SSTACK_PLAN_GATE
+    overrides plan_gate for this process. Defaults: off, "inbox". A bad value raises ConfigError."""
+    env = os.environ if env is None else env
+    t = cfg.get("unattended", {})
+    enabled, gate = t.get("enabled", False), env.get("SSTACK_PLAN_GATE") or t.get("plan_gate", "inbox")
+    where = "SSTACK_PLAN_GATE" if env.get("SSTACK_PLAN_GATE") else "[unattended] plan_gate"
+    if gate not in PLAN_GATES:
+        raise ConfigError(f"{where} {gate!r} is not one of: {', '.join(PLAN_GATES)}")
+    if type(enabled) is not bool:
+        raise ConfigError(f"[unattended] enabled {enabled!r} is not true or false")
+    return {"enabled": enabled or env.get("SSTACK_UNATTENDED") == "1", "plan_gate": gate}
+
+
 def source(root: Path | None, kind: str, name: str | None, _ls: list | None = None) -> tuple[str, Path] | None:
     """(layer, path) of the file that wins for one thing: kind = config | project | harnesses |
     roles | tiers | ades | steps (name = the file stem, dots allowed; ades also takes "t3.md" /

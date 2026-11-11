@@ -48,6 +48,8 @@ After every step, record it and read what it prints:
   command: run it. Skip only with `--no-dispatch "<reason>"`.
 - `GATE: wait for the user's yes` → stop, report, and wait. A gate belongs to this
   session; a child never approves one.
+- `GATE: unattended, …` → nobody is in the thread and this gate resolves itself: follow
+  [steps.md § Unattended](steps.md#unattended). `WAITING: plan_approval` → stop and report waiting.
 - exit 2 with `STOP: ask user` → the step hit its loop cap, or failed with no
   `on_fail`. Stop and ask. Don't start a third attempt on the same failure.
 
@@ -71,7 +73,7 @@ key must pin, when to stop early.
 - A routed child never approves its own gate. A dispatch exit `1`/`2` stops at the
   next gate; don't quietly redo it here.
 - Irreversible or outward-facing actions (commit, push, PR, deploy, delete data)
-  wait for the user's explicit yes, even mid-chain.
+  wait for the user's explicit yes, even mid-chain, unless `sstack-workflow unattended` says `on`.
 - Verification gate from `sstack` before every claim; at the end, run `reflect` if
   the user corrected you or you hit a dead end.
 

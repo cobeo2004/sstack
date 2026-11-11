@@ -48,6 +48,11 @@ duplicate skills).
 
 ## 3. Choose
 
+`<sstack>/bin/sstack-workflow unattended` prints `unattended: on` → nobody is in the thread: skip the
+ask, apply every row marked `recommended` (`.sstack/product.md`, `.sstack/project.toml` with the
+audit's verify commands, the ignore entries), never an `optional` or machine row, then report which
+rows you wrote and which you skipped.
+
 Ask the user, with the harness's ask-the-user verb (multi-select where it has one), which numbered
 rows to apply. **Nothing is written before the user chooses.** Rows not picked are not written, and
 the report says which were skipped.

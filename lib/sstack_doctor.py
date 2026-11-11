@@ -18,7 +18,7 @@ import sstack_dispatch as D
 import sstack_skills as S
 import sstack_workflow as W
 from sstack_config import (READONLY_ROLES, TEMPLATE, ConfigError, ades, git_root, home_dir, layers, legacy, load,
-                           require_profile, resolve, steps as step_folders, variants)
+                           require_profile, resolve, steps as step_folders, unattended, variants)
 import sstack_route as R
 
 DISPATCH = Path(__file__).resolve().parent.parent / "bin" / "sstack-dispatch"
@@ -269,8 +269,14 @@ def _overnight(root):
     return "merge never"
 
 
+def _unattended(root):
+    """`[unattended]` and the SSTACK_PLAN_GATE override must resolve (docs/spec/config.md)."""
+    u = unattended(load(root))
+    return f"{'on' if u['enabled'] else 'off'}, plan_gate {u['plan_gate']}"
+
+
 CHECKS = [("profile", _profile), ("config loads", _loads), ("no legacy files", _legacy), ("roles resolve", _roles),
-          ("stage variants", _variants), ("workflow", _workflow), ("overnight", _overnight),
+          ("stage variants", _variants), ("workflow", _workflow), ("overnight", _overnight), ("unattended", _unattended),
           ("harness CLIs", _clis), ("active ADE", _ade), ("session harness", _session), ("hooks executable", _hooks),
           ("entry pointers", _pointers),
           ("skills resolve", _skills)]

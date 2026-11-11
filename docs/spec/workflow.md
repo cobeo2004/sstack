@@ -109,6 +109,23 @@ key and file, plus `disabled: …` for steps dropped by `enabled = false`. `--js
                      "source": {"after": "home", "role": "home"}}}}
 ```
 
+## Unattended
+
+`sstack-workflow unattended` prints `unattended: on|off` and `plan_gate: auto|inbox`
+([config.md](config.md#unattended)). With it off, `done` prints exactly what the table says. On, a
+passed step with `gate = true` prints a line in place of `GATE: wait for the user's yes`, and the
+agent follows it:
+
+| gate (built-in step) | unattended line | the agent |
+|---|---|---|
+| 0 `recon` | `GATE: unattended, passes (recon)` | continues once `recon.md` is complete |
+| 1 `plan`, `plan_gate = "auto"` | `GATE: unattended, plan_gate auto: pass once every R has an answer-key check` | continues when every R has a check |
+| 1 `plan`, `plan_gate = "inbox"` | `WAITING: plan_approval` | stops; reports waiting, `kind: "plan_approval"` |
+| 3 `review` | `GATE: unattended, passes (review)` | continues (a fail or an Important finding already failed the step) |
+| 4 `pr` | `GATE: unattended, passes (pr)` | continues |
+
+A configured step name outside the built-ins gets the generic `passes (<step>)` line.
+
 `status` prints `at: <current step>` and one line per step with its status, loops and score.
 
 `done` records a result and prints what happens next, one line per outcome:
@@ -116,6 +133,7 @@ key and file, plus `disabled: …` for steps dropped by `enabled = false`. `--js
 | outcome | prints | exit |
 |---|---|---|
 | pass, `gate = true` | `GATE: wait for the user's yes`, then `next: <step>`, `do: …` | 0 |
+| pass, `gate = true`, unattended | the unattended line below, then `next: <step>`, `do: …` | 0 |
 | pass, `gate = false` | `next: <step>`, `do: …` | 0 |
 | pass of the last step | `next: done` | 0 |
 | fail with `on_fail`, under the cap | `next: <on_fail>`, `do: …` | 0 |
