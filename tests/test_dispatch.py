@@ -178,7 +178,7 @@ class FakeCliBase(DispatchBase):
 
     def record(self, call: dict, code: int, env=None):
         import shlex
-        argv = shlex.split(call["record"].replace("{exit}", str(code)))
+        argv = shlex.split(call["record"].replace("{exit}", str(code)).replace("'<CHILD_THREAD_ID>'", "thread-1"))
         self.assertEqual(argv[:2], ["sstack-dispatch", "record"])
         return self.run_main(*argv[1:], env=env)
 
@@ -248,7 +248,7 @@ class RecordTests(FakeCliBase):
         code, _, err = self.record(call, 0, env=T3)
         self.assertEqual(code, 0, err)
         [rec] = self.index()
-        self.assertEqual(set(rec), INDEX_KEYS)
+        self.assertEqual(set(rec) - {"session"}, INDEX_KEYS)  # the payload's id filled in by record()
         self.assertEqual((rec["ade"], rec["via"], rec["role"], rec["harness"], rec["model"], rec["exit"]),
                          ("t3", "auto", "scout", "claude", "haiku", 0))
         self.assertEqual((rec["report"], rec["readonly_warning"]), ("out/r.md", []))
@@ -478,7 +478,7 @@ class FixB2Tests(FakeCliBase):
         call = json.loads(out)["calls"][0]
         self.report().parent.mkdir(exist_ok=True)
         self.report().write_text("PASS\n")
-        argv = __import__("shlex").split(call["record"].replace("{exit}", "0"))
+        argv = __import__("shlex").split(call["record"].replace("{exit}", "0").replace("'<CHILD_THREAD_ID>'", "thread-1"))
         env = {**NO_T3, "HOME": str(self.home), **T3}
         with open(Path(json.loads(out)["run_dir"]) / "run.lock", "a") as lk:
             fcntl.flock(lk, fcntl.LOCK_EX)
@@ -769,11 +769,22 @@ class SessionTests(FakeCliBase):
         self.assertEqual(rec["session"], {"id": "abc.1:%2f-x", "kind": "t3-thread"})
         self.assertEqual(set(rec) - {"session"}, INDEX_KEYS)
 
-    def test_record_unfilled_placeholder_or_no_flags_is_no_session(self):
+    def test_record_no_flags_is_no_session(self):
         call = self.payload_call()
-        self.assertEqual(self.record(call, 0, env=T3)[0], 0)  # the printed command, placeholder unfilled
-        self.assertEqual(self.record_with(call)[0], 0)  # flags dropped
-        self.assertEqual([set(r) for r in self.index()], [INDEX_KEYS, INDEX_KEYS])
+        self.assertEqual(self.record_with(call)[0], 0)  # both flags dropped
+        self.assertEqual(self.record(call, 0, env=T3)[0], 0)  # filled
+        self.assertEqual([set(r) - {"session"} for r in self.index()], [INDEX_KEYS, INDEX_KEYS])
+        self.assertEqual([("session" in r) for r in self.index()], [False, True])
+
+    def test_record_unfilled_placeholder_fails(self):
+        call = self.payload_call()
+        for kind in (("--session-kind", "t3-thread"), ("--session-kind", "gpt"), ()):
+            with self.subTest(kind=kind):
+                code, _, err = self.record_with(call, "--session", "<CHILD_THREAD_ID>", *kind)
+                self.assertEqual(code, 1)
+                self.assertIn("--session", err)
+                self.assertEqual(code == 1 and "fill <CHILD_THREAD_ID>" in err, bool(kind))  # the hint when the pair is whole
+                self.assertEqual(self.index(), [])
 
     def test_record_rejects_bad_session_before_appending(self):
         call = self.payload_call()

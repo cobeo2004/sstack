@@ -214,6 +214,8 @@ def session_error(sid: str | None, kind: str | None) -> str | None:
     """Why (id, kind) is not a recordable session, else None. Both or neither."""
     if (sid is None) != (kind is None):
         return "--session and --session-kind go together"
+    if sid == SESSION_PLACEHOLDER:
+        return f"fill {SESSION_PLACEHOLDER} with the child's thread id, or drop --session and --session-kind"
     if sid is not None and not SESSION_ID.fullmatch(sid):
         return f"--session {sid[:40]!r} must be 1-200 chars of [A-Za-z0-9._:%-]"
     if kind is not None and kind not in SESSION_KINDS:
@@ -556,8 +558,6 @@ def record(argv: list[str]) -> int:
     ap.add_argument("--session", help="the child's session id; with --session-kind")
     ap.add_argument("--session-kind", help=" | ".join(SESSION_KINDS))
     a = ap.parse_args(argv)
-    if a.session and a.session.strip("'\"") == SESSION_PLACEHOLDER:  # the printed command's, never filled: no session
-        a.session = a.session_kind = None
     if (bad := session_error(a.session, a.session_kind)):
         print(f"sstack-dispatch record: {bad}", file=sys.stderr)
         return 1

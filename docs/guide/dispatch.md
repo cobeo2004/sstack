@@ -203,7 +203,8 @@ The agent then, for each call:
    it, writes that text to the report path;
 3. runs the call's `record` command with `{exit}` replaced by the child's result (0 ok, 1 failed,
    2 timed out) and `<CHILD_THREAD_ID>` replaced by the child's id from the tool result (T3:
-   `childThreadId`). An agent that cannot name the child's session drops the two `--session` flags.
+   `childThreadId`). An agent that cannot name the child's session drops both `--session-kind` and `--session`; leaving
+   the placeholder unfilled makes `record` exit 1 and append nothing.
 
 Write the payload outside the repo (as above): a file created in the tree during a read-only run
 shows up in the read-only check.
@@ -211,13 +212,13 @@ shows up in the read-only check.
 ## Record a run
 
 `record` closes one member of a tool-delegated run. Here the child's work is simulated by writing
-the report by hand:
+the report by hand and the child's id filled in (`demo-thread`):
 
 ```sh
 printf 'List the files.\n' > brief.md
 T3CODE_THREAD_ID=demo sstack-dispatch scout --brief brief.md --report scout.md > "${TMPDIR:-/tmp}/payload.json"   # exit 4
 printf 'README.md\n' > scout.md
-python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["calls"][0]["record"].replace("{exit}", "0"))' "${TMPDIR:-/tmp}/payload.json" > "${TMPDIR:-/tmp}/record.sh"
+python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["calls"][0]["record"].replace("{exit}", "0").replace("'"'"'<CHILD_THREAD_ID>'"'"'", "demo-thread"))' "${TMPDIR:-/tmp}/payload.json" > "${TMPDIR:-/tmp}/record.sh"
 sh "${TMPDIR:-/tmp}/record.sh"
 tail -n 1 .sstack/runs/index.jsonl
 ```
@@ -226,7 +227,7 @@ Expected: `record` exits 0 and appends an index line:
 
 ```text
 # expect
-{"ts": "…", "task": "sstack scout", "role": "scout", "ade": "t3", "via": "auto", "harness": "claude", "model": "haiku", "exit": 0, "secs": …, "run_dir": ".sstack/runs/YYYYMMDD-HHMM-scout", "report": "scout.md", "route": "role default", "readonly_warning": []}
+{"ts": "…", "task": "sstack scout", "role": "scout", "ade": "t3", "via": "auto", "harness": "claude", "model": "haiku", "exit": 0, "secs": …, "run_dir": ".sstack/runs/YYYYMMDD-HHMM-scout", "report": "scout.md", "route": "role default", "readonly_warning": [], "session": {"id": "demo-thread", "kind": "t3-thread"}}
 ```
 
 What `record` does, in order (under a lock on `<run_dir>/run.lock`):

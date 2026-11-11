@@ -282,8 +282,8 @@ sstack-dispatch record <role> --report <p> --member <harness>/<model>[#<stage>/<
 
 0. `--session` and `--session-kind` go together or not at all. The id is 1-200 chars of
    `[A-Za-z0-9._:%-]`; the kind is `claude`, `codex`, `t3-thread`, `pi` or `other`. Anything else,
-   or one flag without the other, exits 1 with a stderr message before anything is appended. The
-   unfilled `<CHILD_THREAD_ID>` of a printed payload counts as no flags.
+   or one flag without the other, exits 1 with a stderr message before anything is appended; so does
+   the unfilled `<CHILD_THREAD_ID>` of a printed payload. A caller without an id omits both flags.
    `<d>` must be under `<repo>/.sstack/runs/` (flat or nested) and `--member` one of `run.json`
    `members`, else exit 1. The repo root is the parent of the nearest ancestor named `.sstack`.
    Steps 1–4 run under an flock on `<d>/run.lock`.

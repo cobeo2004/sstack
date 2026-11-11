@@ -308,7 +308,7 @@ class SmokeTests(DoctorBase):
                 report.write_text(f"CANARY {token}\n")
                 if pl["role"] == "implement":
                     (d / "canary.txt").write_text(token + "\n")
-                cmd = c["record"].replace("{exit}", "0").split()[1:]
+                cmd = c["record"].replace("{exit}", "0").replace("'<CHILD_THREAD_ID>'", "thread-1").split()[1:]
                 with self.subTest(role=pl["role"]):
                     e = dict(NO_T3, HOME=str(self.home))
                     r = subprocess.run([sys.executable, str(REPO / "bin" / "sstack-dispatch"), *cmd],

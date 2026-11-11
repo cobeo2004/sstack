@@ -139,7 +139,7 @@ Dispatch a role; never pick a model by hand.
        If its report file is missing once it finishes, write the child's final
        message there yourself.
     4. **Record** each with the first exit that matches: `--exit 2` if the child
-       timed out, `--exit 1` if it failed or left no report, else `--exit 0`. Fill `<CHILD_THREAD_ID>` in the record command with the child's id from the delegate tool's result (`childThreadId`); a harness that is not T3 replaces or drops the two `--session-kind`/`--session` flags per its own session id and kind. A `record` that exits `4` prints the next tier's payload: same
+       timed out, `--exit 1` if it failed or left no report, else `--exit 0`. Fill `<CHILD_THREAD_ID>` in the record command with the child's id from the delegate tool's result (`childThreadId`), or drop both `--session-kind` and `--session` (an unfilled placeholder makes `record` exit 1); a harness that is not T3 replaces or drops the two `--session-kind`/`--session` flags per its own session id and kind. A `record` that exits `4` prints the next tier's payload: same
        procedure. Read each report and verify it: launch success is not task success.
   - `5` — `BUSY: <holder run> <files>; nothing started`: another run holds this
     checkout's write lock. Say you are waiting on that holder, wait for it to record
