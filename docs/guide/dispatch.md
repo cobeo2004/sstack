@@ -190,7 +190,7 @@ Expected (`<repo>` is the repo root):
                 },
                 "interactionMode": "plan"
             },
-            "record": "sstack-dispatch record scout --report <repo>/scout.md --member claude/haiku --exit {exit} --run-dir <repo>/.sstack/runs/YYYYMMDD-HHMM-scout"
+            "record": "sstack-dispatch record scout --report <repo>/scout.md --member claude/haiku --exit {exit} --run-dir <repo>/.sstack/runs/YYYYMMDD-HHMM-scout --session-kind t3-thread --session '<CHILD_THREAD_ID>'"
         }
     ]
 }
@@ -202,7 +202,8 @@ The agent then, for each call:
 2. waits for the child; if the child returned its report as its final message instead of writing
    it, writes that text to the report path;
 3. runs the call's `record` command with `{exit}` replaced by the child's result (0 ok, 1 failed,
-   2 timed out).
+   2 timed out) and `<CHILD_THREAD_ID>` replaced by the child's id from the tool result (T3:
+   `childThreadId`). An agent that cannot name the child's session drops the two `--session` flags.
 
 Write the payload outside the repo (as above): a file created in the tree during a read-only run
 shows up in the read-only check.
@@ -312,7 +313,9 @@ When `--report`'s folder is strictly below `.sstack/runs/`, the run dir is
 
 Index line keys: `ts`, `task`, `role`, `ade`, `via`, `harness`, `model`, `exit`, `secs`, `run_dir`,
 `report`, `route`, `readonly_warning`, plus `skills` and `skills_missing` when the run has
-skills. Paths are repo-relative when inside the repo. Add
+skills, and `session` (`{"id", "kind"}`) when the child's session is known: from `record --session
+<id> --session-kind <claude|codex|t3-thread|pi|other>`, or captured by a headless claude child (a
+UUID sstack makes up and hands it) or codex child (the thread id in its JSON events). Paths are repo-relative when inside the repo. Add
 `.sstack/runs/` to `.gitignore`.
 
 ```sh

@@ -20,7 +20,7 @@
         },
         "interactionMode": "plan"
       },
-      "record": "sstack-dispatch record scout --report <REPORT> --member claude/haiku --exit {exit} --run-dir <RUN_DIR>"
+      "record": "sstack-dispatch record scout --report <REPORT> --member claude/haiku --exit {exit} --run-dir <RUN_DIR> --session-kind t3-thread --session '<CHILD_THREAD_ID>'"
     }
   ]
 }
