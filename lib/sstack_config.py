@@ -178,8 +178,11 @@ def unattended(cfg: dict, env=None) -> dict:
     overrides plan_gate for this process. Defaults: off, "inbox". A bad value raises ConfigError."""
     env = os.environ if env is None else env
     t = cfg.get("unattended", {})
-    enabled, gate = t.get("enabled", False), env.get("SSTACK_PLAN_GATE") or t.get("plan_gate", "inbox")
-    where = "SSTACK_PLAN_GATE" if env.get("SSTACK_PLAN_GATE") else "[unattended] plan_gate"
+    if not isinstance(t, dict):
+        raise ConfigError(f"unattended {t!r} is not a table")
+    from_env = "SSTACK_PLAN_GATE" in env  # present, even empty, so a bad value is never ignored
+    enabled, gate = t.get("enabled", False), env["SSTACK_PLAN_GATE"] if from_env else t.get("plan_gate", "inbox")
+    where = "SSTACK_PLAN_GATE" if from_env else "[unattended] plan_gate"
     if gate not in PLAN_GATES:
         raise ConfigError(f"{where} {gate!r} is not one of: {', '.join(PLAN_GATES)}")
     if type(enabled) is not bool:

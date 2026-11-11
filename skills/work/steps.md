@@ -191,7 +191,7 @@ yes.
    <run> --pr` on the result; either fails → back to the implement or review step.
    Show any `MEDIA WAIVED: <reason>` line at the gate.
 3. **The gate is always on** (`pr` cannot be disabled and its `gate` cannot be set
-   false): the user's explicit yes before commit, push or PR, and before publishing
+   false): the user's explicit yes (unattended: none, see above) before commit, push or PR, and before publishing
    media. Then push, open the PR, and run
    `<sstack>/bin/sstack-pr-media <pr> <run>/media/* --edit-body` right after opening,
    so the Before | After table lands in the PR description per [testing.md](testing.md).

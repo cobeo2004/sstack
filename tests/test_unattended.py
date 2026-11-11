@@ -39,6 +39,10 @@ class ResolveTests(WorkflowBase):
         self.repo_cfg('[unattended]\nplan_gate = "maybe"\n')
         with self.assertRaisesRegex(C.ConfigError, r"\[unattended\] plan_gate 'maybe' is not one of: auto, inbox"):
             self.resolve()
+        with self.assertRaisesRegex(C.ConfigError, "SSTACK_PLAN_GATE '' is not one of"):
+            self.resolve({"SSTACK_PLAN_GATE": ""})  # set but empty is still a bad value
+        with self.assertRaisesRegex(C.ConfigError, "unattended False is not a table"):
+            C.unattended({"unattended": False}, {})
         self.repo_cfg('[unattended]\nenabled = "yes"\n')
         with self.assertRaisesRegex(C.ConfigError, "enabled 'yes' is not true or false"):
             self.resolve()
