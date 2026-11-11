@@ -29,6 +29,12 @@ sstack-config sync >/dev/null          # your ~/.sstack profile, as sstack-insta
 | `docs/guide/` | these user and agent guides |
 | `docs/design.md` | design history and rationale |
 | `tests/` | `test_*.py` (stdlib `unittest`), `helpers.py`, `fakes/`, `fixtures/` |
+| `evals/` | behaviour evals: real Claude Code runs of `work`, graded on whether it dispatched ([evals/README.md](../../evals/README.md)) |
+| `.claude-plugin/` | `plugin.json` (Claude Code manifest; it also lets `claude plugin eval` load `skills/`) and `marketplace.json` (the repo as its own marketplace) |
+| `plugin.json` | Agent Plugins manifest, loaded by Codex and Cursor |
+| `.agents/plugins/marketplace.json` | Codex marketplace pointing at this repo |
+| `package.json` | pi package: `skills/` plus the `defaults/hooks/pi-sstack.ts` extension; never npm-published |
+| `gemini-extension.json` | Gemini CLI extension manifest |
 
 ## Run the tests
 
@@ -41,6 +47,10 @@ Expected: `OK` and exit 0. Each test uses a temporary `HOME` and git repo
 (`tests/helpers.py` `TempEnv`). Harness CLIs are replaced by `tests/fakes/fake_agent.py`; ADE CLIs
 (`t3`, `orca`, `conductor`) by `tests/fakes/fake_cli.py` through env vars such as
 `T3CODE_CLI_PATH`. Never point a test at the real `t3` CLI or at `~/.sstack`.
+
+The unit tests never run a model. To check that a real agent follows the workflow and starts the
+configured subagent, run `evals/run.sh`. It is paid, so it isn't in CI (see
+[evals/README.md](../../evals/README.md)).
 
 Run one area while you work:
 
@@ -56,6 +66,7 @@ Run one area while you work:
 | doctor, smoke | `test_doctor.py` |
 | dashboard | `test_ui.py` |
 | skills lint | `test_skills.py` |
+| plugin manifests | `test_plugins.py` |
 | these guides | `test_docs.py` |
 
 Use `python3 -m unittest discover -s tests -p <file>` for one file.

@@ -1,0 +1,22 @@
+name: evals
+# Static evals: no model, no secret (evals/README.md § CI). Every case's scaffold must build its
+# fixture, and the graders, re-scored against recorded real runs, must pass the run that followed
+# the workflow and fail the one that skipped its dispatch. The paid model runs stay local: evals/run.sh.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths: ["evals/**", "skills/**", "lib/**", "bin/**", "defaults/**", "tests/test_evals.py",
+            ".github/workflows/evals.yml"]
+permissions:
+  contents: read
+jobs:
+  static:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
+        with:
+          python-version: "3.11"  # the documented floor
+      - run: bash -n evals/run.sh evals/_fixture/setup.sh
+      - run: python3 -m unittest discover -s tests -p test_evals.py -v

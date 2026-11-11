@@ -57,10 +57,12 @@ def step_cap(step: dict | None, cfg: dict) -> int:
     return min(int(step["max_agents"]), max_parallel(cfg)) if step else max_parallel(cfg)
 
 
-def isolates(ade: dict | None) -> bool:
-    """The ADE runs write children in their own checkout: [delegate.write_args] isolation."""
+def isolates(ade: dict | None, members: list[dict] = ()) -> bool:
+    """The ADE runs write children in their own checkout: [delegate.write_args] isolation, and every
+    member is one it hosts (a shell child edits this tree)."""
     return bool(ade and A.kind(ade) == "tool"
-                and ade["toml"].get("delegate", {}).get("write_args", {}).get("isolation"))
+                and ade["toml"].get("delegate", {}).get("write_args", {}).get("isolation")
+                and all(A.native(ade, m) for m in members))
 
 
 def rel(root: Path, p) -> str:
@@ -126,11 +128,12 @@ def _overlaps(files: list[str] | None, held: list[str] | None) -> bool:
 
 
 def lock_acquire(root: Path, owner: str, run: str, role: str, files: list[str], cap: int,
-                 isolated: bool, timeout_s: float) -> dict | None:
+                 isolated: bool, timeout_s: float, local: bool = True) -> dict | None:
     """Take this checkout's write lock for `owner`: None once held, else the holder that blocks it.
     Holders older than `[dispatch] timeout_min` are dropped first. The same owner reuses its holder
     (one orchestrator never waits on itself); another owner is refused when the ADE does not isolate
-    write children, the cap is reached, or `--files` overlap."""
+    write children, the cap is reached, or `--files` overlap. `local` (exit 3, this session does the
+    work) marks the holder so `sstack-workflow done` counts it; a child's holder waits for `record`."""
     p, now = root / RUNS / LOCK, time.time()
     with _mutex(root):
         data = _lock_read(p)
@@ -143,8 +146,18 @@ def lock_acquire(root: Path, owner: str, run: str, role: str, files: list[str], 
                 _lock_write(p, {**data, "holders": live})
                 return blocker
             live.append({"owner": owner, "run": run, "role": role, "files": list(files), "started": now})
+        for h in live:
+            if h.get("owner") == owner:
+                h["local"] = local
         _lock_write(p, {**data, "holders": live})
     return None
+
+
+def _other_writers(root: Path, report: Path, cfg: dict) -> bool:
+    """A live write-lock holder that is not this report's run."""
+    ttl, owner = float(cfg.get("dispatch", {}).get("timeout_min", 30)) * 60, lock_owner(root, report)
+    return any(isinstance(h, dict) and h.get("owner") != owner and time.time() - float(h.get("started") or 0) <= ttl
+               for h in _lock_read(root / RUNS / LOCK)["holders"])
 
 
 def lock_release(root: Path, owner: str) -> None:
@@ -180,6 +193,13 @@ def headless_argv(cfg: dict, role: str, member: dict, title: str) -> list[str]:
     if k not in h:
         raise ConfigError(f"role {role!r} is read-only but harness {member['harness']!r} has no headless_readonly")
     return fill(h[k], {"model": member["model"], "effort": member["effort"], "title": title})
+
+
+def shell_command(cfg: dict, root: Path, role: str, member: dict, title: str, brief: str, report: str) -> str:
+    """run_member() as one shell line: the member's headless argv in `root`, brief on stdin."""
+    q = shlex.quote
+    return (f"cd {q(str(root))} && SSTACK_REFLECT=1 {shlex.join(headless_argv(cfg, role, member, title))} "
+            f"< {q(brief)} > {q(report)} 2> {q(report + '.err')}")
 
 
 def run_member(argv: list[str], cwd: Path, brief: str, deadline: float, report: Path) -> int:
@@ -398,22 +418,30 @@ def panel_index(root: Path, run_dir: Path, run: dict) -> int | None:
 
 # ---- exit-4 payload ----------------------------------------------------------------------------
 
+def member_call(ade: dict, cfg: dict, root: Path, role: str, m: dict, title: str, brief: str, rp: str,
+                rec: str) -> dict:
+    """One member's tool call: the ADE's agent tool, or its shell tool for a member it can't host."""
+    cmd = None if A.native(ade, m) else shell_command(cfg, root, role, m, title, brief, rp)
+    return A.tool_call(ade, role, role in READONLY_ROLES, m, title, brief, rp, rec, cmd)
+
+
 def payload(ade: dict, role: str, members: list[dict], run_dir: str, title: str, brief: str, report: Path,
-            cap: int, briefs: dict | None = None) -> dict:
-    """`briefs`: member key → its own brief (a stage variant's, with its lens); `cap`: max_parallel."""
+            cap: int, briefs: dict | None = None, cfg: dict | None = None, root: Path | None = None) -> dict:
+    """`briefs`: member key → its own brief (a stage variant's, with its lens); `cap`: max_parallel;
+    `cfg` and `root`: for a member the ADE hosts as a shell command."""
     readonly = role in READONLY_ROLES
     calls = []
     for m in members:
         rp = str(report_path(report, m, members))
         rec = " ".join(shlex.quote(x) for x in ("sstack-dispatch", "record", role, "--report", rp, "--member", key(m)))
         rec += f" --exit {{exit}} --run-dir {shlex.quote(run_dir)}"
-        calls.append(A.tool_call(ade, role, readonly, m, title, str((briefs or {}).get(key(m), brief)), rp, rec))
-    return {"ade": ade["name"], "role": role, "readonly": readonly, "run_dir": run_dir, "max_parallel": cap,
-            "calls": calls}
+        calls.append(member_call(ade, cfg, root, role, m, title, str((briefs or {}).get(key(m), brief)), rp, rec))
+    return {"ade": ade["name"], **({"session": ade["session"]} if ade.get("session") else {}), "role": role,
+            "readonly": readonly, "run_dir": run_dir, "max_parallel": cap, "calls": calls}
 
 
 def _escalate(root: Path, run_dir: Path, run: dict, failed: dict, report: Path, code: int, cfg: dict,
-              isolated: bool = False):
+              isolated: bool = False, ade: dict | None = None):
     """The run's single default member failed (stage variants don't count, and never escalate):
     (member one tier up, brief with a note), moving the failed report aside; None when there is
     nowhere to go. Escalates once per run (run.json `escalated`).
@@ -424,6 +452,12 @@ def _escalate(root: Path, run_dir: Path, run: dict, failed: dict, report: Path, 
     avoid = R.pick(cfg, "implement", run.get("hint"), [])[0] if run["role"] == "review" else None
     up = R.escalation(cfg, failed, avoid)
     if not up:
+        return None
+    if isolated and ade and not isolates(ade, [up[0]]) and _other_writers(root, report, cfg):
+        # checked before the run changes: the next tier is a shell child in this tree, beside another
+        # live writer; the failure stands and the last record below frees this run's holder
+        print(f"sstack-dispatch record: not escalated to {key(up[0])}: it would edit this checkout while "
+              "another run's writer holds it; re-dispatch once that run records its step", file=sys.stderr)
         return None
     gone = Path(f"{report_base(report)}.failed.md")
     for src, dst in ((report, gone), (Path(str(report) + ".err"), Path(str(gone) + ".err"))):
@@ -488,9 +522,10 @@ def _record(a, root: Path, run_dir: Path) -> int:
         failed = unkey(a.member)
         try:
             cfg = load(git_root(root))
-            ade = next((x for x in ades(git_root(root)) if x["name"] == run.get("ade")), None)
-            isolated = not run["readonly"] and isolates(ade)
-            up = _escalate(root, run_dir, run, failed, report, code, cfg, isolated) if A.kind(ade) == "tool" else None
+            ade = next((x for x in ades(git_root(root)) if x["name"] == run.get("ade")), None) or \
+                (A.session_adapter(cfg, run["session"]) if run.get("session") else None)
+            isolated = not run["readonly"] and isolates(ade, [failed])
+            up = _escalate(root, run_dir, run, failed, report, code, cfg, isolated, ade) if A.kind(ade) == "tool" else None
         except ConfigError as e:
             print(f"sstack-dispatch record: {e}", file=sys.stderr)
             up = None
@@ -501,7 +536,7 @@ def _record(a, root: Path, run_dir: Path) -> int:
             write_run(run_dir, run)
             print(json.dumps(payload(ade, run["role"], [up[0]], str(run_dir),
                                      run.get("title") or f"sstack {run['role']}", str(brief), report,
-                                     int(run.get("max_agents", max_parallel(cfg)))), indent=2))
+                                     int(run.get("max_agents", max_parallel(cfg))), None, cfg, root), indent=2))
             return 4
     panel = panel_index(root, run_dir, run)
     code = code if panel is None else panel
@@ -586,6 +621,8 @@ def main(argv: list[str] | None = None) -> int:
         if step and step["max_agents"] == 0:  # inline: the agent does the step itself, no subagent
             members, vs = None, {}
         ade, why = A.active(gr, cfg, os.environ) if via in ("auto", "ade-cli") else (None, f"via {via}")
+        if ade is None and via == "auto" and why == A.NO_ADE and (ade := A.session(cfg, os.environ)):
+            why = f"session harness {ade['session']}"  # no ADE: the harness running this session starts the children
         # the whitelist: only via = ade-cli ever runs the adapter's [cli] (T3: a new top-level thread)
         shape = {"tool": "tool", "hook": "hook", "none": "headless"}[A.kind(ade)] if via == "auto" else \
             "ade-cli" if via == "ade-cli" else "headless"
@@ -595,7 +632,7 @@ def main(argv: list[str] | None = None) -> int:
                           root / ".sstack" / "runs" / f"{time.strftime('%Y%m%d-%H%M')}-{a.role}")
             if shape == "tool" and members:
                 p = payload(ade, a.role, members, run_dir, title,
-                            str(Path(a.brief).resolve()) if a.brief else "<BRIEF>", report, cap)
+                            str(Path(a.brief).resolve()) if a.brief else "<BRIEF>", report, cap, None, cfg, root)
             else:
                 p = {"ade": ade and ade["name"], "role": a.role, "readonly": readonly, "run_dir": run_dir,
                      "calls": [{"member": key(m), "via": shape} for m in members or []]}
@@ -606,7 +643,8 @@ def main(argv: list[str] | None = None) -> int:
         if not readonly and not a.dry_run:
             report = Path(a.report).resolve()
             blocker = lock_acquire(root, lock_owner(root, report), rel(root, planned_run_dir(root, a.role, report)),
-                                   a.role, files, lock_cap(step), isolates(ade), timeout_s)
+                                   a.role, files, lock_cap(step), isolates(ade, members or []), timeout_s,
+                                   not members)
             if blocker:
                 print(busy_line(blocker), file=sys.stderr)
                 return 5
@@ -640,7 +678,7 @@ def main(argv: list[str] | None = None) -> int:
             print(l)
         for m in members:
             if shape == "tool":
-                c = A.tool_call(ade, a.role, readonly, m, title, str(Path(a.brief).resolve()),
+                c = member_call(ade, cfg, root, a.role, m, title, str(Path(a.brief).resolve()),
                                 str(Path(a.report).resolve()), "")
                 print(f"tool {c['tool']}: {json.dumps(c['args'])}" + (f"\n  note: {c['note']}" if "note" in c else ""))
             elif shape == "hook":
@@ -652,8 +690,10 @@ def main(argv: list[str] | None = None) -> int:
     brief_p = Path(a.brief).resolve()
     report = Path(a.report).resolve()
     ade_name = ade["name"] if ade and shape != "headless" else None
+    sess = ade["session"] if ade and ade.get("session") and shape != "headless" else None
     run_dir = new_run(root, a.role, members, report, readonly,
                       {"title": title, "brief": rel(root, brief_p), "route": route, "ade": ade_name,
+                       **({"session": sess} if sess else {}),
                        "via": "headless" if shape == "headless" else via, "hint": a.hint,
                        "no_escalate": a.no_escalate, "step": a.step, "max_agents": cap})
     run = json.loads((run_dir / "run.json").read_text())
@@ -678,7 +718,7 @@ def main(argv: list[str] | None = None) -> int:
         briefs.update({key(m): bp for m in vms})
     report.parent.mkdir(parents=True, exist_ok=True)  # ADE children write the report themselves
     if shape == "tool":
-        print(json.dumps(payload(ade, a.role, members, str(run_dir), title, str(brief_p), report, cap, briefs),
+        print(json.dumps(payload(ade, a.role, members, str(run_dir), title, str(brief_p), report, cap, briefs, cfg, root),
                          indent=2))
         return 4
 

@@ -94,7 +94,7 @@ Set in `config.toml` as `[dispatch] via`, or per call with `--via`.
 
 | via | what runs |
 |---|---|
-| `auto` (default) | the active ADE's delegate: tool → exit 4, hook → the hook, none or no ADE → headless |
+| `auto` (default) | the active ADE's delegate: tool → exit 4, hook → the hook. No ADE: the session harness's `[session]` (Claude Code: exit 4 with `Agent` and `Bash` calls), else headless |
 | `headless` | always the harness's `headless` / `headless_readonly` argv. Use it in hooks and CI |
 | `local` | nothing; exit 3, the agent does the work in its own session |
 | `ade-cli` | opt-in: the active ADE's `[cli] cmd` (for T3, `t3 thread start …`, a new top-level thread) |
@@ -143,7 +143,8 @@ The holder is the task run folder the `--report` sits in, so one orchestrator
 serializes its own groups without waiting on itself. Another owner gets exit 5 when
 it can't safely run beside the holders:
 
-- an ADE that does not isolate children → refused while any live holder exists;
+- an ADE or session harness that does not isolate children, or a run with a shell member (`Bash`
+  in bare Claude Code) → refused while any live holder exists;
 - an isolating ADE → refused when the holders already reach the step's `max_agents`,
   or when its `--files` overlap a holder's files.
 
@@ -156,7 +157,7 @@ run's last `record`, by a headless return, or for local work by
 
 ## Exit 4: make the tool calls
 
-Inside a tool ADE (T3 Code, Cursor) dispatch creates the run dir and prints one call per member:
+Inside a tool ADE (T3 Code, Cursor), or in bare Claude Code with no ADE, dispatch creates the run dir and prints one call per member:
 
 ```sh
 printf 'List the files.\n' > brief.md

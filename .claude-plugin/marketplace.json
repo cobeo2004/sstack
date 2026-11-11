@@ -1,0 +1,13 @@
+{
+  "name": "sstack",
+  "owner": {
+    "name": "cobeo2004"
+  },
+  "plugins": [
+    {
+      "name": "sstack",
+      "source": ".",
+      "description": "Skills plus stdlib-Python commands for routing coding-agent work"
+    }
+  ]
+}

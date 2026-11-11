@@ -28,7 +28,7 @@ Every layer dir may hold any of these. A file's top level is the table itself:
 |---|---|---|
 | `config.toml` | `ade`, `[dispatch]`, `[rules]`, `[reflect]`, `[routing]`, `[overnight]` | key by key, nested tables too |
 | `project.toml` | repo facts: `verify`, `protected`, `[test.<surface>]`, `graph` (repo and local layers only) | replaced whole |
-| `harnesses/<name>.toml` | `headless`, `headless_readonly` argv templates | replaced whole |
+| `harnesses/<name>.toml` | `headless`, `headless_readonly` argv templates; optional `[session]` ([ades.md](ades.md#session-harness-no-ade)) | replaced whole |
 | `roles/<role>.toml` | `harness`, `model`, `effort`, `mode`, `panel`, `[hint.<name>]` | replaced whole |
 | `roles/<stage>/<name>.toml` | a stage variant for `investigate`, `plan` or `review` ([below](#add-a-stage-variant)) | replaced whole |
 | `roles/<stage>/<name>.md` | that variant's lens | nearest layer per file |
@@ -141,7 +141,9 @@ sstack-config sync --dry-run
 
 With no profile, every command stops with `no sstack profile at <home>: run `sstack-config sync``.
 Code files (`steps/*/run.sh`, `ades/*.hook`) are not copied: they come from the template until a
-layer has its own. `sstack-doctor` WARNs `drift` when sync has something to add.
+layer has its own. `sstack-doctor` WARNs `drift` when sync has something to add. A harness file you already have is
+not rewritten, so one that predates the `[session]` table lacks it: bare Claude Code then
+dispatches headless, and doctor WARNs `session harness`. Copy the table from the template.
 
 `steps/` is the workflow: one folder per step, merged per key across the three layers,
 so a repo can add, reorder, disable or re-gate a step without touching a skill. What

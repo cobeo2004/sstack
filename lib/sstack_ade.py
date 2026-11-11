@@ -87,6 +87,9 @@ def _detects(a: dict, env: Mapping[str, str]) -> str | None:
     return None
 
 
+NO_ADE = "no adapter detected"
+
+
 def active(root: Path | None, cfg: dict, env: Mapping[str, str]) -> tuple[dict | None, str]:
     """(adapter or None, why): SSTACK_ADE > config `ade` > auto-detect (first match, auto = true only)."""
     all_ = ades(root)
@@ -102,7 +105,28 @@ def active(root: Path | None, cfg: dict, env: Mapping[str, str]) -> tuple[dict |
     for a in all_:
         if a["auto"] and (why := _detects(a, env)):
             return a, why
-    return None, "no adapter detected"
+    return None, NO_ADE
+
+
+def session_adapter(cfg: dict, harness: str) -> dict:
+    """The harness's `[session]` table as an adapter-shaped dict, so the tool-call, shell and isolation
+    code is shared with ADEs. Private: it has no name (`ade` stays null) and `session` is the harness.
+    The agent tool hosts only this harness's own members; any other member goes through `[session.shell]`."""
+    s = cfg["harness"][harness]["session"]
+    ag = dict(s["agent"])
+    models = ag.pop("models", {})
+    return {"name": None, "session": harness, "layer": None, "hook_path": None, "note_path": None, "auto": True,
+            "toml": {"delegate": {"kind": "tool", **ag, "shell": s["shell"]},
+                     "providers": {harness: harness}, "models": {harness: models}}}
+
+
+def session(cfg: dict, env: Mapping[str, str]) -> dict | None:
+    """The session harness's adapter: the first harness whose `[session].detect` env marker is set."""
+    for h, v in cfg.get("harness", {}).items():
+        s = v.get("session")
+        if isinstance(s, dict) and any(m in env for m in s.get("detect", [])):
+            return session_adapter(cfg, h)
+    return None
 
 
 def describe(a: dict | None, why: str) -> dict:
@@ -179,9 +203,21 @@ def ids(a: dict, member: dict) -> tuple[str, str, dict, str | None]:
     return provider, mapped or model, ({opt: member["effort"]} if opt and member["effort"] else {}), note
 
 
+def native(a: dict, member: dict) -> bool:
+    """The ADE hosts this member's harness itself. With a `[delegate.shell]` table, a harness not in
+    `[providers]` runs as a shell command instead (Claude Code's Agent tool only starts Claude)."""
+    return "shell" not in a["toml"]["delegate"] or member["harness"] in a["toml"].get("providers", {})
+
+
 def tool_call(a: dict, role: str, readonly: bool, member: dict, title: str, brief: str, report: str,
-              record: str) -> dict:
+              record: str, command: str | None = None) -> dict:
+    """`command`: the member's headless command line, for a member the ADE can't host (not `native`)."""
     d = a["toml"]["delegate"]
+    if command is not None:
+        sh = d["shell"]
+        call = {"member": key(member), "tool": sh["name"], "load_hint": sh.get("load_hint"),
+                "args": fill(sh.get("args", {}), {"title": title, "command": command}), "record": record}
+        return call
     provider, model, options, note = ids(a, member)
     values = {"title": title, "brief": brief, "report": report, "role": role,
               "ade_role": d.get("roles", {}).get(role, role), "provider": provider, "model": model,

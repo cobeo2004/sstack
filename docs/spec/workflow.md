@@ -95,7 +95,7 @@ review score (`null` for every step without `--findings`). `progress.md` gains o
 ```
 sstack-workflow show [--json]
 sstack-workflow status --run <run>
-sstack-workflow done <step> [--fail] [--findings <json>] --run <run>
+sstack-workflow done <step> [--fail] [--findings <json>] [--no-dispatch <reason>] --run <run>
 sstack-workflow run <step> --run <run>
 ```
 
@@ -115,12 +115,30 @@ key and file, plus `disabled: …` for steps dropped by `enabled = false`. `--js
 
 | outcome | prints | exit |
 |---|---|---|
-| pass, `gate = true` | `GATE: wait for the user's yes`, then `next: <step>` | 0 |
-| pass, `gate = false` | `next: <step>` | 0 |
+| pass, `gate = true` | `GATE: wait for the user's yes`, then `next: <step>`, `do: …` | 0 |
+| pass, `gate = false` | `next: <step>`, `do: …` | 0 |
 | pass of the last step | `next: done` | 0 |
-| fail with `on_fail`, under the cap | `next: <on_fail>` | 0 |
+| fail with `on_fail`, under the cap | `next: <on_fail>`, `do: …` | 0 |
+| pass of a routed role step with no recorded dispatch | a message on stderr ending in the dispatch command; nothing written | 1 |
 | fail reaching `max_loops`, or a fail with no `on_fail` | `STOP: ask user` | 2 |
 | unknown step, unreadable `--findings` | a message on stderr | 1 |
+
+`do:` follows every `next: <step>` (not `next: done`) and says how to do that step: a routed role
+step → `sstack-dispatch <role> --step <step> --brief <run>/<step>.brief.md --report <run>/<step>.md`;
+a command step → `sstack-workflow run <step> --run <run>`; any other →
+`<step> in this session, then sstack-workflow done <step> --run <run>`.
+
+**Dispatch check.** A pass (`--fail` is never refused; `--findings` is a pass) of a *routed* role
+step needs a recorded dispatch, or `--no-dispatch "<reason>"`, which writes
+`<step>: no dispatch (<reason>)` to `progress.md` before the pass line. Routed = step kind `role`,
+`max_agents > 0`, and the role picks a member (`sstack_route.pick`), or the role is `review` with
+`[dispatch] via` not `local`. A local role, `via = local`, `max_agents = 0`, and command and inline
+steps are not checked. Recorded = a `run.json` with `"step": <step>` that has a line in the
+`index.jsonl` of the checkout holding it (a payload printed but never carried out has none):
+under `<run>/**/dispatch/*/`, or flat in this checkout's `.sstack/runs/*/` with `report_base`
+under `<run>` (the run folder is in another checkout, e.g. a linked worktree). A live write-lock
+holder (docs/spec/dispatch.md) owned by this run with the step's role also counts: a local
+`implement` (exit 3) leaves no run.json.
 
 A run's last step is the last of `show`'s chain. `done` also releases this run's write-lock holders
 (`.sstack/runs/implement.lock`, docs/spec/dispatch.md) so the next dispatch into the checkout can

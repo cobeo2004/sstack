@@ -42,7 +42,10 @@ After every step, record it and read what it prints:
   `done review --run <run> --findings <run>/review/findings.json`.
 - `sstack-workflow run <step> --run <run>` for a command step: it executes the
   step's `run.sh` from the repo root and records pass or fail.
-- `next: <step>` → go there. `next: done` → the chain is finished.
+- `next: <step>` → go there, by running the `do: …` line printed after it. `next: done`
+  → the chain is finished.
+- `done` refuses (exit 1) a routed role step that nobody dispatched, and prints the
+  command: run it. Skip only with `--no-dispatch "<reason>"`.
 - `GATE: wait for the user's yes` → stop, report, and wait. A gate belongs to this
   session; a child never approves one.
 - exit 2 with `STOP: ask user` → the step hit its loop cap, or failed with no

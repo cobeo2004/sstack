@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import sys
 import time
+import tomllib
 from pathlib import Path
 
 import sstack_ade as A
@@ -16,7 +17,7 @@ import sstack_configcli as CC
 import sstack_dispatch as D
 import sstack_skills as S
 import sstack_workflow as W
-from sstack_config import (READONLY_ROLES, ConfigError, ades, git_root, home_dir, layers, legacy, load,
+from sstack_config import (READONLY_ROLES, TEMPLATE, ConfigError, ades, git_root, home_dir, layers, legacy, load,
                            require_profile, resolve, steps as step_folders, variants)
 import sstack_route as R
 
@@ -94,6 +95,34 @@ def _clis(root):
 def _ade(root):
     d = A.describe(*A.active(root, load(root), os.environ))
     return ", ".join(f"{k} {d[k]}" for k in ("name", "why", "delegate", "browser", "device", "capture", "note"))
+
+
+def _session(root):
+    """Each harness's `[session]` table: detect = env names, agent and shell = a tool name and args.
+    WARN when a harness the template gives a `[session]` has none here (sync never rewrites a file)."""
+    cfg, bad, have = load(root), [], []
+    for h, v in sorted(cfg["harness"].items()):
+        s = v.get("session")
+        if s is None:
+            continue
+        have.append(h)
+        if not isinstance(s, dict):
+            bad.append(f"{h}: session must be a table")
+            continue
+        det = s.get("detect")
+        if not (isinstance(det, list) and det and all(isinstance(x, str) for x in det)):
+            bad.append(f"{h}: session.detect must be a non-empty list of env names")
+        for t in ("agent", "shell"):
+            tool = s.get(t)
+            if not (isinstance(tool, dict) and tool.get("name") and isinstance(tool.get("args"), dict)):
+                bad.append(f"{h}: session.{t} needs name and an args table")
+    if bad:
+        raise ConfigError("; ".join(bad))
+    tpl = {p.stem for p in (TEMPLATE / "harnesses").glob("*.toml") if "session" in tomllib.loads(p.read_text())}
+    if lost := sorted(t for t in tpl if t in cfg["harness"] and t not in have):
+        raise Warn(f"harnesses/{', '.join(lost)}.toml has no [session]: that session dispatches headless. "
+                   f"Copy the table from the template ({TEMPLATE / 'harnesses'})")
+    return ", ".join(have) or "none"
 
 
 def _hooks(root):
@@ -242,7 +271,7 @@ def _overnight(root):
 
 CHECKS = [("profile", _profile), ("config loads", _loads), ("no legacy files", _legacy), ("roles resolve", _roles),
           ("stage variants", _variants), ("workflow", _workflow), ("overnight", _overnight),
-          ("harness CLIs", _clis), ("active ADE", _ade), ("hooks executable", _hooks),
+          ("harness CLIs", _clis), ("active ADE", _ade), ("session harness", _session), ("hooks executable", _hooks),
           ("entry pointers", _pointers),
           ("skills resolve", _skills)]
 

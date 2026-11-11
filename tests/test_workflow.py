@@ -42,8 +42,26 @@ class WorkflowBase(TempEnv):
     def repo(self):
         return self.root / ".sstack"
 
+    auto_dispatch = True  # chain-logic tests: every step looks dispatched (DispatchCheckTests turns it off)
+
     def done(self, step, *extra):
+        if self.auto_dispatch:
+            self.record_dispatch(step)
         return self.wf("done", step, "--run", str(self.run_dir), *extra)
+
+    def record_dispatch(self, step, role=None, flat=False, indexed=True, checkout=None):
+        """What `sstack-dispatch <role> --step <step>` + `record` leave behind: run.json with the step
+        and one index.jsonl line. flat: the run dir sits in `checkout`'s runs/ (report outside it)."""
+        checkout = checkout or self.root
+        runs = checkout / ".sstack" / "runs"
+        d = runs / f"1000-{step}" if flat else self.run_dir / "dispatch" / f"1000-{step}"
+        d.mkdir(parents=True, exist_ok=True)
+        base = str(self.run_dir / step) if flat else f".sstack/runs/{self.run_dir.name}/{step}"
+        (d / "run.json").write_text(json.dumps({"role": role or step, "step": step, "report_base": base}))
+        if indexed:
+            with (runs / "index.jsonl").open("a") as f:
+                f.write(json.dumps({"role": role or step, "exit": 0,
+                                    "run_dir": d.relative_to(checkout).as_posix()}) + "\n")
 
     def findings(self, rows) -> str:
         p = self.run_dir / "review" / "findings.json"
@@ -262,3 +280,81 @@ class RunTests(WorkflowBase):
         code, _, err = self.wf("run", "dmm", "--run", str(self.run_dir), cwd=sub)
         self.assertEqual(code, 0, err)
         self.assertEqual(Path((self.run_dir / "cwd.txt").read_text().strip()).resolve(), self.root.resolve())
+
+
+class DispatchCheckTests(WorkflowBase):
+    """R1-R4 (workflow-adherence): a routed role step can't be recorded without its dispatch."""
+    auto_dispatch = False
+
+    def test_undispatched_role_step_is_refused_with_the_command(self):
+        code, out, err = self.done("recon")
+        self.assertEqual(code, 1, out)
+        self.assertIn("sstack-dispatch investigate --step recon", err)
+        self.assertFalse((self.run_dir / "workflow.json").exists())
+
+    def test_nested_recorded_dispatch_passes(self):
+        self.record_dispatch("recon", role="investigate")
+        code, out, err = self.done("recon")
+        self.assertEqual(code, 0, err)
+        self.assertIn("next: plan", out)
+
+    def test_flat_dispatch_from_another_checkout_counts(self):
+        """Worktree case: the run folder lives in one checkout, dispatch ran in this one."""
+        other = self.root.parent / "primary"
+        self.run_dir = other / ".sstack" / "runs" / "task-1"
+        self.run_dir.mkdir(parents=True)
+        self.record_dispatch("plan", flat=True)
+        code, _, err = self.done("plan")
+        self.assertEqual(code, 0, err)
+
+    def test_unrecorded_payload_does_not_count(self):
+        self.record_dispatch("plan", indexed=False)
+        code, _, err = self.done("plan")
+        self.assertEqual(code, 1)
+        self.assertIn("sstack-dispatch plan --step plan", err)
+
+    def test_other_steps_dispatch_does_not_count(self):
+        self.record_dispatch("recon", role="investigate")
+        self.assertEqual(self.done("plan")[0], 1)
+
+    def test_no_dispatch_reason_passes_and_is_logged(self):
+        code, out, err = self.done("recon", "--no-dispatch", "swarm of 4 scouts")
+        self.assertEqual(code, 0, err)
+        self.assertIn("next: plan", out)
+        self.assertIn("recon: no dispatch (swarm of 4 scouts)", (self.run_dir / "progress.md").read_text())
+
+    def test_local_dispatch_config_skips_the_check(self):
+        self.repo_cfg('[dispatch]\nvia = "local"\n')
+        self.assertEqual(self.done("recon")[0], 0)
+
+    def test_inline_max_agents_skips_the_check(self):
+        self.step(self.repo(), "recon", "max_agents = 0\n")
+        self.assertEqual(self.done("recon")[0], 0)
+
+    def test_fail_is_never_refused(self):
+        code, out, _ = self.done("review", "--fail")
+        self.assertEqual(code, 0)
+        self.assertIn("next: implement", out)
+
+    def test_command_and_inline_steps_need_no_dispatch(self):
+        self.assertEqual(self.done("gate")[0], 0)
+        self.assertEqual(self.done("pr")[0], 0)
+
+    def test_local_write_lock_holder_counts(self):
+        """`sstack-dispatch implement --step implement --via local` (exit 3) holds the lock for this run."""
+        lock = self.root / ".sstack" / "runs" / "implement.lock"
+        import time
+        lock.write_text(json.dumps({"holders": [{"owner": ".sstack/runs/task-1", "role": "implement",
+                                                 "files": [], "started": time.time()}]}))
+        code, _, err = self.done("implement")
+        self.assertEqual(code, 0, err)
+
+    def test_next_prints_how_to_do_it(self):
+        self.record_dispatch("recon", role="investigate")
+        _, out, _ = self.done("recon")
+        self.assertIn("do: sstack-dispatch plan --step plan", out)
+        self.record_dispatch("implement")
+        _, out, _ = self.done("implement")
+        self.assertIn(f"do: sstack-workflow run gate --run {self.run_dir}", out)
+        _, out, _ = self.done("gate")
+        self.assertIn("do: sstack-dispatch review --step review", out)

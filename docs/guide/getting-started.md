@@ -51,6 +51,59 @@ A skill already installed under the same name is renamed to `<name>.bak`, never 
 `sstack-install --uninstall` removes only sstack's own symlinks and the marked line. Restart your
 agent afterwards so it loads the skills.
 
+## Install as a plugin
+
+Instead of the clone and `sstack-install`, Claude Code, Codex, pi and Gemini CLI can install sstack
+as a plugin straight from GitHub. The plugin is the whole repo, because the skills run the commands
+in `bin/` next to them. Use one method per harness. A plugin plus `sstack-install`'s symlinks in the
+same harness loads every skill twice.
+
+```sh
+claude plugin marketplace add cobeo2004/sstack                  # needs: network and Claude Code
+claude plugin install sstack@sstack                             # needs: network and Claude Code
+codex plugin marketplace add cobeo2004/sstack                   # needs: network and Codex; then pick sstack in /plugins
+pi install git:github.com/cobeo2004/sstack                      # needs: network and pi
+gemini extensions install https://github.com/cobeo2004/sstack   # needs: network and Gemini CLI
+```
+
+Cursor reads the same root `plugin.json`, but its docs give no way to install a plugin from a git
+URL or a folder, only from its marketplace, and sstack is not listed there. Use the clone and
+`sstack-install` for Cursor.
+
+The pi package also loads the hook extension `defaults/hooks/pi-sstack.ts`, so skip the symlink line
+that `sstack-install` prints for pi. The other plugins bundle no hooks. Their snippets are in
+`skills/sstack/harness-notes/`, with `<sstack>` standing for the plugin's folder. Gemini CLI has no
+sstack harness file, so dispatch never routes a role to Gemini. The skills load there, and roles go
+to the harnesses in your profile.
+
+### First run after a plugin install
+
+A plugin install doesn't create `~/.sstack/` or add the router line. Ask your agent: "run
+`sstack-config sync` from the sstack plugin's `bin/` folder, then add the sstack router line to my
+global instructions." The agent knows the folder, because it is two levels above any sstack
+`SKILL.md`. Or run it yourself:
+
+```sh
+"$SSTACK_PLUGIN/bin/sstack-config" sync   # needs: a plugin install; SSTACK_PLUGIN is the plugin's folder
+printf '%s\n' 'For engineering tasks, start with the sstack skill. <!-- sstack -->' >> ~/.claude/CLAUDE.md   # needs: Claude Code
+```
+
+Codex keeps its copy in `~/.codex/plugins/cache/<marketplace>/sstack/<version>/`.
+`sstack-install --uninstall` removes the router line later, because it uses the same marker.
+
+### Not yet verified
+
+Nobody has run these installs end to end yet:
+
+- Claude Code: the `cobeo2004/sstack` form in the block above. A local folder works, so the repo as
+  its own marketplace (`"source": "."`) is fine: `claude plugin marketplace add ./` then
+  `claude plugin install sstack@sstack` installed 0.1.0.
+- Codex: a marketplace entry that points back at the repo it lives in. If it fails, the entry can
+  use a local path instead.
+- Cursor: whether any install route other than its marketplace exists.
+- Gemini CLI: the manifest has only a name and a version. Nobody has checked its other fields.
+- pi: that a package with no npm dependencies, and an extension outside `extensions/`, loads.
+
 ## Check the install
 
 ```sh
@@ -146,3 +199,7 @@ Edits made through the shell fire no hook, so run the same `check` in CI too. Co
   `defaults/harnesses/*.toml` (contract: [docs/spec/config.md](../spec/config.md)).
 - If you change a default, update the expected output on this page and run
   `python3 -m unittest discover -s tests -p test_docs.py`.
+- Plugin manifests: `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, `plugin.json`,
+  `.agents/plugins/marketplace.json`, `package.json`, `gemini-extension.json`. They all share the one
+  `skills/` tree. Bump the version in the four that carry one (not the two marketplace files);
+  `tests/test_plugins.py` checks.

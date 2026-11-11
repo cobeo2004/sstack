@@ -26,7 +26,9 @@ class DoctorBase(TempEnv):
 
     def doctor(self, *args, env=None):
         e = dict(NO_T3, HOME=str(self.home), **(env or {}))
-        e["PATH"] = f"{REPO / 'bin'}:{e.get('PATH', '')}"  # `record` in payloads runs sstack-dispatch
+        # `record` in payloads runs sstack-dispatch. PATH comes from os.environ now, not NO_T3's
+        # import-time copy, so TempEnv's claude stub is on it (CI hosts have no claude).
+        e["PATH"] = f"{REPO / 'bin'}:{(env or {}).get('PATH', os.environ['PATH'])}"
         r = subprocess.run([sys.executable, str(DOCTOR), *args], cwd=self.root, env=e, capture_output=True, text=True)
         return r.returncode, r.stdout, r.stderr
 

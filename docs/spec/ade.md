@@ -1,7 +1,9 @@
 # ADE adapters — contract
 
-An ADE (agentic dev environment: T3 Code, Orca, Conductor, Cursor…) is
-`ades/<name>.toml` + optional `ades/<name>.hook` (executable) + optional `ades/<name>.md` (note for
+An ADE (Agent Development Environment) is a workspace or control plane built to run, coordinate and
+review coding agents: T3 Code, Orca, Conductor, Cursor. Claude Code, Codex and pi are harnesses, not
+ADEs; a harness's own `[session]` table covers the no-ADE case (docs/spec/dispatch.md § Session
+harness). An ADE is `ades/<name>.toml` + optional `ades/<name>.hook` (executable) + optional `ades/<name>.md` (note for
 the agent: how browser/device/capture work there). Loaded by `sstack_config.ades()`
 (docs/spec/config.md); acted on by `lib/sstack_ade.py` (B2). Fixtures: `tests/fixtures/ades/<case>/`
 (`home/ades/*` + `expected.json`: `order`; `checks` = detection cases; hook cases: `delegate_exit`,
@@ -15,7 +17,8 @@ Active ADE, first rule that applies:
 2. config `ade = "<name>"|"none"` (forces, even when `auto = false`);
 3. `ade = "auto"`: walk `ades()` in order, skip `auto = false`, first match wins. Match =
    any `[detect] env` variable set, or `[detect] hook = true` and `<hook> detect` exits 0.
-No match → no ADE (delegation is headless).
+No match → no ADE. Delegation then uses the session harness if one is detected, else it is
+headless. A detected ADE always wins over the session harness.
 
 ## TOML
 
@@ -49,6 +52,13 @@ isolation = "worktree"
 scout = "research"
 implement = "implementation"
 
+[delegate.shell]                # optional: members the ADE can't host (see below)
+name = "Bash"
+[delegate.shell.args]           # placeholders: {title} {command}
+command = "{command}"
+run_in_background = true
+description = "{title}"
+
 [providers]                     # harness → provider id; unmapped → harness name
 claude = "claudeAgent"
 
@@ -69,6 +79,18 @@ summary = "preview_* tools (see t3.md)"
 ```
 
 Read-only payloads never ask for worktree isolation.
+
+**Shell members.** With a `[delegate.shell]` table, a member whose harness is not a key of
+`[providers]` is not hosted by the ADE's agent tool (an agent tool that starts only one harness's
+members). No built-in ADE sets it; a harness's `[session.shell]` has the same shape. Its
+call uses the shell tool instead: `command` = `cd <repo root> && SSTACK_REFLECT=1 <the harness's
+headless argv> < <brief> > <report> 2> <report>.err`, shell-quoted. The agent runs it in the
+background, waits for it to end, then runs the call's `record`. Without `[delegate.shell]` every
+member goes to `[delegate]` as before.
+
+**Isolation.** A write run counts as isolated (docs/spec/dispatch.md, write lock) only when
+`[delegate.write_args]` sets `isolation` **and** every member is one the ADE hosts: a shell child
+edits this checkout. Escalation after a failed write child makes the same call.
 
 Read-only: `instructed` = the ADE is only told (plan mode, a prompt); `enforced` = the ADE itself
 blocks writes (documentation only). There is no separate path: for both, `record` runs the same

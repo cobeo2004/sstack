@@ -48,7 +48,7 @@ class TempEnv(unittest.TestCase):
         self.home.mkdir()
         self.root.mkdir()
         subprocess.run(["git", "init", "-q", str(self.root)], check=True)
-        self._old = {k: os.environ.get(k) for k in ("HOME", "SSTACK_HOME", "PATH")}
+        self._old = {k: os.environ.get(k) for k in ("HOME", "SSTACK_HOME", "PATH", "CLAUDECODE")}
         os.environ["HOME"] = str(self.home)
         # The template routes investigate and plan to claude; a stub keeps doctor's CLI check
         # independent of whether this host has claude installed.
@@ -58,6 +58,7 @@ class TempEnv(unittest.TestCase):
         stub.chmod(0o755)
         os.environ["PATH"] = f"{stub.parent}{os.pathsep}{os.environ.get('PATH', '')}"
         os.environ.pop("SSTACK_HOME", None)
+        os.environ.pop("CLAUDECODE", None)  # the test host may be Claude Code: that is the session harness
         self.profile(self.home / ".sstack")  # as sstack-install does
 
     def tearDown(self):

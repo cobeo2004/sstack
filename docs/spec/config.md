@@ -67,6 +67,7 @@ Skill keys (R19–R21; read by `lib/sstack_skills.py`, never validated by the lo
 | `roles/<role>.toml` | `skills = []` | skill names every child of the role uses; none by default |
 | `config.toml` | `[skills.kinds] <kind> = []` | skill names for a work kind (built-in or `[routing.kinds]`) |
 | `project.toml` | `[practices] "<glob>" = []` | for `--files` matching the glob: skill names, or doc paths / URLs (any entry with a `/` or ending `.md`) passed through as "read" links |
+| `harnesses/<h>.toml` | `[session]` | how this harness starts children when it runs the session and no ADE is detected: `detect` env markers, `[session.agent]`, `[session.shell]` (docs/spec/dispatch.md § Session harness); read by dispatch, not validated by the loader (doctor does) |
 | `harnesses/<h>.toml` | `skill_dirs = []` | where the harness's skills live (`~` expands; a relative dir is under the repo root; paths handed to children are absolute); replaces the built-in list: claude `~/.claude/skills`, `~/.agents/skills`; codex `~/.codex/skills`, `~/.agents/skills`; cursor `~/.cursor/skills`, `~/.agents/skills`; pi `~/.pi/agent/skills`, `~/.agents/skills`; any other `~/.agents/skills` |
 
 The built-in `skill_dirs` live in code, not in the template's `harnesses/*.toml`, so `load()` output is

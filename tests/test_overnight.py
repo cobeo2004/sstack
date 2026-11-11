@@ -75,7 +75,7 @@ class MergeTests(TempEnv):
         self.write(self.root.parent, "findings.json", json.dumps(
             [{"reviewer": "t/x", "score": score, "findings": found}]))
         subprocess.run([sys.executable, str(WORKFLOW), "done", "review", "--run", str(self.run),
-                        "--findings", str(self.root.parent / "findings.json")],
+                        "--findings", str(self.root.parent / "findings.json"), "--no-dispatch", "test"],
                        cwd=self.root, capture_output=True, text=True)
         state = json.loads((self.run / "workflow.json").read_text())
         self.assertEqual(state["steps"]["review"]["status"], review)

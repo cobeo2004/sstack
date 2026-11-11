@@ -1,3 +1,37 @@
 headless = ["claude", "-p", "--model", "{model}", "--permission-mode", "acceptEdits"]
 headless_readonly = ["claude", "-p", "--model", "{model}", "--permission-mode", "plan"]
 # skill_dirs = ["~/.claude/skills", "~/.agents/skills"]   # built in (lib/sstack_skills.py); set to override
+
+# How this harness starts children when it is the session running the orchestrator and no ADE is
+# detected (docs/spec/dispatch.md § Session harness). A detected ADE (T3, Orca, Conductor) wins.
+[session]
+detect = ["CLAUDECODE"]           # env markers: any one set means this harness is the session
+
+[session.agent]                   # the session's own agent tool; it starts only this harness's members
+name = "Agent"
+load_hint = "built in"
+readonly = "instructed"           # read-only roles are told, not sandboxed
+
+[session.agent.args]
+description = "{title}"
+prompt = "{task}"                 # sstack_ade.TASK
+model = "{model}"
+subagent_type = "general-purpose"
+
+[session.agent.write_args]        # merged over args for write roles (implement)
+isolation = "worktree"
+
+[session.agent.models]            # sstack model alias → the tool's `model`
+haiku = "haiku"
+sonnet = "sonnet"
+opus = "opus"
+fable = "fable"
+
+[session.shell]                   # a member of any other harness: this tool runs its headless command
+name = "Bash"
+load_hint = "built in"
+
+[session.shell.args]
+command = "{command}"
+run_in_background = true          # the agent is told when it ends; Bash itself stops at 10 minutes
+description = "{title}"

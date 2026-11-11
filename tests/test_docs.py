@@ -13,7 +13,7 @@ GUIDE = REPO / "docs" / "guide"
 README = REPO / "README.md"
 FENCE = re.compile(r"^```(\w*)\n(.*?)^```", re.S | re.M)
 SETUP = re.compile(r"^## (Install|Before you start)\n", re.M)
-ADE_ENV = ("T3CODE_THREAD_ID", "ORCA_AGENT_SESSION_ID", "CONDUCTOR_SESSION_ID", "SSTACK_ADE")
+ADE_ENV = ("T3CODE_THREAD_ID", "ORCA_AGENT_SESSION_ID", "CONDUCTOR_SESSION_ID", "SSTACK_ADE", "CLAUDECODE")
 # Flags in prose and tables belong to the page's main command.
 PAGE_CMD = {"getting-started.md": "sstack-install", "configuration.md": "sstack-config",
             "gate.md": "sstack-gate", "ades.md": "sstack-dispatch",
