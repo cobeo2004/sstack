@@ -201,7 +201,7 @@ with an ADE it has no `session` key.
             "args": {"title": "sstack scout", "role": "research", "interactionMode": "plan",
                      "task": "Read the brief at <BRIEF> and do exactly what it says. Write your report to <REPORT>. If you cannot write files, return the full report as your final message.",
                      "target": {"providerInstanceId": "claudeAgent", "model": "claude-haiku-5-5", "options": {}}},
-            "record": "sstack-dispatch record scout --report <REPORT> --member claude/haiku --exit {exit} --run-dir <RUN_DIR>"}]}
+            "record": "sstack-dispatch record scout --report <REPORT> --member claude/haiku --exit {exit} --run-dir <RUN_DIR> --session-kind t3-thread --session '<CHILD_THREAD_ID>'"}]}
 ```
 
 Unmapped model → passed through, `"note"` added to that call (fixture `t3-implement.json`).
@@ -277,10 +277,14 @@ waited re-opens the file now at that path and locks again.
 ## `record`
 
 ```
-sstack-dispatch record <role> --report <p> --member <harness>/<model>[#<stage>/<name>] --exit <n> --run-dir <d>
+sstack-dispatch record <role> --report <p> --member <harness>/<model>[#<stage>/<name>] --exit <n> --run-dir <d> [--session <id> --session-kind <kind>]
 ```
 
-0. `<d>` must be under `<repo>/.sstack/runs/` (flat or nested) and `--member` one of `run.json`
+0. `--session` and `--session-kind` go together or not at all. The id is 1-200 chars of
+   `[A-Za-z0-9._:%-]`; the kind is `claude`, `codex`, `t3-thread`, `pi` or `other`. Anything else,
+   or one flag without the other, exits 1 with a stderr message before anything is appended; so does
+   the unfilled `<CHILD_THREAD_ID>` of a printed payload. A caller without an id omits both flags.
+   `<d>` must be under `<repo>/.sstack/runs/` (flat or nested) and `--member` one of `run.json`
    `members`, else exit 1. The repo root is the parent of the nearest ancestor named `.sstack`.
    Steps 1–4 run under an flock on `<d>/run.lock`.
 1. Reads `<d>/run.json`; appends one index line to `.sstack/runs/index.jsonl`, `secs` = now −
@@ -304,12 +308,36 @@ Index line (one JSON object per line):
 {"ts": "2026-11-09T12:05:40", "task": "sstack review", "role": "review", "ade": "t3", "via": "auto",
  "harness": "claude", "model": "opus", "exit": 0, "secs": 340.0,
  "run_dir": ".sstack/runs/task/dispatch/1200-review", "report": ".sstack/runs/task/dispatch/1200-review/r.claude-opus.md",
- "route": "panel (--panel)", "readonly_warning": ["lib/sstack_config.py", "scratch.txt"]}
+ "route": "panel (--panel)", "readonly_warning": ["lib/sstack_config.py", "scratch.txt"],
+ "session": {"id": "019a7c1e-5b0e-7f3a-9d2e-4c1b8a6f0e52", "kind": "claude"}}
 ```
 
-`ts` = local time when the line is written; `ade` null when none was used; `skills` and
+`session` (`{"id", "kind"}`) only when the child's session is known: the `--session` flags of `record`
+(the exit-4 payload's record command ends with `--session-kind t3-thread --session '<CHILD_THREAD_ID>'`,
+which the caller fills with `delegate_task`'s `childThreadId`, or edits or drops for another
+harness), or what a headless run captured ([below](#headless-session-capture)); a line without it
+stays valid and means "unknown". `ts` = local time when the line is written; `ade` null when none was used; `skills` and
 `skills_missing` are added when the run has skills; `variant` (`"<stage>/<name>"`) only on a stage
 variant member's line.
+
+### Headless session capture
+
+Only a member that `go()` runs in-process (`headless`, not an exit-4 shell command, whose stdout is
+the report) captures a session, from keys in `harnesses/<h>.toml`; a harness with neither key (a
+user's own) behaves as before. The `claude` and `codex` keys below are built in (`SESSION_ARGS`,
+overridden key by key by the harness file; `[]` turns one off). The dry run and `shell_command` never
+show these args.
+A hook's headless fallback (no action, or a failed hook) captures like headless; a hook's own `run` or async action records none.
+
+- `session_id_args` (claude: `["--session-id", "{session_id}"]`): sstack makes up a UUID per attempt
+  (an escalated retry has its own), adds the args before a trailing `-` or at the end, and records
+  `{"id": <uuid>, "kind": <session_kind>}`.
+- `session_events_args` (codex: `["--json", "-o", "{report}"]`): the child prints JSONL events,
+  which go to `<report>.events.jsonl` (kept; never a read-only change) while the child writes the
+  report itself as its final message. The id is the first `thread.started` event's string
+  `thread_id`; non-JSON lines are skipped. No such event, or an id that fails the `record` rule:
+  no `session` key, never a guess. A CLI that ignores these args (no JSON line, empty report) keeps
+  its stdout as the report, as without them.
 
 Panel index (`bin/sstack-reflect-hook` parses `: exit 0 → (.+)$`):
 

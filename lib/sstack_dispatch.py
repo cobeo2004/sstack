@@ -11,6 +11,7 @@ import shlex
 import subprocess
 import sys
 import time
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -27,6 +28,13 @@ RUNS = ".sstack/runs"
 LOCK = "implement.lock"  # the per-checkout write lock (docs/spec/dispatch.md)
 OURS = {INDEX, f"{RUNS}/{LOCK}", f"{RUNS}/{LOCK}.mutex", f"{RUNS}/{LOCK}.tmp"}  # never a warning
 fill, key, unkey = A.fill, A.key, A.unkey
+SESSION_KINDS = ("claude", "codex", "t3-thread", "pi", "other")
+SESSION_ID = re.compile(r"[A-Za-z0-9._:%-]{1,200}")
+SESSION_PLACEHOLDER = "<CHILD_THREAD_ID>"  # payload()'s record command: the caller's to fill or drop
+# Built-in headless session capture by harness name (docs/spec/dispatch.md § Headless session capture); a
+# harness file's own keys replace these, `[]` turns one off. In code like skill_dirs, so load() is unchanged.
+SESSION_ARGS = {"claude": {"session_kind": "claude", "session_id_args": ["--session-id", "{session_id}"]},
+                "codex": {"session_kind": "codex", "session_events_args": ["--json", "-o", "{report}"]}}
 
 
 def slug(model: str | None) -> str:
@@ -202,10 +210,68 @@ def shell_command(cfg: dict, root: Path, role: str, member: dict, title: str, br
             f"< {q(brief)} > {q(report)} 2> {q(report + '.err')}")
 
 
-def run_member(argv: list[str], cwd: Path, brief: str, deadline: float, report: Path) -> int:
+def session_error(sid: str | None, kind: str | None) -> str | None:
+    """Why (id, kind) is not a recordable session, else None. Both or neither."""
+    if (sid is None) != (kind is None):
+        return "--session and --session-kind go together"
+    if sid == SESSION_PLACEHOLDER:
+        return f"fill {SESSION_PLACEHOLDER} with the child's thread id, or drop --session and --session-kind"
+    if sid is not None and not SESSION_ID.fullmatch(sid):
+        return f"--session {sid[:40]!r} must be 1-200 chars of [A-Za-z0-9._:%-]"
+    if kind is not None and kind not in SESSION_KINDS:
+        return f"--session-kind {kind!r} must be one of {', '.join(SESSION_KINDS)}"
+    return None
+
+
+def session_setup(name: str, h: dict, rp: Path) -> dict | None:
+    """One headless attempt's session capture, from SESSION_ARGS or the harness file (docs/spec/dispatch.md § Headless
+    session capture): `session_id_args` pass an id sstack makes up (fresh per attempt);
+    `session_events_args` make the child print JSONL events, so stdout goes to a sidecar and the report
+    is written by the child (`{report}`). None: the harness has neither."""
+    h = {**SESSION_ARGS.get(name, {}), **h}
+    kind = h.get("session_kind", "other")
+    if h.get("session_id_args"):
+        sid = str(uuid.uuid4())
+        return {"args": fill(h["session_id_args"], {"session_id": sid}), "session": {"id": sid, "kind": kind}}
+    if h.get("session_events_args"):
+        return {"args": fill(h["session_events_args"], {"report": str(rp)}), "kind": kind,
+                "events": rp.with_name(rp.name + ".events.jsonl")}
+    return None
+
+
+def session_of(sx: dict | None) -> dict | None:
+    """The attempt's session: the made-up id, or the first `thread.started` event's `thread_id` when it is
+    a valid id. Never guessed: no event, bad JSON lines (skipped) or an invalid id is no session."""
+    if not sx or "session" in sx:
+        return sx and sx["session"]
+    try:
+        lines = sx["events"].read_text(errors="replace").splitlines()
+    except OSError:
+        return None
+    for l in lines:
+        try:
+            e = json.loads(l)
+        except ValueError:
+            continue
+        if isinstance(e, dict) and e.get("type") == "thread.started" and isinstance(e.get("thread_id"), str):
+            return {"id": e["thread_id"], "kind": sx["kind"]} if not session_error(e["thread_id"], sx["kind"]) else None
+    return None
+
+
+def with_args(argv: list[str], extra: list[str]) -> list[str]:
+    """`extra` before a trailing `-` (prompt from stdin), else at the end."""
+    i = len(argv) - 1 if argv[-1:] == ["-"] else len(argv)
+    return argv[:i] + extra + argv[i:]
+
+
+def run_member(argv: list[str], cwd: Path, brief: str, deadline: float, report: Path,
+               events: Path | None = None) -> int:
+    """`events`: stdout goes there and the child writes `report` itself (session_events_args)."""
     report.parent.mkdir(parents=True, exist_ok=True)
     err = report.with_name(report.name + ".err")
-    with open(report, "w") as out, open(err, "w") as errf:
+    if events:
+        report.write_text("")  # no stale report counts as the child's
+    with open(events or report, "w") as out, open(err, "w") as errf:
         try:
             # SSTACK_REFLECT=1: a child's own SessionEnd must not start another reflect pass
             p = subprocess.Popen(argv, cwd=cwd, stdin=subprocess.PIPE, stdout=out, stderr=errf, text=True,
@@ -222,6 +288,9 @@ def run_member(argv: list[str], cwd: Path, brief: str, deadline: float, report: 
         err.unlink()
     if p.returncode != 0:
         return 1
+    if events and report.stat().st_size == 0 and not any(
+            l.startswith("{") for l in events.read_text(errors="replace").splitlines()):
+        events.replace(report)  # a CLI that ignored --json and -o: its stdout is the report, as without them
     return 0 if report.stat().st_size > 0 else 1
 
 
@@ -302,7 +371,7 @@ def readonly_check(root: Path, run_dir: Path, run: dict, report: Path) -> list[s
     # append-only in tree_changes
     skip = [rel(root, run_dir) + "/"]
     skip += [str(p.relative_to(root)) + "/" for p in (root / ".sstack" / "runs").glob("*/")]
-    skip += [rel(root, p) for r in reports for p in (r, Path(str(r) + ".err"))]
+    skip += [rel(root, p) for r in reports for p in (r, Path(str(r) + ".err"), Path(str(r) + ".events.jsonl"))]
     changed = tree_changes(root, base, skip)
     if changed and report.exists():
         with open(report, "a") as f:
@@ -371,7 +440,7 @@ def append_index(root: Path, line: dict) -> None:
 
 
 def index_line(root: Path, run_dir: Path, run: dict, rec: dict) -> None:
-    """rec: member, exit, secs, report, ade, via, readonly_warning."""
+    """rec: member, exit, secs, report, ade, via, readonly_warning, session (optional {id, kind})."""
     hm, _, v = rec["member"].partition("#")
     h, _, m = hm.partition("/")
     append_index(root, {"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "task": run.get("title") or f"sstack {run['role']}",
@@ -380,6 +449,7 @@ def index_line(root: Path, run_dir: Path, run: dict, rec: dict) -> None:
                         "exit": rec["exit"], "secs": rec["secs"], "run_dir": rel(root, run_dir),
                         "report": rel(root, rec["report"]), "route": run.get("route"),
                         "readonly_warning": rec["readonly_warning"],
+                        **({"session": rec["session"]} if rec.get("session") else {}),
                         **{k: run[k] for k in ("skills", "skills_missing") if k in run}})
 
 
@@ -435,6 +505,7 @@ def payload(ade: dict, role: str, members: list[dict], run_dir: str, title: str,
         rp = str(report_path(report, m, members))
         rec = " ".join(shlex.quote(x) for x in ("sstack-dispatch", "record", role, "--report", rp, "--member", key(m)))
         rec += f" --exit {{exit}} --run-dir {shlex.quote(run_dir)}"
+        rec += f" --session-kind t3-thread --session {shlex.quote(SESSION_PLACEHOLDER)}"
         calls.append(member_call(ade, cfg, root, role, m, title, str((briefs or {}).get(key(m), brief)), rp, rec))
     return {"ade": ade["name"], **({"session": ade["session"]} if ade.get("session") else {}), "role": role,
             "readonly": readonly, "run_dir": run_dir, "max_parallel": cap, "calls": calls}
@@ -484,7 +555,12 @@ def record(argv: list[str]) -> int:
     ap.add_argument("--member", required=True, help="<harness>/<model>")
     ap.add_argument("--exit", type=int, required=True)
     ap.add_argument("--run-dir", required=True)
+    ap.add_argument("--session", help="the child's session id; with --session-kind")
+    ap.add_argument("--session-kind", help=" | ".join(SESSION_KINDS))
     a = ap.parse_args(argv)
+    if (bad := session_error(a.session, a.session_kind)):
+        print(f"sstack-dispatch record: {bad}", file=sys.stderr)
+        return 1
     run_dir = Path(a.run_dir).resolve()
     ss = next((p for p in run_dir.parents if p.name == ".sstack"), None)
     runs = ss / "runs" if ss else None
@@ -517,7 +593,8 @@ def _record(a, root: Path, run_dir: Path) -> int:
     warning = readonly_check(root, run_dir, run, report) if run.get("readonly") else []
     index_line(root, run_dir, run, {"member": a.member, "exit": code, "report": report, "ade": run.get("ade"),
                                     "secs": round(time.time() - run.get("started_at", time.time()), 1),
-                                    "via": run.get("via", "auto"), "readonly_warning": warning})
+                                    "via": run.get("via", "auto"), "readonly_warning": warning,
+                                    "session": {"id": a.session, "kind": a.session_kind} if a.session else None})
     if code != 0:
         failed = unkey(a.member)
         try:
@@ -730,10 +807,12 @@ def main(argv: list[str] | None = None) -> int:
             lock_release(root, lock_owner(root, report))
         return code
 
-    def member(m: dict, text: str, deadline: float, rp: Path) -> tuple[int, str | None, str]:
-        """(exit, ade used, via) for one member; one deadline across delegate → run → wait → collect."""
+    def member(m: dict, text: str, deadline: float, rp: Path, sx: dict | None = None) -> tuple[int, str | None, str, dict | None]:
+        """(exit, ade used, via, session capture used) for one member; one deadline across delegate → run → wait → collect.
+        `sx`: the headless attempt's session capture; a hook's headless fallback makes its own, its run/async none."""
         if shape != "hook":
-            return run_member(plans[key(m)], root, text, deadline, rp), ade_name, run["via"]
+            argv = with_args(plans[key(m)], sx["args"]) if sx else plans[key(m)]
+            return run_member(argv, root, text, deadline, rp, sx and sx.get("events")), ade_name, run["via"], sx
         v = m.get("variant")
         state = run_dir / (f"hook.{m['harness']}-{slug(m['model'])}" + (f"-{v.partition('/')[2]}" if v else ""))
         state.mkdir(exist_ok=True)
@@ -742,24 +821,28 @@ def main(argv: list[str] | None = None) -> int:
         try:
             act, note = A.delegate(ade, stdin, state, os.environ, deadline)
         except A.HookTimeout:
-            return 2, ade_name, run["via"]
+            return 2, ade_name, run["via"], None
         if act is None:
             print(f"sstack-dispatch: note: {note}", file=sys.stderr)
             try:
                 argv = headless_argv(cfg, a.role, m, title)
             except ConfigError as e:
                 print(f"sstack-dispatch: {e}", file=sys.stderr)
-                return 1, None, "headless"
-            return run_member(argv, root, text, deadline, rp), None, "headless"
+                return 1, None, "headless", None
+            sx = session_setup(m["harness"], cfg["harness"][m["harness"]], rp)
+            if sx:
+                argv = with_args(argv, sx["args"])
+            return run_member(argv, root, text, deadline, rp, sx and sx.get("events")), None, "headless", sx
         if act["action"] == "run":
-            return run_member(act["argv"], root, text, deadline, rp), ade_name, run["via"]
-        return A.run_async(ade, str(act["id"]), state, os.environ, deadline, rp), ade_name, run["via"]
+            return run_member(act["argv"], root, text, deadline, rp), ade_name, run["via"], None
+        return A.run_async(ade, str(act["id"]), state, os.environ, deadline, rp), ade_name, run["via"], None
 
     def go(m: dict, text: str) -> int:
         rp = report_path(report, m, members)
         t = time.monotonic()
+        sx = session_setup(m["harness"], cfg["harness"][m["harness"]], rp) if shape == "headless" else None
         try:
-            code, used, how = member(m, text, t + timeout_s, rp)
+            code, used, how, sx = member(m, text, t + timeout_s, rp, sx)
         except Exception as e:  # one member's crash must not lose the others' records or the panel index
             print(f"sstack-dispatch: {key(m)}: {type(e).__name__}: {e}", file=sys.stderr)
             code, used, how = 1, ade_name, run["via"]
@@ -767,7 +850,8 @@ def main(argv: list[str] | None = None) -> int:
             rp.unlink()
         warning = readonly_check(root, run_dir, run, rp) if readonly else []
         index_line(root, run_dir, run, {"member": key(m), "exit": code, "secs": round(time.monotonic() - t, 1),
-                                        "report": rp, "ade": used, "via": how, "readonly_warning": warning})
+                                        "report": rp, "ade": used, "via": how, "readonly_warning": warning,
+                                        "session": session_of(sx)})
         return code
 
     if len(members) == 1:

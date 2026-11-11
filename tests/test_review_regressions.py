@@ -65,7 +65,7 @@ class EscalationLockTests(FakeCliBase):
         code_b, out_b, _ = go("b", "x.py")
         self.assertEqual((code_a, json.loads(out_a)["calls"][0]["tool"]), (4, "Bash"))
         self.assertEqual((code_b, json.loads(out_b)["calls"][0]["tool"]), (4, "Agent"))
-        rec = shlex.split(json.loads(out_b)["calls"][0]["record"].replace("{exit}", "1"))[1:]
+        rec = shlex.split(json.loads(out_b)["calls"][0]["record"].replace("{exit}", "1").replace("'<CHILD_THREAD_ID>'", "thread-1"))[1:]
         code, out, err = self.run_main(*rec, env=CLAUDE)
         self.assertNotEqual(code, 4, out)
         self.assertIn("not escalated", err)

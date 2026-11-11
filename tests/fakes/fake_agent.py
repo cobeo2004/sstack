@@ -1,6 +1,8 @@
 """Stand-in harness. argv[1] = mode: echo | empty | fail | sleep | touch <file> | canary[-wrong|-dirty|-nofile|-stray];
-any other mode echoes like `echo` (a model name such as p1 or other is just another echoing agent)."""
-import re, subprocess, sys, os, time
+any other mode echoes like `echo` (a model name such as p1 or other is just another echoing agent).
+argv echoes the args after the model; codex[-noid|-badid] acts like `codex exec --json -o <file>`: JSONL events on
+stdout, the final message in the -o file."""
+import json, re, subprocess, sys, os, time
 from pathlib import Path
 
 mode = sys.argv[1]
@@ -33,5 +35,16 @@ elif mode.startswith("canary"):  # sstack-doctor smoke brief: write the canary f
     if mode == "canary-stray":  # a stray file under .sstack/runs/, outside every run dir
         Path(".sstack/runs/stray.txt").write_text("x\n")
     print(f"CANARY {'wrong' if mode == 'canary-wrong' else tok}")
+elif mode == "argv":  # what sstack added after the model
+    print("REPORT\nARGV " + json.dumps(sys.argv[2:]))
+elif mode.startswith("codex"):
+    out = sys.argv[sys.argv.index("-o") + 1] if "-o" in sys.argv else None
+    tid = "bad id!" if mode == "codex-badid" else "019a-thread:one"
+    print("Reading prompt from stdin...")  # not JSON
+    if mode != "codex-noid":
+        print(json.dumps({"type": "thread.started", "thread_id": tid}))
+    print(json.dumps({"type": "item.completed", "item": {"text": "FINAL " + brief}}))
+    if out:
+        Path(out).write_text("FINAL MESSAGE\n" + brief)
 else:  # echo, and any model name without a mode of its own
     print("REPORT\n" + brief)

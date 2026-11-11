@@ -178,7 +178,7 @@ class FakeCliBase(DispatchBase):
 
     def record(self, call: dict, code: int, env=None):
         import shlex
-        argv = shlex.split(call["record"].replace("{exit}", str(code)))
+        argv = shlex.split(call["record"].replace("{exit}", str(code)).replace("'<CHILD_THREAD_ID>'", "thread-1"))
         self.assertEqual(argv[:2], ["sstack-dispatch", "record"])
         return self.run_main(*argv[1:], env=env)
 
@@ -248,7 +248,7 @@ class RecordTests(FakeCliBase):
         code, _, err = self.record(call, 0, env=T3)
         self.assertEqual(code, 0, err)
         [rec] = self.index()
-        self.assertEqual(set(rec), INDEX_KEYS)
+        self.assertEqual(set(rec) - {"session"}, INDEX_KEYS)  # the payload's id filled in by record()
         self.assertEqual((rec["ade"], rec["via"], rec["role"], rec["harness"], rec["model"], rec["exit"]),
                          ("t3", "auto", "scout", "claude", "haiku", 0))
         self.assertEqual((rec["report"], rec["readonly_warning"]), ("out/r.md", []))
@@ -478,7 +478,7 @@ class FixB2Tests(FakeCliBase):
         call = json.loads(out)["calls"][0]
         self.report().parent.mkdir(exist_ok=True)
         self.report().write_text("PASS\n")
-        argv = __import__("shlex").split(call["record"].replace("{exit}", "0"))
+        argv = __import__("shlex").split(call["record"].replace("{exit}", "0").replace("'<CHILD_THREAD_ID>'", "thread-1"))
         env = {**NO_T3, "HOME": str(self.home), **T3}
         with open(Path(json.loads(out)["run_dir"]) / "run.lock", "a") as lk:
             fcntl.flock(lk, fcntl.LOCK_EX)
@@ -728,3 +728,135 @@ class WriteLockTests(FakeCliBase):
         codes = sorted(p.wait(timeout=30) for p in procs)
         self.assertEqual(codes, [3, 5])
         self.assertEqual(len(self.holders()), 1)
+
+
+PLACEHOLDER = "--session-kind t3-thread --session '<CHILD_THREAD_ID>'"
+CLAUDE_LIKE = FAKE.rstrip("\n") + '\nsession_kind = "claude"\nsession_id_args = ["--session-id", "{session_id}"]\n'
+CODEX_LIKE = FAKE.rstrip("\n") + '\nsession_kind = "codex"\nsession_events_args = ["--json", "-o", "{report}"]\n'
+
+
+class SessionTests(FakeCliBase):
+    """The index line's `session` (docs/spec/dispatch.md § record, § Headless session capture)."""
+
+    def index(self) -> list[dict]:
+        p = self.root / ".sstack/runs/index.jsonl"
+        return [json.loads(l) for l in p.read_text().splitlines()] if p.exists() else []
+
+    def payload_call(self, role="scout"):
+        self.example()
+        _, out, _ = self.dispatch(role, env=T3)
+        self.report().parent.mkdir(exist_ok=True)
+        self.report().write_text("# r\nPASS\n")
+        return json.loads(out)["calls"][0]
+
+    def record_with(self, call, *flags):
+        import shlex
+        argv = shlex.split(call["record"].replace("{exit}", "0"))
+        self.assertEqual(argv[-4:], ["--session-kind", "t3-thread", "--session", "<CHILD_THREAD_ID>"])
+        return self.run_main(*argv[1:-4], *flags, env=T3)
+
+    def test_payload_record_carries_the_session_placeholder(self):
+        call = self.payload_call("implement")
+        self.assertTrue(call["record"].endswith(PLACEHOLDER), call["record"])
+        code, out, _ = self.record(call, 1, env=T3)  # escalation payload gets it too
+        self.assertEqual(code, 4)
+        self.assertTrue(json.loads(out)["calls"][0]["record"].endswith(PLACEHOLDER))
+
+    def test_record_session(self):
+        code, _, err = self.record_with(self.payload_call(), "--session", "abc.1:%2f-x", "--session-kind", "t3-thread")
+        self.assertEqual(code, 0, err)
+        [rec] = self.index()
+        self.assertEqual(rec["session"], {"id": "abc.1:%2f-x", "kind": "t3-thread"})
+        self.assertEqual(set(rec) - {"session"}, INDEX_KEYS)
+
+    def test_record_no_flags_is_no_session(self):
+        call = self.payload_call()
+        self.assertEqual(self.record_with(call)[0], 0)  # both flags dropped
+        self.assertEqual(self.record(call, 0, env=T3)[0], 0)  # filled
+        self.assertEqual([set(r) - {"session"} for r in self.index()], [INDEX_KEYS, INDEX_KEYS])
+        self.assertEqual([("session" in r) for r in self.index()], [False, True])
+
+    def test_record_unfilled_placeholder_fails(self):
+        call = self.payload_call()
+        for kind in (("--session-kind", "t3-thread"), ("--session-kind", "gpt"), ()):
+            with self.subTest(kind=kind):
+                code, _, err = self.record_with(call, "--session", "<CHILD_THREAD_ID>", *kind)
+                self.assertEqual(code, 1)
+                self.assertIn("--session", err)
+                self.assertEqual(code == 1 and "fill <CHILD_THREAD_ID>" in err, bool(kind))  # the hint when the pair is whole
+                self.assertEqual(self.index(), [])
+
+    def test_record_rejects_bad_session_before_appending(self):
+        call = self.payload_call()
+        for flags in (("--session", "a b", "--session-kind", "claude"), ("--session", "x" * 201, "--session-kind", "claude"),
+                      ("--session", "", "--session-kind", "claude"), ("--session", "ok", "--session-kind", "gpt"),
+                      ("--session", "ok"), ("--session-kind", "claude")):
+            with self.subTest(flags=flags):
+                code, _, err = self.record_with(call, *flags)
+                self.assertEqual(code, 1)
+                self.assertIn("--session", err)
+                self.assertEqual(self.index(), [])
+        self.assertEqual(self.record_with(call, "--session", "x" * 200, "--session-kind", "other")[0], 0)
+
+    def headless(self, cfg, model, role="implement"):
+        self.glob_cfg(cfg + f'[role.{role}]\nharness="fake"\nmodel="{model}"\n')
+        return self.dispatch(role)
+
+    def test_headless_claude_session_id(self):
+        import uuid
+        sids = []
+        for _ in range(2):  # fresh per attempt
+            code, _, err = self.headless(CLAUDE_LIKE, "argv")
+            self.assertEqual(code, 0, err)
+            sid = self.index()[-1]["session"]["id"]
+            self.assertEqual(str(uuid.UUID(sid)), sid)
+            self.assertIn(json.dumps(["--session-id", sid]), self.report().read_text())
+            self.assertEqual(self.index()[-1]["session"]["kind"], "claude")
+            sids.append(sid)
+        self.assertNotEqual(*sids)
+
+    def test_headless_without_session_keys_is_unchanged(self):
+        code, _, err = self.headless(FAKE, "argv")
+        self.assertEqual(code, 0, err)
+        self.assertIn("ARGV []", self.report().read_text())
+        self.assertEqual(set(self.index()[0]), INDEX_KEYS)
+
+    def test_dry_run_and_shell_command_do_not_show_session_args(self):
+        self.glob_cfg(CLAUDE_LIKE + '[role.implement]\nharness="fake"\nmodel="argv"\n')
+        _, out, _ = self.dispatch("implement", "--dry-run")
+        self.assertNotIn("--session-id", out)
+        cfg = D.load(self.root)
+        cmd = D.shell_command(cfg, self.root, "implement", {"harness": "fake", "model": "argv", "effort": None}, "t", "b", "r")
+        self.assertNotIn("--session-id", cmd)
+        self.glob_cfg(CODEX_LIKE)
+        cmd = D.shell_command(D.load(self.root), self.root, "implement", {"harness": "fake", "model": "codex", "effort": None}, "t", "b", "r")
+        self.assertNotIn("--json", cmd)
+
+    def test_headless_codex_events(self):
+        code, _, err = self.headless(CODEX_LIKE, "codex")
+        self.assertEqual(code, 0, err)
+        text = self.report().read_text()
+        self.assertTrue(text.startswith("FINAL MESSAGE\n") and "thread.started" not in text, text)  # not the JSONL
+        self.assertEqual(self.index()[0]["session"], {"id": "019a-thread:one", "kind": "codex"})
+
+    def test_headless_codex_without_usable_thread_id_records_nothing(self):
+        for model in ("codex-noid", "codex-badid"):
+            with self.subTest(model=model):
+                code, _, err = self.headless(CODEX_LIKE, model)
+                self.assertEqual(code, 0, err)
+                self.assertTrue(self.report().read_text().startswith("FINAL MESSAGE\n"))
+                self.assertNotIn("session", self.index()[-1])
+
+    def test_cli_that_ignores_the_events_args_keeps_stdout_as_the_report(self):
+        code, _, err = self.headless(CODEX_LIKE, "echo")  # prints the brief, writes no -o file, speaks no JSON
+        self.assertEqual(code, 0, err)
+        self.assertIn("REPORT\ndo the thing", self.report().read_text())
+        self.assertNotIn("session", self.index()[0])
+        self.assertFalse(self.report().with_name("r.md.events.jsonl").exists())
+
+    def test_codex_events_sidecar_is_not_a_readonly_change(self):
+        self.glob_cfg(CODEX_LIKE + '[role.scout]\nharness="fake"\nmodel="codex"\n')
+        code, _, err = self.dispatch("scout")
+        self.assertEqual(code, 0, err)
+        self.assertEqual(self.index()[0]["readonly_warning"], [])
+        self.assertNotIn("WARNING", self.report().read_text())

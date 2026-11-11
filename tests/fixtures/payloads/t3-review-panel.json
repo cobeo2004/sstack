@@ -22,7 +22,7 @@
         },
         "interactionMode": "plan"
       },
-      "record": "sstack-dispatch record review --report <REPORT_BASE>.codex-gpt-6.1-sol.md --member codex/gpt-6.1-sol --exit {exit} --run-dir <RUN_DIR>"
+      "record": "sstack-dispatch record review --report <REPORT_BASE>.codex-gpt-6.1-sol.md --member codex/gpt-6.1-sol --exit {exit} --run-dir <RUN_DIR> --session-kind t3-thread --session '<CHILD_THREAD_ID>'"
     },
     {
       "member": "claude/opus",
@@ -39,7 +39,7 @@
         },
         "interactionMode": "plan"
       },
-      "record": "sstack-dispatch record review --report <REPORT_BASE>.claude-opus.md --member claude/opus --exit {exit} --run-dir <RUN_DIR>"
+      "record": "sstack-dispatch record review --report <REPORT_BASE>.claude-opus.md --member claude/opus --exit {exit} --run-dir <RUN_DIR> --session-kind t3-thread --session '<CHILD_THREAD_ID>'"
     }
   ]
 }

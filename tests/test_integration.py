@@ -26,7 +26,7 @@ class IntegrationTests(TempEnv):
             call = json.loads(r.stdout)["calls"][0]
             self.assertEqual((call["tool"], call["args"]["target"]["model"]), ("delegate_task", "claude-haiku-5-5"))
             (self.root / "r.md").write_text("REPORT\n")  # the delegate_task child's report
-            r = run(*call["record"].replace("{exit}", "0").split()[1:])
+            r = run(*call["record"].replace("{exit}", "0").replace("'<CHILD_THREAD_ID>'", "thread-1").split()[1:])
             self.assertEqual(r.returncode, 0, r.stderr)
             self.assertFalse(log.exists())
         lines = (self.root / ".sstack" / "runs" / "index.jsonl").read_text().splitlines()

@@ -143,7 +143,7 @@ for p in out["payloads"]:
         if (w := re.search(r"Write (\S+) containing", text)):
             open(w[1], "w").write(token + "\n")
         open(report, "w").write(f"CANARY {token}\n")
-        subprocess.run(c["record"].replace("{exit}", "0"), shell=True, check=True)
+        subprocess.run(c["record"].replace("{exit}", "0").replace("'<CHILD_THREAD_ID>'", "demo-thread"), shell=True, check=True)
 print(out["smoke_run_dir"])
 EOF
 python3 "$tmp/agent.py" "$tmp/smoke.json" > "$tmp/smoke_dir"

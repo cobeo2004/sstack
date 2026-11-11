@@ -204,7 +204,7 @@ Expected (abridged):
 "model": "haiku",
 "readonly": true
 "note": "model haiku not in [models.claude]; passed through",
-"record": "sstack-dispatch record scout --report <repo>/t.md --member claude/haiku --exit {exit} --run-dir <repo>/.sstack/runs/YYYYMMDD-HHMM-scout"
+"record": "sstack-dispatch record scout --report <repo>/t.md --member claude/haiku --exit {exit} --run-dir <repo>/.sstack/runs/YYYYMMDD-HHMM-scout --session-kind t3-thread --session '<CHILD_THREAD_ID>'"
 ```
 
 Exit 4: the payload's one call names `spawn_child` with `args` filled from `[delegate.args]` plus
