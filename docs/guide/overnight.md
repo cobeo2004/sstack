@@ -48,7 +48,7 @@ run=$(mktemp -d)
 mkdir -p "$run/gate"
 printf 'GATE: PASS\n\n- Head: %s\n' "$(git rev-parse HEAD)" > "$run/gate/1-pr.md"
 printf '[{"reviewer": "x", "score": 9, "findings": []}]\n' > "$run/findings.json"
-sstack-workflow done review --run "$run" --findings "$run/findings.json"
+sstack-workflow done review --run "$run" --findings "$run/findings.json" --no-dispatch "demo"
 fake=$(mktemp -d)
 cat > "$fake/gh" <<'EOF'
 #!/bin/sh

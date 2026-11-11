@@ -189,7 +189,9 @@ text, with absolute brief and report paths (worktree children don't see `.sstack
 write files, return the full report as your final message.` (the payload fixtures predate the last
 sentence). Placeholders in fixtures: `<RUN_DIR>`,
 `<BRIEF>`, `<REPORT>` (the `--report` path), `<REPORT_BASE>` (`report_base`); `{exit}` is filled by
-the agent.
+the agent. A member the ADE cannot host (`[delegate.shell]`, docs/spec/ade.md) gets the shell
+tool's call instead: `tool` = its `name`, `args` = `[delegate.shell.args]` with `{command}` the
+member's headless line.
 
 ```json
 {"ade": "t3", "role": "scout", "readonly": true, "run_dir": "<RUN_DIR>", "max_parallel": 4,
@@ -232,7 +234,8 @@ orchestrator serializes its own groups and never waits on itself. A **different*
 exit 5, stderr `BUSY: <holder run> <files>; nothing started`, nothing created or started — when
 
 - the ADE does not isolate write children: `delegate.write_args.isolation` unset (`cursor`, headless,
-  local, a hook), or
+  local, a hook), or any member is one the ADE runs as a shell command (`[delegate.shell]`,
+  docs/spec/ade.md), or
 - the live holders reach the step's `max_agents` (`1` when no `--step` named one), or
 - `--files` overlap a holder's. A side with no `--files` is unknown, so it overlaps.
 

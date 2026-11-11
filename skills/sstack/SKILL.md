@@ -140,8 +140,7 @@ Dispatch a role; never pick a model by hand.
        message there yourself.
     4. **Record** each with the first exit that matches: `--exit 2` if the child
        timed out, `--exit 1` if it failed or left no report, else `--exit 0`. A `record` that exits `4` prints the next tier's payload: same
-       procedure. Read each report and verify it — launch success is not task
-       success.
+       procedure. Read each report and verify it: launch success is not task success.
   - `5` — `BUSY: <holder run> <files>; nothing started`: another run holds this
     checkout's write lock. Say you are waiting on that holder, wait for it to record
     its step or finish, then dispatch again. Never kill it or work around it in the
@@ -161,8 +160,10 @@ Dispatch a role; never pick a model by hand.
   and re-run the gate after each.
 - Headless dispatch blocks until the child finishes. To run several at once, start
   each in the background (`&` … `wait`, or the harness's background run).
-- Delegate reading by volume: fan out only when the question needs about five or
-  more sources (files, PRs, logs). Fewer → read them here.
+- A `work` step with a routed role is dispatched with `--step`, or `sstack-workflow done`
+  refuses it. Swarm as recon → `done recon --no-dispatch "swarm: <n> scouts"`. The payload
+  is the call: no native subagent, OMC `executor` or harness rule for another spawn tool.
+- Reading outside a step: fan out only at about five or more sources (files, PRs, logs).
 
 ## Principles
 

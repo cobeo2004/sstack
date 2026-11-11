@@ -146,7 +146,8 @@ Disabling a step is the same shape — `enabled = false` in any layer's
 
 `work` records each step as it finishes and follows what the tracker prints:
 
-- role or inline step: `sstack-workflow done <step> --run <run>`
+- role or inline step: `sstack-workflow done <step> --run <run>`; a role step that
+  routes to a member must have been dispatched first (see below)
 - command step: `sstack-workflow run <step> --run <run>` — executed from the repo
   root with `SSTACK_RUN`, `SSTACK_ROOT` and `SSTACK_HOME` set
 - `review`: `sstack-workflow done review --run <run> --findings <run>/review/findings.json`
@@ -154,13 +155,20 @@ Disabling a step is the same shape — `enabled = false` in any layer's
 ```sh
 run="$PWD/.sstack/runs/demo"
 mkdir -p "$run"
-sstack-workflow done plan --run "$run"
+sstack-workflow done plan --run "$run" # exit 1
+sstack-workflow done plan --run "$run" --no-dispatch "demo"
 ```
 
-On the defaults that prints two lines: `GATE: wait for the user's yes`, then
-`next: implement`. The other lines:
+The first call is refused: on the defaults `plan` routes to a member, and this run never
+dispatched it. The refusal ends with the command to run. `--no-dispatch "<reason>"`
+records the step anyway and writes `plan: no dispatch (demo)` to `progress.md`, so
+skipping is visible. The second call prints three lines: `GATE: wait for the user's yes`,
+`next: implement`, then a `do:` line. The other lines:
 
 - `next: <step>` — where the chain goes next; `next: done` at the last step.
+- `do: …` — how to do that step: its `sstack-dispatch <role> --step <step> …` command,
+  `sstack-workflow run <step> --run <run>` for a command step, or "in this session" for
+  an inline or local one.
 - `GATE: wait for the user's yes` — after a step with `gate = true`. The next step
   starts on the user's yes.
 - `STOP: ask user` with exit 2 — the step failed `max_loops` times, or failed with
@@ -168,6 +176,17 @@ On the defaults that prints two lines: `GATE: wait for the user's yes`, then
 
 `done` also releases this run's write-lock holder when it records the step that
 dispatched an implement, so the next implement into the same checkout is allowed.
+
+### The dispatch check
+
+`done <step>` (a pass; `--fail` is never refused) exits 1 and records nothing when the
+step is a role step that routes to a member and this run recorded no dispatch for it.
+Routed means `max_agents` above 0 and a role that picks a member: not `local`, not
+`[dispatch] via = "local"`. Command and inline steps are never checked. A recorded
+dispatch is one `sstack-dispatch --step <step>` that reached `record` (under the run
+folder, or in this checkout's `.sstack/runs/` when the run folder lives in another
+checkout), or a local `implement` holding the write lock. A payload that was printed
+but never carried out does not count.
 
 ## Review scores
 
@@ -192,7 +211,7 @@ run="$PWD/.sstack/runs/demo"
 mkdir -p "$run/review"
 printf '[{"reviewer": "claude/opus", "score": 8, "findings": [{"severity": "Nit", "verified": true}]}]\n' \
   > "$run/review/findings.json"
-sstack-workflow done review --run "$run" --findings "$run/review/findings.json"
+sstack-workflow done review --run "$run" --findings "$run/review/findings.json" --no-dispatch "demo"
 ```
 
 That one passes (`8` ≥ `min_score` 5, nothing `Important`), prints

@@ -13,6 +13,11 @@
 
 - Headless child: `claude -p --model <m>`; read-only roles use
   `--permission-mode plan` (set in `~/.sstack/harnesses/claude.toml`, synced from the template).
+- No ADE marker but `CLAUDECODE` → the `claude` ADE: a dispatch exits `4` with `Agent`
+  calls for Claude members and background `Bash` calls for the rest.
+- `--via headless` blocks until the child ends, up to `[dispatch] timeout_min`: past the
+  Bash tool's 10-minute cap. Run it with `run_in_background` and wait for the
+  notification.
 - Long test/build output: redirect to a file under `.sstack/runs/<run-id>/`.
 - Capture a browser or device still/video: the active ADE's note, else
   [testing.md § Capture with the shell](../../work/testing.md#capture-with-the-shell).

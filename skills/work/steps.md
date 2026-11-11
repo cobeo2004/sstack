@@ -14,11 +14,16 @@ Record every step, then do what it prints:
 
 | step kind | record with |
 |---|---|
-| role step, inline step | `sstack-workflow done <step> --run <run>` |
+| role step, inline step | `sstack-workflow done <step> --run <run>` (`--no-dispatch "<reason>"` to skip a dispatch) |
 | command step (`run.sh`) | `sstack-workflow run <step> --run <run>` — runs it from the repo root |
 | `review` | `sstack-workflow done review --run <run> --findings <run>/review/findings.json` |
 
-- `next: <step>` — go there.
+- `next: <step>` — go there, and run the `do: …` line printed after it: the step's
+  dispatch command, its `run` command, or "in this session".
+- `done` on a role step whose role is routed **refuses** (exit 1, nothing recorded)
+  until this run recorded a dispatch for it, and prints the command. Dispatch it. The
+  one way past is `done <step> --no-dispatch "<reason>"`, which logs the reason in
+  `progress.md`. Local roles, `max_agents = 0` steps and `--fail` need no dispatch.
 - `GATE: wait for the user's yes` — stop, report, and wait. The next step starts on
   the user's yes.
 - exit 2 with `STOP: ask user` — the step failed `max_loops` times, or failed with
@@ -41,7 +46,8 @@ Record every step, then do what it prints:
    where running something would answer it, run it or build a throwaway prototype.
 4. Route the recon reading: dispatch `investigate` with `--step recon` and the recon
    questions as the brief, following [sstack § Delegation](../sstack/SKILL.md#delegation).
-   Many independent sources → `swarm` with role `scout` instead. Use `code-graph`
+   `done recon` refuses without that dispatch. Many independent sources → `swarm` with
+   role `scout` instead, then `done recon --no-dispatch "swarm: <n> scouts"`. Use `code-graph`
    (`detect-changes` / impact) to find what the change reaches. Read every report,
    stage variants' `<report>-<name>.md` too, and check their file pointers yourself;
    this gate stays here.
@@ -80,8 +86,9 @@ the user reads the report: don't plan until they respond. A repo that set
      forbidden); note the base commit in `progress.md`.
 
    The implementer's brief names the outcome, not the key.
-3. Role `plan` may draft the plan if the step's `role` is routed (merge any variant
-   reports); the gate stays here.
+3. When the step's `role` is routed, the `plan` role drafts the plan: dispatch it with
+   `--step plan`, and `done plan` refuses without that dispatch. Merge any variant
+   reports, and check the draft against the answer key; the gate stays here.
 
 Then `sstack-workflow done plan --run <run>`. At `GATE: wait for the user's yes`,
 the harness's plan approval (see harness notes) or an explicit "yes" in chat where
@@ -117,7 +124,8 @@ implemented before it.
   ([sstack § Delegation](../sstack/SKILL.md#delegation)); bring it here before the
   gate step.
 
-Then `sstack-workflow done implement --run <run>`.
+Then `sstack-workflow done implement --run <run>`. It refuses without a recorded
+dispatch (an exit 3 `local` implement counts, through its write lock).
 
 ## gate
 
@@ -135,7 +143,7 @@ the loop cap stops the attempt after that (`STOP: ask user`).
 ## review
 
 1. Run `review` on the diff with `--step review` (role `review`, ideally a different
-   model family from the implementer). Its result merges variant reports; the
+   model family from the implementer). `done review` refuses without that dispatch. Its result merges variant reports; the
    reviewer's brief asks for a 1–10 score on the anchored rubric.
 2. Re-check every finding against the current head: reproduce it, keep it only if it
    still breaks the intent, and drop or reclassify what the current code already

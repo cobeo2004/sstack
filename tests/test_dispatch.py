@@ -10,7 +10,7 @@ FAKE = f'[harness.fake]\nheadless = ["{sys.executable}", "{REPO}/tests/fakes/fak
        f'headless_readonly = ["{sys.executable}", "{REPO}/tests/fakes/fake_agent.py", "{{model}}"]\n'
 # no ADE markers from the session running the tests
 NO_T3 = {k: v for k, v in os.environ.items()
-         if not k.startswith(("T3CODE", "SSTACK_", "ORCA_", "CONDUCTOR_", "FAKE_"))}
+         if not k.startswith(("T3CODE", "SSTACK_", "ORCA_", "CONDUCTOR_", "FAKE_", "CLAUDECODE"))}
 
 
 class DispatchBase(TempEnv):

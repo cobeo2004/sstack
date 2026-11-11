@@ -1,4 +1,4 @@
-{"order": [["conductor","home"],["cursor","home"],["orca","home"],["t3","home"]],
+{"order": [["claude","home"],["conductor","home"],["cursor","home"],["orca","home"],["t3","home"]],
  "checks": [{"env": {}, "ade": "auto", "active": null, "why": "cursor has auto = false"},
             {"env": {}, "ade": "cursor", "active": "cursor", "why": "ade = cursor"},
             {"env": {"SSTACK_ADE": "cursor"}, "ade": "auto", "active": "cursor", "why": "SSTACK_ADE=cursor"}]}

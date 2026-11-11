@@ -192,7 +192,7 @@ class ConfigTests(TempEnv):
         a = C.ades(self.root)
         self.assertEqual([(x["name"], x["layer"]) for x in a],
                          [("t3", "repo"), ("acme", "home"), ("zed", "home"),
-                          ("conductor", "home"), ("cursor", "home"), ("orca", "home")])
+                          ("claude", "home"), ("conductor", "home"), ("cursor", "home"), ("orca", "home")])
         t3 = a[0]
         self.assertEqual(t3["toml"]["detect"]["env"], ["MY_T3"])
         self.assertEqual(t3["note_path"], self.home / ".sstack/ades/t3.md")  # per-file fallback

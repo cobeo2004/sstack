@@ -4,11 +4,14 @@ agent: the agent follows the chain the tool prints."""
 import argparse
 import json
 import os
+import shlex
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import sstack_config as C
+import sstack_route as R
 
 NO_STEPS = f"no steps: {C.SYNC} or add steps/<name>/ (docs/spec/workflow.md)"
 
@@ -153,9 +156,86 @@ def release(root: Path, run_dir: Path) -> None:
     D.lock_release(root, owner)
 
 
+def routed(root: Path, spec: dict) -> bool:
+    """A role step that sstack-dispatch hands to a member: not inline (max_agents 0), and its role
+    routes to one (`review` always does, as a panel, unless dispatch.via = local)."""
+    if spec["kind"] != "role" or not spec["role"] or spec["max_agents"] <= 0:
+        return False
+    cfg = C.load(root)
+    if spec["role"] == "review":
+        return cfg.get("dispatch", {}).get("via") != "local"
+    return R.pick(cfg, spec["role"], None, [])[0] is not None
+
+
+def dispatch_cmd(run_dir: Path, step: str, spec: dict) -> str:
+    q = lambda p: shlex.quote(str(p))
+    return (f"sstack-dispatch {spec['role']} --step {step} --brief {q(run_dir / f'{step}.brief.md')} "
+            f"--report {q(run_dir / f'{step}.md')}")
+
+
+def dispatched(root: Path, run_dir: Path, step: str, role: str) -> bool:
+    """Did this run dispatch `step`? A run.json with `step` that has an index.jsonl line (record ran,
+    so the payload was carried out): nested under <run>/**/dispatch/*/, or flat in this checkout's
+    .sstack/runs/*/ with its report under <run> (the run folder is in another checkout). A live write
+    lock this run holds for `role` (a local, exit-3 implement) counts too."""
+    import sstack_dispatch as D  # lazy: dispatch imports this module
+    run_dir = run_dir.resolve()
+
+    def recorded(d: Path) -> bool:
+        ss = next((p for p in d.parents if p.name == ".sstack"), None)
+        try:
+            idx = (ss / "runs" / "index.jsonl").read_text().splitlines()
+            want = d.relative_to(ss.parent).as_posix()
+            return any(json.loads(l).get("run_dir") == want for l in idx if l.strip())
+        except (OSError, ValueError, AttributeError):
+            return False
+
+    def ours(f: Path) -> bool:
+        try:
+            run = json.loads(f.read_text())
+            return isinstance(run, dict) and run.get("step") == step and recorded(f.parent)
+        except (OSError, ValueError):
+            return False
+
+    def under(base: str) -> bool:
+        b = Path(base) if os.path.isabs(base) else root / base
+        return b.resolve().is_relative_to(run_dir)
+
+    if any(ours(f) for f in run_dir.glob("**/dispatch/*/run.json")):
+        return True
+    for f in (root.resolve() / ".sstack" / "runs").glob("*/run.json"):
+        try:
+            base = json.loads(f.read_text()).get("report_base")
+        except (OSError, ValueError, AttributeError):
+            continue
+        if isinstance(base, str) and ours(f) and under(base):
+            return True
+    try:
+        owner = run_dir.relative_to(root.resolve()).as_posix()
+    except ValueError:
+        return False
+    holders = D._lock_read(root / D.RUNS / D.LOCK)["holders"]
+    ttl = float(C.load(root).get("dispatch", {}).get("timeout_min", 30)) * 60  # dispatch drops older holders
+    return any(isinstance(h, dict) and h.get("owner") == owner and h.get("role") == role
+               and h.get("local", True) and time.time() - float(h.get("started") or 0) <= ttl for h in holders)
+
+
+def do_line(root: Path, run_dir: Path, wf: dict, step: str) -> str:
+    """How the agent does `step`: its dispatch command, `sstack-workflow run`, or itself."""
+    spec = wf["steps"].get(step)
+    if spec is None:  # an on_fail naming no step: doctor FAILs that config
+        return f"do: {step} (no such step)"
+    if spec["kind"] == "command":
+        return f"do: sstack-workflow run {step} --run {shlex.quote(str(run_dir))}"
+    if routed(root, spec):
+        return f"do: {dispatch_cmd(run_dir, step, spec)}"
+    return f"do: {step} in this session, then sstack-workflow done {step} --run {shlex.quote(str(run_dir))}"
+
+
 def advance(root: Path, run_dir: Path, wf: dict, step: str, failed: bool = False,
-            findings: str | None = None) -> int:
-    """Record one step's result, print what the agent does next, and exit 0, or 2 at the loop cap."""
+            findings: str | None = None, no_dispatch: str | None = None) -> int:
+    """Record one step's result, print what the agent does next, and exit 0, 2 at the loop cap, or 1
+    when a routed role step passes with no recorded dispatch (`no_dispatch` = the reason to skip it)."""
     chain, steps = wf["chain"], wf["steps"]
     if step not in chain:
         print(f"sstack-workflow: no step {step!r} in the chain ({' → '.join(chain) or NO_STEPS})",
@@ -180,15 +260,24 @@ def advance(root: Path, run_dir: Path, wf: dict, step: str, failed: bool = False
         ok = ok and important == 0 and (final is None or final >= int(spec["min_score"] or 0))
         print(f"score: {final if final is not None else '-'} (min of {', '.join(shown) or 'no reviewers'}; "
               f"verified Important {important})")
+    if ok and no_dispatch is None and routed(root, spec) and not dispatched(root, run_dir, step, spec["role"]):
+        print(f"sstack-workflow: {step} is a {spec['role']} step and this run recorded no dispatch for it. "
+              f"Dispatch it, or pass --no-dispatch \"<reason>\" to skip it and say why:\n"
+              f"{dispatch_cmd(run_dir, step, spec)}", file=sys.stderr)
+        return 1
     if ok:
         entry["status"] = "pass"
         nxt = chain[at + 1] if at + 1 < len(chain) else None
         st["current"] = nxt or "done"
         write_state(run_dir, st)
+        if no_dispatch is not None:
+            progress(run_dir, f"{step}: no dispatch ({no_dispatch})")
         progress(run_dir, f"{step}: pass" + (f" score {entry['score']}" if entry["score"] is not None else ""))
         if spec["gate"]:
             print(GATE)
         print(f"next: {nxt or 'done'}")
+        if nxt:
+            print(do_line(root, run_dir, wf, nxt))
         release(root, run_dir)
         return 0
     entry["status"] = "fail"
@@ -203,6 +292,7 @@ def advance(root: Path, run_dir: Path, wf: dict, step: str, failed: bool = False
     st["current"] = spec["on_fail"]
     write_state(run_dir, st)
     print(f"next: {spec['on_fail']}")
+    print(do_line(root, run_dir, wf, spec["on_fail"]))
     release(root, run_dir)
     return 0
 
@@ -288,6 +378,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("step")
     p.add_argument("--fail", action="store_true", help="the step failed: on_fail, or STOP")
     p.add_argument("--findings", metavar="JSON", help="a review step's findings.json; the score is recomputed")
+    p.add_argument("--no-dispatch", metavar="REASON", help="record a routed role step nobody dispatched, "
+                   "and why (progress.md)")
     p.add_argument("--run", required=True, metavar="RUN", help="run folder")
     p = sub.add_parser("run", help="run a command step's run.sh and record its exit")
     p.add_argument("step")
@@ -305,7 +397,7 @@ def main(argv: list[str] | None = None) -> int:
             return status(root, run_dir)
         if a.cmd == "run":
             return cmd_run(root, run_dir, a.step)
-        return advance(root, run_dir, resolved(root), a.step, a.fail, a.findings)
+        return advance(root, run_dir, resolved(root), a.step, a.fail, a.findings, a.no_dispatch)
     except C.ConfigError as e:
         print(f"sstack-workflow: {e}", file=sys.stderr)
         return 1

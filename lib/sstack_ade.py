@@ -88,7 +88,8 @@ def _detects(a: dict, env: Mapping[str, str]) -> str | None:
 
 
 def active(root: Path | None, cfg: dict, env: Mapping[str, str]) -> tuple[dict | None, str]:
-    """(adapter or None, why): SSTACK_ADE > config `ade` > auto-detect (first match, auto = true only)."""
+    """(adapter or None, why): SSTACK_ADE > config `ade` > auto-detect (first match, auto = true only;
+    `fallback = true` adapters are tried after every other, so the outer environment wins)."""
     all_ = ades(root)
     by_name = {a["name"]: a for a in all_}
     for forced, why in ((env.get("SSTACK_ADE"), "SSTACK_ADE={}"), (cfg.get("ade", "auto"), "ade = {}")):
@@ -99,7 +100,7 @@ def active(root: Path | None, cfg: dict, env: Mapping[str, str]) -> tuple[dict |
         if forced not in by_name:
             raise ConfigError(f"{why.format(forced)}: no ades/{forced}.toml in any layer")
         return by_name[forced], why.format(forced)
-    for a in all_:
+    for a in sorted(all_, key=lambda a: bool(a["toml"].get("fallback"))):  # stable: order kept within each
         if a["auto"] and (why := _detects(a, env)):
             return a, why
     return None, "no adapter detected"
@@ -179,9 +180,21 @@ def ids(a: dict, member: dict) -> tuple[str, str, dict, str | None]:
     return provider, mapped or model, ({opt: member["effort"]} if opt and member["effort"] else {}), note
 
 
+def native(a: dict, member: dict) -> bool:
+    """The ADE hosts this member's harness itself. With a `[delegate.shell]` table, a harness not in
+    `[providers]` runs as a shell command instead (Claude Code's Agent tool only starts Claude)."""
+    return "shell" not in a["toml"]["delegate"] or member["harness"] in a["toml"].get("providers", {})
+
+
 def tool_call(a: dict, role: str, readonly: bool, member: dict, title: str, brief: str, report: str,
-              record: str) -> dict:
+              record: str, command: str | None = None) -> dict:
+    """`command`: the member's headless command line, for a member the ADE can't host (not `native`)."""
     d = a["toml"]["delegate"]
+    if command is not None:
+        sh = d["shell"]
+        call = {"member": key(member), "tool": sh["name"], "load_hint": sh.get("load_hint"),
+                "args": fill(sh.get("args", {}), {"title": title, "command": command}), "record": record}
+        return call
     provider, model, options, note = ids(a, member)
     values = {"title": title, "brief": brief, "report": report, "role": role,
               "ade_role": d.get("roles", {}).get(role, role), "provider": provider, "model": model,
