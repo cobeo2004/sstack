@@ -278,6 +278,7 @@ def advance(root: Path, run_dir: Path, wf: dict, step: str, failed: bool = False
               f"Dispatch it, or pass --no-dispatch \"<reason>\" to skip it and say why:\n"
               f"{dispatch_cmd(run_dir, step, spec)}", file=sys.stderr)
         return 1
+    line = gate_line(root, step) if ok and spec["gate"] else None  # before any write: a bad value fails clean
     if ok:
         entry["status"] = "pass"
         nxt = chain[at + 1] if at + 1 < len(chain) else None
@@ -286,8 +287,8 @@ def advance(root: Path, run_dir: Path, wf: dict, step: str, failed: bool = False
         if no_dispatch is not None:
             progress(run_dir, f"{step}: no dispatch ({no_dispatch})")
         progress(run_dir, f"{step}: pass" + (f" score {entry['score']}" if entry["score"] is not None else ""))
-        if spec["gate"]:
-            print(gate_line(root, step))
+        if line:
+            print(line)
         print(f"next: {nxt or 'done'}")
         if nxt:
             print(do_line(root, run_dir, wf, nxt))

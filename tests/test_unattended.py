@@ -88,3 +88,9 @@ class GateLineTests(WorkflowBase):
         code, _, err = self.wf("unattended", SSTACK_PLAN_GATE="x")
         self.assertEqual(code, 1)
         self.assertIn("auto, inbox", err)
+
+    def test_bad_value_records_nothing(self):
+        self.record_dispatch("plan")
+        code, _, err = self.wf("done", "plan", "--run", str(self.run_dir), SSTACK_PLAN_GATE="")
+        self.assertEqual(code, 1)
+        self.assertNotIn("pass", (self.run_dir / "workflow.json").read_text() if (self.run_dir / "workflow.json").exists() else "")
