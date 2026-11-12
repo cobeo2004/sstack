@@ -9,7 +9,7 @@ Run in the repo root. **If this is a linked worktree** (`git rev-parse --git-dir
 `git rev-parse --git-common-dir`), say so first: `.sstack/` here is not the repo's. Offer the primary
 checkout (`git worktree list --porcelain`, first entry) and run `setup` there — sstack reads
 `product.md`, config and repo lessons from it in every worktree. Continue here only if the user wants
-a separate setup for this checkout.
+a separate setup for this checkout. Unattended (§3): never ask or move; set up this checkout.
 
 Audit, recommend, ask, and only then write. **Nothing is written before the user chooses.** Works on
 an existing repo and a new one; re-runnable, see the last section.
@@ -47,6 +47,11 @@ the repo registration, the code graph, and the machine rows the audit found (ins
 duplicate skills).
 
 ## 3. Choose
+
+`<sstack>/bin/sstack-workflow unattended` prints `unattended: on` → nobody is in the thread: skip the
+ask, apply every row marked `recommended` (`.sstack/product.md`, `.sstack/project.toml` with the
+audit's verify commands, the ignore entries), never an `optional` or machine row, then report which
+rows you wrote and which you skipped.
 
 Ask the user, with the harness's ask-the-user verb (multi-select where it has one), which numbered
 rows to apply. **Nothing is written before the user chooses.** Rows not picked are not written, and
@@ -98,7 +103,7 @@ Only the chosen rows.
    before → after. Leave tool-managed blocks (`<!-- OMC:START -->` …) untouched. A duplicate skill is
    moved to a backup dir, never deleted. Cursor user rules live in Cursor settings, so give the user
    the text to paste.
-8. **Smoke test.** Ask before running it. On yes, run `<sstack>/bin/sstack-doctor --smoke` (on exit 4,
+8. **Smoke test.** Ask before running it (unattended: skip it). On yes, run `<sstack>/bin/sstack-doctor --smoke` (on exit 4,
    make the printed calls and their `record`s, then run `--smoke --check <run dir>`) and report every
    member's result.
 

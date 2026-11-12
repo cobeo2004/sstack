@@ -29,6 +29,21 @@ Record every step, then do what it prints:
 - exit 2 with `STOP: ask user` — the step failed `max_loops` times, or failed with
   no `on_fail`. Stop and ask. Never loop past it.
 
+## Unattended
+
+`sstack-workflow unattended` prints `unattended: on` when `[unattended] enabled = true` (any layer,
+the git-ignored `.sstack/local/` included) or `SSTACK_UNATTENDED=1`; `plan_gate` is `auto` or `inbox`
+([config spec](../../docs/spec/config.md#unattended)). Off → everything above and below is unchanged.
+On, nobody answers a gate, so each passes on its own evidence and `done` prints `GATE: unattended, …`:
+
+- recon (gate 0) passes once `recon.md` has all six headings, each filled.
+- plan (gate 1): `auto` passes when every `R#` has a check in `answer-key.md`; one without → fix the
+  plan first. `inbox` prints `WAITING: plan_approval`: stop, report waiting with `kind: "plan_approval"`
+  and the `plan.md` path; implement nothing.
+- review (gate 3) passes when the gate step's checks are green and no Important finding is open
+  (`done review` already fails the step otherwise).
+- pr (gate 4) always passes: commit, push and open the PR; media still goes in the description.
+
 ## recon
 
 1. Check the checkout: `<sstack>/bin/sstack-worktree` (linked or primary, branch,
@@ -176,7 +191,7 @@ yes.
    <run> --pr` on the result; either fails → back to the implement or review step.
    Show any `MEDIA WAIVED: <reason>` line at the gate.
 3. **The gate is always on** (`pr` cannot be disabled and its `gate` cannot be set
-   false): the user's explicit yes before commit, push or PR, and before publishing
+   false): the user's explicit yes (unattended: none, see above) before commit, push or PR, and before publishing
    media. Then push, open the PR, and run
    `<sstack>/bin/sstack-pr-media <pr> <run>/media/* --edit-body` right after opening,
    so the Before | After table lands in the PR description per [testing.md](testing.md).

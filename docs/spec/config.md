@@ -7,7 +7,7 @@ Owner: `lib/sstack_config.py`. Fixtures: `tests/fixtures/config/<case>/` (each w
 
 ```
 <layer>/
-  config.toml            ade, [dispatch], [rules], [reflect], [routing], [overnight]   — merged key by key
+  config.toml            ade, [dispatch], [rules], [reflect], [routing], [overnight], [unattended] — merged key by key
   project.toml           repo layers only (repo, local); replaced whole      — was [project]
   harnesses/<name>.toml  one harness                                         — replaced whole
   roles/<role>.toml      one role (sub-tables like [hint.ui] allowed)        — replaced whole
@@ -94,6 +94,30 @@ the three layers; `sstack-gate --merge` re-reads it with the repo layer pinned t
 `sstack-doctor`'s `overnight` check FAILs a value outside those ranges and PASSes with `merge never`,
 or `merge policy (<method>, score ≥ <n>)` when `merge = "policy"`. The table is part of `load()`
 output, so every fixture's `expected.json` carries it.
+
+## `[unattended]`
+
+Unattended mode runs `work` and `setup` with nobody in the thread ([workflow.md](workflow.md#unattended)).
+`load()` merges the table across the layers like any `config.toml` table, so a git-ignored
+`.sstack/local/config.toml` can turn it on for one checkout. Resolved by `unattended(cfg, env)` in
+`lib/sstack_config.py`, shown by `sstack-workflow unattended`.
+
+| key | default | type / values | env |
+|---|---|---|---|
+| `enabled` | `false` | bool | `SSTACK_UNATTENDED=1` turns it on, as `enabled = true` does |
+| `plan_gate` | `"inbox"` | `auto` or `inbox` | `SSTACK_PLAN_GATE` overrides it for one process |
+
+```toml
+# .sstack/local/config.toml, as Hive writes it per job
+[unattended]
+enabled = true
+plan_gate = "auto"   # or "inbox"
+```
+
+The env beats the config; the config beats the default. Any other `plan_gate` or `SSTACK_PLAN_GATE`
+value, or a non-bool `enabled`, is a `ConfigError` naming the allowed values (`auto, inbox`), and
+`sstack-doctor`'s `unattended` check FAILs it. The defaults live in code and the template lists the
+keys commented out, so `load()` output and `sstack-config sync` are unchanged until a layer sets them.
 
 ## Stage variants
 
@@ -187,6 +211,7 @@ ades(root) -> [{"name", "layer", "toml", "hook_path" | None, "note_path" | None,
 # the same name; hook/note resolve per file (nearest layer; a hook then falls back to the template).
 variants(root) -> [{"id", "stage", "name", "layer", "path", "spec", "lens_path" | None}]
 # enabled stage variants, by stage then name; layer/path = the winning .toml, lens_path = nearest .md
+unattended(cfg, env=None) -> {"enabled": bool, "plan_gate": "auto" | "inbox"}   # env defaults to os.environ
 resolve(cfg, role) -> [{"harness", "model", "effort"}] | None   # None = run locally
 # None when dispatch.via == "local", the role is unset, or every member is harness "local".
 ```

@@ -18,6 +18,7 @@ NO_STEPS = f"no steps: {C.SYNC} or add steps/<name>/ (docs/spec/workflow.md)"
 REPO = Path(__file__).resolve().parent.parent
 GATE = "GATE: wait for the user's yes"
 STOP = "STOP: ask user"
+WAITING = "WAITING: plan_approval"  # unattended, plan_gate = inbox: stop; the caller approves the plan
 IMPORTANT = "important"
 
 
@@ -232,6 +233,18 @@ def do_line(root: Path, run_dir: Path, wf: dict, step: str) -> str:
     return f"do: {step} in this session, then sstack-workflow done {step} --run {shlex.quote(str(run_dir))}"
 
 
+def gate_line(root: Path, step: str) -> str:
+    """What a passed step with `gate = true` prints. Unattended (docs/spec/workflow.md § Unattended)
+    the gate resolves itself, except the plan's on `plan_gate = "inbox"`; otherwise GATE, unchanged."""
+    u = C.unattended(C.load(root))
+    if not u["enabled"]:
+        return GATE
+    if step == "plan":
+        return f"GATE: unattended, plan_gate auto: pass once every R has an answer-key check" \
+            if u["plan_gate"] == "auto" else WAITING
+    return f"GATE: unattended, passes ({step})"
+
+
 def advance(root: Path, run_dir: Path, wf: dict, step: str, failed: bool = False,
             findings: str | None = None, no_dispatch: str | None = None) -> int:
     """Record one step's result, print what the agent does next, and exit 0, 2 at the loop cap, or 1
@@ -265,6 +278,7 @@ def advance(root: Path, run_dir: Path, wf: dict, step: str, failed: bool = False
               f"Dispatch it, or pass --no-dispatch \"<reason>\" to skip it and say why:\n"
               f"{dispatch_cmd(run_dir, step, spec)}", file=sys.stderr)
         return 1
+    line = gate_line(root, step) if ok and spec["gate"] else None  # before any write: a bad value fails clean
     if ok:
         entry["status"] = "pass"
         nxt = chain[at + 1] if at + 1 < len(chain) else None
@@ -273,8 +287,8 @@ def advance(root: Path, run_dir: Path, wf: dict, step: str, failed: bool = False
         if no_dispatch is not None:
             progress(run_dir, f"{step}: no dispatch ({no_dispatch})")
         progress(run_dir, f"{step}: pass" + (f" score {entry['score']}" if entry["score"] is not None else ""))
-        if spec["gate"]:
-            print(GATE)
+        if line:
+            print(line)
         print(f"next: {nxt or 'done'}")
         if nxt:
             print(do_line(root, run_dir, wf, nxt))
@@ -333,6 +347,12 @@ def status(root: Path, run_dir: Path) -> int:
     return 0
 
 
+def unattended(root: Path) -> int:
+    u = C.unattended(C.load(root))
+    print(f"unattended: {'on' if u['enabled'] else 'off'}\nplan_gate: {u['plan_gate']}")
+    return 0
+
+
 def cmd_run(root: Path, run_dir: Path, step: str) -> int:
     """Exec the nearest run.sh with the repo root as cwd and SSTACK_RUN / SSTACK_ROOT /
     SSTACK_HOME_DIR in the environment; exit 0 passes, like `done`."""
@@ -372,6 +392,7 @@ def main(argv: list[str] | None = None) -> int:
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("show", help="the resolved chain: order, kind, gate, caps, and each key's layer")
     p.add_argument("--json", action="store_true", help="machine-readable")
+    sub.add_parser("unattended", help="whether unattended mode is on and its plan_gate (docs/spec/config.md)")
     p = sub.add_parser("status", help="where a run is: the current step and every step's state")
     p.add_argument("--run", required=True, metavar="RUN", help="run folder")
     p = sub.add_parser("done", help="record a step's result and print the next step (or STOP)")
@@ -392,6 +413,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if a.cmd == "show":
             return show(root, a.json)
+        if a.cmd == "unattended":
+            return unattended(root)
         run_dir = Path(a.run).resolve()
         if a.cmd == "status":
             return status(root, run_dir)

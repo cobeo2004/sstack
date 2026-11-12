@@ -89,8 +89,8 @@ apply on top (see `work`).
 - A routed child never approves its own gate, never commits, never opens a PR.
 - Irreversible or outward-facing actions (push, PR, deploy, delete data, messages
   to people) always need the user's explicit yes, even mid-playbook.
-- `overnight` is the one exception: starting it is the user's yes for the gates in the runs
-  it lists, this session only. Its never list still stops a run.
+- `overnight` is one exception: starting it is the user's yes for the gates in the runs it lists, this
+  session only; its never list still stops a run. Unattended mode (`sstack-workflow unattended` says `on`) is the other.
 - Any ADE or config change you make ends with: ask the user, then `sstack-doctor --smoke`.
 
 ## Verification gate
