@@ -196,7 +196,7 @@ function fmtTime(value) {
 }
 
 async function mountPage(name, { focusMain = true } = {}) {
-  const known = ["config", "ade", "runs", "lessons", "graph"];
+  const known = ["config", "ade", "runs", "lessons", "wiki", "graph"];
   if (!known.includes(name)) name = "config";
   state.page = name;
   document.body.dataset.page = name;

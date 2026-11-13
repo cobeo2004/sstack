@@ -80,7 +80,7 @@ class ServerTests(TempEnv):
             html = r.read().decode()
         self.assertIn("<title>sstack cockpit</title>", html)
         self.assertIn(self.token, html)
-        for path in ("/ui/tokens.css", "/ui/app.js", "/ui/pages/config.js"):
+        for path in ("/ui/tokens.css", "/ui/app.js", "/ui/pages/config.js", "/ui/pages/wiki.js"):
             with urllib.request.urlopen(f"{self.base}{path}?t={self.token}") as r:
                 self.assertEqual(r.status, 200)
             with self.assertRaises(urllib.error.HTTPError) as cm:
@@ -185,7 +185,7 @@ class ServerTests(TempEnv):
         self.assertIsNone(runs[".sstack/runs/task-implement"]["workflow"])
 
     def test_lessons_accept_and_forget(self):
-        p = self.write(self.root, ".sstack/lessons.md",
+        p = self.write(self.root, ".sstack/wiki/lessons.md",
                        "# Lessons\n\n- [pending] seen=1 id=L1 | x\n")
         self.request("POST", "/api/lessons/accept",
                      {"repo": str(self.root), "scope": "repo", "id": "L1"})
@@ -203,6 +203,92 @@ class ServerTests(TempEnv):
         review = next(t for t in cfg["things"] if t["kind"] == "roles" and t["name"] == "review")
         self.assertEqual(review["source"], "home")
         self.assertEqual(review["label"], "roles/review")
+
+    def wiki_fixture(self):
+        d = self.root / ".sstack/wiki"
+        self.write(d, "a.md", "---\nsummary: A\n---\n\nSee [b](b.md).\n")
+        self.write(d, "b.md", "---\nsummary: B\n---\n\nSee [a](a.md) and [g](gone.md).\n")
+        self.write(d, "c.md", "---\nsummary: C\n---\n\nNobody links here.\n")
+        return d
+
+    def wiki_400(self, path):
+        with self.assertRaises(urllib.error.HTTPError) as e:
+            self.get(path)
+        self.assertEqual(e.exception.code, 400, path)
+
+    def test_wiki_api_shape(self):
+        self.wiki_fixture()
+        w = self.get(f"/api/wiki?repo={self.root}")
+        self.assertEqual((w["scope"], w["exists"]), ("repo", True))
+        self.assertEqual(w["dir"], str(self.root / ".sstack/wiki"))
+        pages = {p["name"]: p for p in w["pages"]}
+        self.assertEqual([p["name"] for p in w["pages"]], ["a", "b", "c"])
+        self.assertEqual((pages["a"]["links"], pages["a"]["backlinks"]), (["b"], ["b"]))
+        self.assertEqual((pages["c"]["orphan"], pages["c"]["stale"]), (True, False))
+        self.assertIn("b.md: broken link gone.md", w["lint"]["errors"])
+        self.assertEqual(set(pages["a"]), {"name", "summary", "paths", "updated", "stale", "orphan",
+                                           "links", "backlinks", "lines"})
+        self.assertEqual(set(w["lint"]), {"errors", "warnings"})
+
+    def test_wiki_api_global(self):
+        self.write(self.home / ".sstack/wiki", "g.md", "---\nsummary: G\n---\n")
+        w = self.get("/api/wiki?repo=global")
+        self.assertEqual(w["scope"], "global")
+        self.assertEqual([p["name"] for p in w["pages"]], ["g"])
+
+    def test_wiki_api_no_wiki(self):
+        w = self.get(f"/api/wiki?repo={self.root}")
+        self.assertEqual((w["exists"], w["pages"], w["lint"]), (False, [], {"errors": [], "warnings": []}))
+
+    def test_wiki_page_content(self):
+        d = self.wiki_fixture()
+        r = self.get(f"/api/wiki/page?repo={self.root}&name=a")
+        self.assertEqual((r["name"], r["path"], r["text"]), ("a", str(d / "a.md"), (d / "a.md").read_text()))
+
+    def test_wiki_page_refusals(self):
+        d = self.wiki_fixture()
+        for name in ("../a", "%2E%2E%2Fa", "index", "nope"):
+            self.wiki_400(f"/api/wiki/page?repo={self.root}&name={name}")
+        outside = self.write(self.home, "secret.md", "---\nsummary: S\n---\n")
+        (d / "s.md").symlink_to(outside)
+        self.wiki_400(f"/api/wiki/page?repo={self.root}&name=s")
+        (d / "s.md").unlink()
+        shutil.move(str(d), str(self.home / "wiki-out"))
+        d.symlink_to(self.home / "wiki-out")
+        self.wiki_400(f"/api/wiki/page?repo={self.root}&name=a")
+        self.wiki_400(f"/api/wiki?repo={self.root}")
+
+    def test_wiki_refuses_a_symlinked_repo_sstack_dir(self):
+        # review: `.sstack -> elsewhere` let the page endpoint read files outside the repo
+        self.wiki_fixture()
+        sst = self.root / ".sstack"
+        shutil.move(str(sst), str(self.home / "sstack-out"))
+        sst.symlink_to(self.home / "sstack-out")
+        self.wiki_400(f"/api/wiki/page?repo={self.root}&name=a")
+        self.wiki_400(f"/api/wiki?repo={self.root}")
+
+    def test_wiki_api_skips_a_symlinked_page(self):
+        # review: /api/wiki parsed a symlinked page and returned the outside file's summary
+        d = self.wiki_fixture()
+        outside = self.write(self.home, "secret.md", "---\nsummary: OUTSIDE_SECRET\n---\n")
+        (d / "s.md").symlink_to(outside)
+        data = self.get(f"/api/wiki?repo={self.root}")
+        self.assertNotIn("s", [p["name"] for p in data["pages"]])
+        self.assertNotIn("OUTSIDE_SECRET", json.dumps(data))
+
+    def test_wiki_unicode_page_opens(self):
+        # review: a page the list shows must open; the ASCII-only NAME_RE refused it
+        d = self.wiki_fixture()
+        (d / "認証.md").write_text("---\nsummary: Auth\n---\n\n[a](a.md)\n")
+        data = self.get(f"/api/wiki?repo={self.root}")
+        self.assertIn("認証", [p["name"] for p in data["pages"]])
+        page = self.get(f"/api/wiki/page?repo={self.root}&name={urllib.parse.quote('認証')}")
+        self.assertIn("summary: Auth", page["text"])
+
+    def test_wiki_needs_token(self):
+        with self.assertRaises(urllib.error.HTTPError) as e:
+            self.get(f"/api/wiki?repo={self.root}", token=False)
+        self.assertEqual(e.exception.code, 403)
 
     def test_graph_read_creates_nothing(self):
         self.get(f"/api/graph?repo={self.root}")

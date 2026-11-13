@@ -6,7 +6,7 @@
 records. It shows every config file with the layer it comes from and lets you save a file to a
 layer or reset it to the inherited one. It also shows the active ADE and its capabilities, run
 timelines (members, route, ADE, reports, exits, read-only warnings), lessons you can accept or
-forget, and the code graph. It is a stdlib server with no build step. Every request needs the token
+forget, the sstack wiki as a link graph, and the code graph. It is a stdlib server with no build step. Every request needs the token
 it prints. The HTTP contract is [docs/spec/ui.md](../spec/ui.md).
 
 ## Before you start
@@ -37,7 +37,8 @@ the repo there. `repo=global` means no repo layers (home only).
 | Config | every thing (`config`, `project`, `harnesses/*`, `roles/*`, `tiers/*`, `ades/*`) with its winning layer | save to `home`, `repo` or `local`; reset to inherited (deletes that layer's file) |
 | ADE | the `sstack-dispatch ade` output and the note text | nothing |
 | Runs | `index.jsonl` grouped by top-level task, newest first; each task lists its dispatch runs with their `run.json` and shows its current step from `workflow.json` | nothing |
-| Lessons | `.sstack/lessons.md` and `~/.sstack/lessons.md` | accept, forget |
+| Lessons | `.sstack/wiki/lessons.md` and `~/.sstack/wiki/lessons.md` | accept, forget |
+| Wiki | the sstack wiki as a link graph, a sorted list, a page panel and lint status | nothing |
 | Graph | code graph status | rebuild (runs `code-review-graph build` or `update`) |
 
 Rules for saves: never into the template (`<sstack>/defaults/`), never a hook or a note (TOML only). Every save is checked
@@ -112,6 +113,7 @@ Endpoints (all need `?t=<token>`; `PUT`, `POST` and `DELETE` also need
 | `GET /api/ade` | `sstack-dispatch ade` output plus `note_text` |
 | `GET /api/runs` | tasks newest first, each with its dispatch run groups: `run_dir`, its index `lines`, its `run.json` |
 | `GET /api/lessons`, `POST /api/lessons/accept`, `POST /api/lessons/forget` | lessons |
+| `GET /api/wiki`, `GET /api/wiki/page?name=<page>` | the sstack wiki: pages, links, backlinks, lint; one page's raw markdown |
 | `GET /api/graph`, `POST /api/graph/rebuild` | code graph |
 
 For `config` and `project` the path has no name: `/api/config/repo/config`. Errors are
@@ -121,7 +123,7 @@ For `config` and `project` the path has no name: `/api/config/repo/config`. Erro
 
 - Server and API: `lib/sstack_ui.py`; entry point `bin/sstack-ui`.
 - Front end, no build: `ui/index.html`, `ui/app.js`, one module per page in `ui/pages/*.js`
-  (`config`, `ade`, `runs`, `lessons`, `graph`), and the colour and type tokens in `ui/tokens.css`
+  (`config`, `ade`, `runs`, `lessons`, `wiki`, `graph`), and the colour and type tokens in `ui/tokens.css`
   (light and dark).
 - A new page: add `ui/pages/<name>.js`, add its name to `known` in `ui/app.js`, add its nav button
   and `<section id="page-<name>">` to `ui/index.html`, add any endpoint to `GETS` or

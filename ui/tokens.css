@@ -258,6 +258,42 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .lesson-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 6px; color: var(--slate); font-size: 12px; }
 .lesson-actions { display: flex; gap: 6px; align-items: start; }
 
+.wiki-layout {
+  display: grid; grid-template-columns: 200px minmax(0, 1fr) minmax(260px, 360px);
+  gap: 0 22px; align-items: start; border-top: 1px solid var(--hairline); padding-top: 14px;
+}
+.wiki-list { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--hairline); }
+.wiki-list li { border-bottom: 1px solid var(--hairline); }
+.wiki-list button {
+  display: flex; align-items: center; justify-content: space-between; gap: 6px; width: 100%;
+  border: 0; background: none; padding: 7px 4px; text-align: left; cursor: pointer;
+  font-family: var(--font-mono); font-size: 12px;
+}
+.wiki-list button:hover { background: var(--surface); }
+.wiki-list button[aria-current="true"] { background: var(--surface-strong); font-weight: 600; }
+.wiki-svg { width: 100%; height: 520px; border: 1px solid var(--hairline); border-radius: var(--radius); background: var(--surface); }
+.wiki-edge { stroke: var(--hairline); stroke-width: 1; }
+.wiki-edge.hot { stroke: var(--teal); stroke-width: 2; }
+.wiki-node { cursor: pointer; }
+.wiki-node circle { fill: var(--teal); stroke: none; }
+.wiki-node text { fill: var(--ink); font: 11px var(--font-mono); text-anchor: middle; pointer-events: none; }
+.wiki-node.stale circle { fill: var(--warning-surface); stroke: var(--warning); stroke-width: 2; }
+.wiki-node.orphan circle { fill: var(--surface); stroke: var(--slate); stroke-width: 1.5; stroke-dasharray: 3 2; }
+.wiki-node.selected circle { stroke: var(--ink); stroke-width: 3; }
+.wiki-panel { min-width: 0; }
+.wiki-panel h2 { margin: 0 0 6px; font: 500 22px/1.2 var(--font-display); overflow-wrap: anywhere; }
+.wiki-panel h3 { margin: 14px 0 4px; font-size: 12px; font-weight: 500; color: var(--slate); }
+.wiki-panel dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 12px; margin: 10px 0; font-size: 12px; }
+.wiki-panel dt { color: var(--slate); }
+.wiki-panel dd { margin: 0; font-family: var(--font-mono); overflow-wrap: anywhere; }
+.wiki-links { list-style: none; margin: 0; padding: 0; display: flex; gap: 6px; flex-wrap: wrap; }
+.wiki-links button { border: 1px solid var(--hairline); border-radius: var(--radius); background: var(--mineral); padding: 2px 8px; cursor: pointer; font: 12px var(--font-mono); }
+.wiki-raw { background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--radius); padding: 10px; max-height: 320px; overflow: auto; margin-top: 6px; }
+.wiki-lint { margin: 0 0 14px; color: var(--slate); font-size: 12px; }
+.wiki-lint ul { margin: 6px 0 0; padding-left: 18px; }
+.wiki-lint .bad { color: var(--danger); }
+.wiki-lint .warn { color: var(--warning); }
+
 .empty { border-top: 1px solid var(--hairline); padding: 26px 0; max-width: 62ch; }
 .empty h2 { margin: 0 0 5px; font: 500 22px/1.2 var(--font-display); }
 .empty p { margin: 0 0 12px; color: var(--slate); }
@@ -268,6 +304,7 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 
 @media (max-width: 900px) {
   .config-workspace { grid-template-columns: minmax(0, 1fr) minmax(280px, 360px); }
+  .wiki-layout { grid-template-columns: minmax(0, 1fr); gap: 16px; }
   main { padding: 22px 18px 48px; }
   .inspector { top: 104px; }
 }

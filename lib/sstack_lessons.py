@@ -1,13 +1,13 @@
 """Lessons store: one Markdown file per scope, one lesson per line. Unknown lines are kept as-is."""
 import argparse
-import fnmatch
 import re
-import subprocess
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from sstack_config import ConfigError, git_root, load, repo_file
+from sstack_config import ConfigError, git_root, home_dir, load, repo_file
+# head_commit and changed_since moved to sstack_wiki; re-exported for sstack-reflect-hook and older callers
+from sstack_wiki import changed_since, head_commit, legacy_lessons, match_any as _match, stale, wiki_dir  # noqa: F401
 
 LINE = re.compile(r"^- \[(pending|accepted|encoded)\] seen=(\d+) id=(\S+) \| (.*)$")
 STATUSES = ("pending", "accepted", "encoded")
@@ -49,18 +49,35 @@ def render(items: list["Lesson | str"]) -> str:
 
 
 def lessons_path(scope: str, root: Path | None) -> Path:
+    """The lessons file to read: the wiki copy, else the old pre-wiki file while it is the only one."""
     if scope == "global":
-        return Path.home() / ".sstack" / "lessons.md"
-    return repo_file(root or Path.cwd(), "lessons.md")
+        new, old = home_dir() / "wiki" / "lessons.md", legacy_lessons("global", Path())
+    else:
+        r = root or Path.cwd()  # repo_file, not wiki_dir: a lesson must not land in a throwaway worktree
+        new, old = repo_file(r, "wiki/lessons.md"), repo_file(r, "lessons.md")
+    return new if new.exists() or not old.exists() else old
 
 
 def _read(path: Path) -> list:
     return parse(path.read_text()) if path.exists() else parse("# Lessons\n\n")
 
 
+def _target(path: Path) -> Path:
+    """Where an old pre-wiki lessons file moves to."""
+    if path == legacy_lessons("global", Path()):
+        return home_dir() / "wiki" / "lessons.md"
+    return path.parent / "wiki" / "lessons.md"
+
+
 def _write(path: Path, items: list) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(render(items))
+    """Write `items`; an old .sstack/lessons.md moves into the wiki unless the wiki copy exists."""
+    target = _target(path) if path.parent.name == ".sstack" else path
+    if target != path and target.exists():
+        target = path  # never clobber the wiki copy; lint warns about the pair
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(render(items))
+    if target != path:
+        path.unlink(missing_ok=True)  # items were read from it, so no line is lost
 
 
 def _norm(s: str) -> str:
@@ -81,44 +98,15 @@ def path_globs(lesson: Lesson) -> list[str]:
     return [p.strip() for p in lesson.fields.get("path", "").split(", ") if p.strip()]
 
 
-def _match(f: str, pats: list[str]) -> bool:
-    return any(fnmatch.fnmatch(f, p) for p in pats)  # `*` crosses `/`, as in sstack_route
-
-
 def applies(lesson: Lesson, files: list[str]) -> bool:
     """Whether the lesson is about any of `files`. No `path` = always; none given = only then."""
     globs = path_globs(lesson)
     return True if not globs else bool(files) and any(_match(f, globs) for f in files)
 
 
-def head_commit(root: Path | None) -> str | None:
-    """The short sha a lesson learned now would be pinned to; None outside a repo or before HEAD."""
-    if root is None:
-        return None
-    r = subprocess.run(["git", "-C", str(root), "rev-parse", "--short", "HEAD"],
-                       capture_output=True, text=True)
-    return (r.stdout.strip() or None) if r.returncode == 0 else None
-
-
-def changed_since(root: Path | None, commit: str) -> list[str] | None:
-    """Files changed between `commit` and HEAD, or None when that commit is unknown."""
-    if root is None:
-        return None
-    r = subprocess.run(["git", "-C", str(root), "diff", "--name-only", "-z", f"{commit}..HEAD"],
-                       capture_output=True, text=True)  # -z: literal names, no quoting of non-ASCII
-    return [f for f in r.stdout.split("\0") if f] if r.returncode == 0 else None
-
-
 def is_stale(lesson: Lesson, root: Path | None, _seen: dict | None = None) -> bool:
-    """A lesson pinned to paths, learned at a commit, whose paths changed since. Unknown commit
-    (or no commit) is not stale: the code cannot contradict what we never saw."""
-    globs, commit = path_globs(lesson), lesson.fields.get("commit")
-    if not globs or not commit:
-        return False
-    seen = {} if _seen is None else _seen
-    if commit not in seen:
-        seen[commit] = changed_since(root, commit)
-    return bool(seen[commit]) and any(_match(f, globs) for f in seen[commit])
+    """A lesson pinned to paths, learned at a commit, whose paths changed since."""
+    return stale(path_globs(lesson), lesson.fields.get("commit"), root, _seen)
 
 
 def select(items: list, files: list[str] | None, root: Path | None) -> list[tuple[Lesson, bool]]:
@@ -224,7 +212,7 @@ def main(argv: list[str] | None = None) -> int:
             if l.status != "encoded" and l.seen >= int(load(root).get("reflect", {}).get("encode_at", 2)):
                 print("ENCODE")
         elif a.cmd == "list":
-            for l, stale in select(_read(path) if path.exists() else [], a.paths, root):
+            for l, stale in select(_read(path), a.paths, root):
                 if not a.status or l.status == a.status:
                     print(l.line() + (" [stale]" if stale else ""))
         elif a.cmd == "accept":

@@ -1,4 +1,4 @@
-"""sstack-ui: a local cockpit for layered config, ADEs, runs, lessons and the code graph."""
+"""sstack-ui: a local cockpit for layered config, ADEs, runs, lessons, the sstack wiki and the code graph."""
 
 import argparse
 import json
@@ -18,6 +18,7 @@ from urllib.parse import parse_qs, quote, unquote, urlparse
 
 import sstack_ade as A
 import sstack_lessons as L
+import sstack_wiki as W
 from sstack_config import _has_config, _primary, ConfigError, ades, git_root, home_dir, layers, load, resolve, source
 
 REPO = Path(__file__).resolve().parent.parent
@@ -328,6 +329,45 @@ def _graph(root: Path | None) -> dict:
             "built": (root / ".code-review-graph").exists()}
 
 
+def _wiki_scope(q) -> tuple[str, Path | None, Path]:
+    root = _root(q)
+    scope = "global" if root is None else "repo"
+    d = W.wiki_dir(scope, root)
+    # same rule as _check_layer: ~/.sstack may be a dotfiles symlink, a repo's .sstack may not
+    for x in (d,) if scope == "global" else (d, d.parent):
+        if x.is_symlink():
+            raise ValueError(f"refusing a symlinked wiki dir: {x}")
+    return scope, root, d
+
+
+def _wiki(q) -> dict:
+    """docs/spec/ui.md `GET /api/wiki`: pages with links, backlinks, stale and orphan, plus lint."""
+    scope, root, d = _wiki_scope(q)
+    if not d.is_dir():
+        return {"scope": scope, "dir": str(d), "exists": False, "pages": [],
+                "lint": {"errors": [], "warnings": []}}
+    pages = W.load(d)
+    stale, back = W.stale_names(pages, root), W.backlinks(pages)
+    errors, warnings = W.lint(d, scope, root)
+    return {"scope": scope, "dir": str(d), "exists": True,
+            "pages": [{"name": n, "summary": p.summary, "paths": p.paths, "updated": p.updated,
+                       "stale": n in stale, "orphan": not p.lessons and not back[n], "links": p.links,
+                       "backlinks": back[n], "lines": p.lines} for n, p in pages.items()],
+            "lint": {"errors": errors, "warnings": warnings}}
+
+
+def _wiki_page(q) -> dict:
+    """docs/spec/ui.md `GET /api/wiki/page`: one page's raw text; refuses anything but a real page."""
+    name = q.get("name", [""])[0]
+    _, _, d = _wiki_scope(q)
+    pages = W.load(d) if d.is_dir() else {}
+    if name not in pages:  # names come from the dir listing itself, so no separator or `..` can match
+        raise ValueError(f"no page {name!r} in {d}")
+    p = pages[name].path
+    _refuse_symlink(p, d)
+    return {"name": name, "path": str(p), "text": p.read_text()}
+
+
 def _lesson_action(b, action):
     root = None if b["repo"] == "global" else Path(b["repo"])
     p = L.lessons_path(b["scope"], root)
@@ -360,6 +400,8 @@ GETS = {
     "/api/ade": lambda q: _ade(_root(q)),
     "/api/runs": lambda q: {"runs": _run_groups(_root(q))},
     "/api/graph": lambda q: _graph(_root(q)),
+    "/api/wiki": _wiki,
+    "/api/wiki/page": _wiki_page,
 }
 POSTS = {
     "/api/lessons/accept": lambda b: _lesson_action(b, "accept"),

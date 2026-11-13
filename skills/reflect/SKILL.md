@@ -1,14 +1,14 @@
 ---
 name: reflect
-description: Turn the user's corrections and the agent's dead ends into lessons so mistakes aren't repeated, and turn repeated lessons into structural edits (a skill, AGENTS.md, a check) instead of more notes. Use on "reflect", "/reflect", "remember this", after the user corrects you, or at the end of a task that hit a dead end.
+description: Turn the user's corrections and the agent's dead ends into lessons so mistakes aren't repeated, and turn repeated lessons into structural edits (a skill, AGENTS.md, a check) instead of more notes. Use on "reflect", "/reflect", "remember this", "remember how X works", after the user corrects you, or at the end of a task that hit a dead end.
 ---
 
 # reflect
 
 `<sstack>` is the sstack repo root: two levels up from this file's resolved path.
 
-Lessons live in plain files every harness reads: `<repo>/.sstack/lessons.md`
-(repo) and `~/.sstack/lessons.md` (about the user / general practice). Use
+Lessons live in plain files every harness reads: `<repo>/.sstack/wiki/lessons.md`
+(repo) and `~/.sstack/wiki/lessons.md` (about the user / general practice; `$SSTACK_HOME/wiki/` when set). Use
 `<sstack>/bin/sstack-lessons` to change them; don't hand-edit lesson lines.
 Agents read only `accepted` lessons (the `sstack` router loads them).
 
@@ -28,6 +28,16 @@ Not lessons: one-offs, facts already in `AGENTS.md`/`CLAUDE.md`/the code, generi
 advice, anything secret. Scope: a lesson that names this repo's files, docs,
 scripts, services or agent manual is `repo`, even when it is a preference.
 `global` is only for rules that would hold in any repo.
+
+## Descriptive findings go to the wiki
+
+A finding that describes rather than instructs (how a part works, why it is this way, a gotcha and
+its cause) is not a lesson. Write or update an sstack wiki page directly, with no pending step:
+`<repo>/.sstack/wiki/` when it is about this repo, `~/.sstack/wiki/` when it holds in any repo. Never
+link across the two. Frontmatter: `summary` (one line), `paths` (globs it is about), `updated`
+(`git rev-parse --short HEAD`); link related pages as `[x](x.md)`. Then
+`<sstack>/bin/sstack-wiki index --scope <s>` and `lint --scope <s>`. An explicit "remember how X
+works" is the same. Imperative rules stay lessons.
 
 ## Manual flow
 

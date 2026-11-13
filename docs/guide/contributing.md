@@ -20,8 +20,8 @@ sstack-config sync >/dev/null          # your ~/.sstack profile, as sstack-insta
 
 | path | holds |
 |---|---|
-| `bin/` | entry points: `sstack-dispatch`, `sstack-config`, `sstack-doctor`, `sstack-ui`, `sstack-lessons`, `sstack-worktree`, `sstack-install`, `sstack-gate`, `sstack-pr-media`, `sstack-hook`, `sstack-reflect-hook`, `sstack-workflow` |
-| `lib/` | the code behind them: `sstack_config.py` (loader), `sstack_configcli.py`, `sstack_ade.py`, `sstack_dispatch.py`, `sstack_route.py`, `sstack_gate.py`, `sstack_doctor.py`, `sstack_ui.py`, `sstack_lessons.py`, `sstack_worktree.py`, `sstack_workflow.py` |
+| `bin/` | entry points: `sstack-dispatch`, `sstack-config`, `sstack-doctor`, `sstack-ui`, `sstack-lessons`, `sstack-worktree`, `sstack-install`, `sstack-gate`, `sstack-pr-media`, `sstack-hook`, `sstack-reflect-hook`, `sstack-workflow`, `sstack-wiki` |
+| `lib/` | the code behind them: `sstack_config.py` (loader), `sstack_configcli.py`, `sstack_ade.py`, `sstack_dispatch.py`, `sstack_route.py`, `sstack_gate.py`, `sstack_doctor.py`, `sstack_ui.py`, `sstack_lessons.py`, `sstack_worktree.py`, `sstack_workflow.py`, `sstack_wiki.py` |
 | `defaults/` | the profile template `sstack-config sync` copies into `~/.sstack`: `config.toml`, `harnesses/`, `roles/`, `ades/`, `steps/` (the built-in workflow, docs/spec/workflow.md); `hooks/pi-sstack.ts` (pi hook extension) |
 | `skills/<name>/SKILL.md` | the 15 skills; `skills/sstack/` is the router |
 | `ui/` | dashboard front end (`index.html`, `app.js`, `pages/*.js`, `tokens.css`) |
@@ -65,6 +65,7 @@ Run one area while you work:
 | gate, protected files, PR evidence, overnight merge | `test_gate.py`, `test_overnight.py` |
 | doctor, smoke | `test_doctor.py` |
 | dashboard | `test_ui.py` |
+| wiki, index, lint | `test_wiki.py` |
 | skills lint | `test_skills.py` |
 | plugin manifests | `test_plugins.py` |
 | these guides | `test_docs.py` |

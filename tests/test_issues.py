@@ -48,7 +48,7 @@ class Issue3ReflectPanel(TempEnv):
                            input=json.dumps({"cwd": str(self.root), "transcript_path": str(t)}),
                            capture_output=True, text=True, env=env, timeout=60)
         self.assertEqual(r.returncode, 0, r.stderr)
-        text = (self.root / ".sstack/lessons.md").read_text()
+        text = (self.root / ".sstack/wiki/lessons.md").read_text()
         self.assertIn("seen=1 id=L1 | shared lesson", text)  # once, not twice
         self.assertIn("only from a", text)
         self.assertIn("only from b", text)
@@ -106,7 +106,7 @@ class Issue5Worktree(TempEnv):
         self.assertEqual(C.load(C.git_root(self.wt))["project"]["verify"], "own")
 
     def test_repo_lessons_go_to_primary(self):
-        self.assertEqual(L.lessons_path("repo", C.git_root(self.wt)), self.root / ".sstack/lessons.md")
+        self.assertEqual(L.lessons_path("repo", C.git_root(self.wt)), self.root / ".sstack/wiki/lessons.md")
 
 
 class Issue6Route(DispatchBase):

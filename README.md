@@ -24,9 +24,10 @@ Any step can be delegated to another harness and model. For example, implement r
 - **Route by role.** `sstack-dispatch` maps the roles `scout`, `investigate`, `plan`, `implement`, and `review` to a harness and model. Inside an ADE (T3 Code, Orca, Conductor) a delegated run becomes that ADE's own child task; elsewhere it runs a headless CLI.
 - **Read-only by default.** Scout, investigate, plan, and review run in read-only mode. The dispatcher warns you if one of them changes the working tree anyway.
 - **Lessons that turn into structure.** `reflect` records your corrections as lessons. A lesson seen twice is proposed as an edit to a skill, `AGENTS.md`, or a check, so it stops being just another note. Repo lessons land in one `## Things agents get wrong` section of `AGENTS.md`, each naming the check that enforces it.
+- **A wiki agents can afford.** Descriptive knowledge (how parts connect, why, gotchas) lives in the sstack wiki as short linked Markdown pages. Agents read a generated index, one line per page, and `sstack-wiki` rebuilds it, lists backlinks and lints links.
 - **Intent you can trace.** `grill` writes numbered requirements (`R1..Rn`) with the problem, who it affects and the constraints. `work` makes every plan step and every check cite one, and an uncovered requirement blocks the plan gate. Review findings are `Important` or `Nit` on a 1–10 rubric; a verified `Important`, or a score below the step's `min_score`, blocks.
 - **The repo's own rules first.** Every brief points the child at the `AGENTS.md` files down to the paths it touches, the repo's docs, and the nearest similar file to copy. Review's compliance lens cites the rule a finding breaks.
-- **Local dashboard.** `sstack-ui` edits config per layer and shows the active ADE, run timelines, lessons and the code graph. It runs on 127.0.0.1 and requires a token.
+- **Local dashboard.** `sstack-ui` edits config per layer and shows the active ADE, run timelines, lessons, the wiki graph and the code graph. It runs on 127.0.0.1 and requires a token.
 - **Doctor.** `sstack-doctor` checks the config; `sstack-doctor --smoke` sends a canary through every routed role.
 
 It works in any environment that reads `SKILL.md` folders: Claude Code, Codex, Cursor, pi, T3 Code, Conductor, Orca, or a plain terminal.
@@ -57,6 +58,7 @@ section.
 - [Dispatch](docs/guide/dispatch.md): roles, panels, `via`, exit codes 0–5, `record`, run records, the write lock.
 - [Doctor and smoke test](docs/guide/doctor.md): static checks and the canary smoke test.
 - [Dashboard](docs/guide/dashboard.md): the local config and runs cockpit and its API.
+- [Wiki](docs/guide/wiki.md): the sstack wiki, page format, `sstack-wiki index|backlinks|lint`, committed vs local only.
 - [Contributing](docs/guide/contributing.md): repo layout, tests, spec-first rule, PR rules.
 
 Contracts live in [`docs/spec/`](docs/spec/).
@@ -166,12 +168,22 @@ bin/sstack-lessons accept L1
 bin/sstack-lessons encode L1 --target AGENTS.md
 ```
 
-Lessons live in `.sstack/lessons.md` (repo scope) and `~/.sstack/lessons.md` (global scope), one line each. The router follows only **accepted** lessons.
+Lessons live in `.sstack/wiki/lessons.md` (repo scope) and `~/.sstack/wiki/lessons.md` (global scope; `$SSTACK_HOME/wiki/` when set), one line each. An old `.sstack/lessons.md` is read until the next write moves it into the wiki. The router follows only **accepted** lessons.
 
 A lesson can be pinned to path globs (`--path`, repeatable) and records the commit it was learned at. `list --paths <file>...` keeps the lessons about those files — a lesson with no `path` always applies — and marks `[stale]` a lesson whose paths changed since its commit, to re-check before following it.
 
 > [!TIP]
 > For automatic reflection, set `[reflect] auto = true` and add the `SessionEnd` hook that `sstack-install` prints. At the end of each session, a background scout reads the transcript and records new lessons as pending, for you to accept.
+
+### Wiki
+
+The sstack wiki holds what the code does not show: how parts connect, why a choice was made, gotchas. See the [Wiki guide](docs/guide/wiki.md) for page format and committed vs local only.
+
+```sh
+bin/sstack-wiki index
+bin/sstack-wiki backlinks auth
+bin/sstack-wiki lint
+```
 
 ### Worktree preflight
 
@@ -206,7 +218,7 @@ Publishing is a push, so the agent asks first.
 bin/sstack-ui            # prints http://127.0.0.1:<port>/?t=<token>
 ```
 
-It edits config per layer and shows the active ADE, run timelines, lessons and the code graph.
+It edits config per layer and shows the active ADE, run timelines, lessons, the wiki graph and the code graph.
 See [docs/guide/dashboard.md](docs/guide/dashboard.md).
 
 ## Configuration
@@ -263,7 +275,7 @@ How the skills hand off to each other. The `sstack` router picks one; `work` cal
 
 ```mermaid
 flowchart TD
-    REQ([Request]) --> SS[sstack router<br/>reads AGENTS.md, product.md, lessons]
+    REQ([Request]) --> SS[sstack router<br/>reads AGENTS.md, product.md, wiki index, lessons]
     SS -->|set up / onboard this repo| SETUP[setup]
     SS -->|fuzzy idea / grill me| GRILL[grill]
     SS -->|feature, bug, refactor, perf, migration| R0

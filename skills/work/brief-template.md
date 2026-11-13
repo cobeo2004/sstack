@@ -20,6 +20,8 @@ roles: "read and report only — do not edit files">.
   nearer one overrides the root.
 - The `docs` entries in `.sstack/project.toml`, and `.sstack/product.md` (what the
   app is).
+- The sstack wiki indexes, by path only: <absolute path of each `index.md` that exists, from
+  `~/.sstack/wiki/` and the repo's `.sstack/wiki/`>. Open a page only when the work needs it.
 - The nearest similar file to each one you'll change, and its test: match the
   naming, error style and helpers already there instead of inventing new ones.
 - <specific files, docs, ticket text>
