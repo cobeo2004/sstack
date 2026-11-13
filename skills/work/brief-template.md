@@ -44,7 +44,8 @@ diff range or PR and the lenses to apply.>
 2. **What I did** — short.
 3. **What I could not do** — and why.
 4. **Instructions that were wrong or stale** — instruction, what was true, what I
-   did instead (or "none").
+   did instead (or "none"). Include sstack wiki pages that were wrong, and anything the code
+   doesn't show that a page should say; don't edit the wiki yourself.
 5. **Status** — `PASS`, `ISSUES` or `BLOCKED`, with evidence: each command run and
    its trimmed output.
 ```

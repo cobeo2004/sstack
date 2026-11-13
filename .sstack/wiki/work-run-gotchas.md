@@ -1,7 +1,7 @@
 ---
 summary: Traps hit while driving a work run with routed children (protected manifest paths, plan-mode reports, worktree lanes)
 paths: skills/work/**, bin/sstack-gate, bin/sstack-dispatch
-updated: fd96c9e
+updated: 8f32a81
 ---
 # Work run gotchas
 

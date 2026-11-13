@@ -136,7 +136,7 @@ def load(d: Path) -> dict[str, Page]:
     so a symlink inside the wiki is judged by where its link text points."""
     d = Path(os.path.normpath(d))
     # a symlinked page is skipped: its text lives outside the wiki
-    pages = {p.stem: parse_page(p) for p in sorted(d.glob("*.md")) if p.name != "index.md" and not p.is_symlink()}
+    pages = {p.stem: parse_page(p) for p in sorted(d.glob("*.md")) if p.name != "index.md" and not p.is_symlink() and p.is_file()}
     for page in pages.values():
         for raw in link_targets(page.text):
             path = re.split(r"[#?]", raw, maxsplit=1)[0]

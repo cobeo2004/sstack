@@ -8,7 +8,8 @@ description: Explain how something in the codebase works, from source, with file
 `<sstack>` is the sstack repo root: two levels up from this file's resolved path.
 
 Build a working mental model, not annotated source. Every claim cites
-`file:line`. Read-only.
+`file:line`. Read-only. Start from the sstack wiki pages whose summary or `paths` cover the
+subject; the code wins where they disagree.
 
 ## 1. Size it
 
@@ -46,7 +47,8 @@ Use these sections, dropping any that don't apply:
 - **Gotchas** — non-obvious behaviour, ordering, shared state, sharp edges.
 
 Mark anything you inferred rather than read as inferred. A `diagram` is worth
-offering when the flow has more than about five hops.
+offering when the flow has more than about five hops. When the answer holds something the code
+doesn't show (how parts connect, a gotcha), offer to save it with `wiki`.
 
 ---
 Adapted from pstack `how` (michael-denyer/pstack-claude @ 91ab921, MIT).

@@ -14,7 +14,7 @@ ADE_BYPASSES = ["the `preview_*` tools", "`device_*` tools", "t3 thread start --
                 "orca goto --url", "Conductor workspace create", "mcp__t3-code__delegate_task",
                 "t3  thread start", "orca\tgoto", "Conductor  workspace create"]
 SKILLS_SET = {"sstack", "setup", "work", "grill", "swarm", "review", "unslop", "babysit", "how", "why",
-          "diagram", "code-graph", "reflect", "practices", "overnight"}
+          "diagram", "code-graph", "reflect", "practices", "overnight", "wiki"}
 
 
 def skill_files():

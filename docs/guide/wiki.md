@@ -115,11 +115,23 @@ An old `.sstack/lessons.md` is still read until the next write, which moves it i
 every line kept. When both files exist the wiki copy wins and lint warns. `lessons.md` is one rule
 per line, managed by `sstack-lessons`, so lint skips its frontmatter, size and orphan checks.
 
+## Who reads it
+
+The router reads both `index.md` files at the start of a task and opens a page only when the task
+needs it. Dispatched children get the index paths in their brief. `sstack-dispatch` also adds every
+repo page whose `paths` match the files the child was given to the brief's "Skills to use" list, the same
+way as a `[practices]` doc, with a stale note when the page is stale. So there is no need to list
+wiki pages in `[practices]`. `how` and `why` start from the pages that cover their subject.
+
 ## Who writes it
 
+The `wiki` skill says when a page is worth writing and what belongs in it. These skills use it:
+
 - `setup` seeds a few pages for a new or existing repo.
-- `work` adds or updates pages in its `pr` step for what the run learned.
+- `work` adds or updates pages in its `pr` step for what the run learned, and refreshes stale pages
+  whose `paths` the run changed. Children don't write pages; they flag findings in their report.
 - `reflect` writes descriptive findings as pages, and so does "remember how X works".
+- `how` and `why` offer to save an answer the code alone doesn't show.
 
 Writes are direct, with no pending queue: a page is edited like any file, then `sstack-wiki index`
 and `lint` run.

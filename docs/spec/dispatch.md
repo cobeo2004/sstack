@@ -159,6 +159,9 @@ names a kind, else detected from `--files`), then every `[practices]` glob match
 Each name resolves to the first `<dir>/<name>/SKILL.md` across: each member harness's `skill_dirs`
 (member order; no members → every configured harness), repo `.agents/skills`, `.claude/skills`,
 `.pi/skills`, then `<sstack>/skills`. Doc paths / URLs pass through (relative → under the repo root).
+Last, every repo sstack wiki page (`lib/sstack_wiki.py` `wiki_dir`) whose frontmatter `paths` match a
+`--files` path is added as a read link, unless `[practices]` already names it; a stale page's link
+ends ` (stale since <updated>: trust the code)`. A stage variant's own `skills` get no pages.
 
 Empty union → nothing changes. Otherwise, after the run dir is made, dispatch writes
 `<run_dir>/brief.skills.md` = the brief + this section, and stores its path as `run.json` `brief`

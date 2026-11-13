@@ -57,6 +57,7 @@ this file's resolved path (skills are symlinked; resolve the link, e.g.
 | Impact of a change, dependency graph, "what does this touch" | `code-graph` |
 | Best practices for this stack, "link skills to this repo" | `practices` |
 | Clean up a diff or prose before a PR | `unslop` |
+| Read or write the sstack wiki, "add this to the wiki", stale pages | `wiki` |
 | The user corrects you, you hit a dead end, "remember this" or "remember how X works" | `reflect` |
 | A fully specified one-line edit | do it, then the verification gate |
 

@@ -68,7 +68,7 @@ Only the chosen rows.
    read those ADRs. Never create either; no glossary → say so in the report. Never restate
    what the repo already encodes: versions, env var names, dependency lists, scripts, folder trees.
    If a fact lives in a file an agent can read, point at the file. Under about 60 lines.
-2. **The sstack wiki** ([guide](../../docs/guide/wiki.md)): seed `.sstack/wiki/` with a few pages of what
+2. **The sstack wiki** (per [the wiki skill](../wiki/SKILL.md)): seed `.sstack/wiki/` with a few pages of what
    the code doesn't show (how parts connect, why, gotchas), then `<sstack>/bin/sstack-wiki index` and `lint`.
    Local only: add `.sstack/wiki/` to `.git/info/exclude`, or `.gitignore` if the user prefers.
 3. **The repo config in the split layout** ([config spec](../../docs/spec/config.md)):

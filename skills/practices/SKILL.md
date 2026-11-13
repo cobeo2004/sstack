@@ -58,7 +58,8 @@ the repo covers it (see [config spec](../../docs/spec/config.md#layers)).
 "lib/**"   = ["docs/spec/config.md"]
 ```
 
-Keep globs as narrow as the evidence: one per surface or area, not `"*"` — a
+Don't add sstack wiki pages here: dispatch already hands a child every repo page whose `paths`
+match its files. Keep globs as narrow as the evidence: one per surface or area, not `"*"` — a
 `[practices]` entry reaches every child whose `--files` match it. Show the table with
 each entry's source level and one-line summary, and say which globs found nothing: a
 gap is a finding, not a failure.

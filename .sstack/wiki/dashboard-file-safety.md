@@ -1,7 +1,7 @@
 ---
 summary: Symlink and name rules for the dashboard's file-reading endpoints (/api/wiki, lessons, config layers)
 paths: lib/sstack_ui.py, lib/sstack_wiki.py
-updated: fd96c9e
+updated: 8f32a81
 ---
 # Dashboard file safety
 

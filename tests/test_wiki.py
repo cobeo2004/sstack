@@ -244,3 +244,46 @@ class WikiCLI(WikiBase):
         self.cli("index")
         r = subprocess.run([str(REPO / "bin/sstack-wiki"), "lint"], cwd=self.root, capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
+
+class WikiPractices(WikiBase):
+    """Repo pages whose `paths` match a child's --files reach its brief like [practices] docs."""
+
+    def test_pages_matching_files_resolve_as_read_links(self):
+        import sstack_skills as S
+        self.page("auth", "a", summary="Auth", paths="lib/auth/**")
+        self.page("ui", "u", summary="UI", paths="ui/**")
+        self.page("loose", "l", summary="No paths")
+        cfg = {"project": {"practices": {"lib/**": [".sstack/wiki/auth.md"]}}}
+        found, _ = S.resolve(cfg, self.root, "implement", None, ["lib/auth/s.py"], [])
+        auth = str(self.d / "auth.md")
+        self.assertEqual([link for _, link in found], [auth])  # once, though [practices] names it too
+        found, _ = S.resolve({}, self.root, "implement", None, ["lib/auth/s.py"], [])
+        self.assertEqual(found, [(auth, auth)])
+        self.assertIn(f"- read: {auth}", S.section(found, []))
+        self.assertEqual(S.resolve({}, self.root, "implement", None, ["lib/auth/s.py"], [], ["x.md"])[0],
+                         [("x.md", str(self.root / "x.md"))])  # a variant's own skills: no pages added
+        self.assertEqual(S.wiki_pages(self.root, ["README.md"]), [])
+        cfg = {"project": {"practices": {"lib/**": [".sstack/wiki/../wiki/auth.md"]}}}
+        self.assertEqual(len(S.resolve(cfg, self.root, "implement", None, ["lib/auth/s.py"], [])[0]), 1)
+
+    def test_a_bad_page_never_fails_a_dispatch(self):
+        import sstack_skills as S
+        self.page("auth", "a", summary="Auth", paths="lib/**")
+        (self.d / "folder.md").mkdir()  # not a page
+        self.assertEqual(len(S.wiki_pages(self.root, ["lib/a.py"])), 1)
+        (self.d / "bad.md").write_bytes(b"\xff")
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            self.assertEqual(S.resolve({}, self.root, "implement", None, ["lib/a.py"], []), ([], []))
+        self.assertIn("skipping the sstack wiki", err.getvalue())
+
+    def test_stale_page_is_flagged(self):
+        import sstack_skills as S
+        self.write(self.root, "lib/a.py", "1")
+        sha = self.commit()
+        self.page("a", "a", summary="A", paths="lib/*", updated=sha)
+        self.write(self.root, "lib/a.py", "2")
+        self.commit("change")
+        [(name, link)] = S.wiki_pages(self.root, ["lib/a.py"])
+        self.assertEqual(link, f"{name} (stale since {sha}: trust the code)")

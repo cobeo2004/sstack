@@ -32,12 +32,10 @@ scripts, services or agent manual is `repo`, even when it is a preference.
 ## Descriptive findings go to the wiki
 
 A finding that describes rather than instructs (how a part works, why it is this way, a gotcha and
-its cause) is not a lesson. Write or update an sstack wiki page directly, with no pending step:
-`<repo>/.sstack/wiki/` when it is about this repo, `~/.sstack/wiki/` when it holds in any repo. Never
-link across the two. Frontmatter: `summary` (one line), `paths` (globs it is about), `updated`
-(`git rev-parse --short HEAD`); link related pages as `[x](x.md)`. Then
-`<sstack>/bin/sstack-wiki index --scope <s>` and `lint --scope <s>`. An explicit "remember how X
-works" is the same. Imperative rules stay lessons.
+its cause) is not a lesson. Write or update an sstack wiki page directly, with no pending step, per
+[the wiki skill](../wiki/SKILL.md): `<repo>/.sstack/wiki/` when it is about this repo,
+`~/.sstack/wiki/` when it holds in any repo. An explicit "remember how X works" is the same.
+Imperative rules stay lessons.
 
 ## Manual flow
 

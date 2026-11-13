@@ -270,6 +270,7 @@ proves each kind of check.
 | `practices` | Finding best-practice skills and docs for the repo's stack, linked in `.sstack/project.toml` `[practices]` |
 | `unslop` | Cleaning code slop and AI-sounding prose out of a diff before the PR |
 | `reflect` | Turning corrections into lessons, and repeated lessons into structural edits |
+| `wiki` | Reading and writing the sstack wiki: when a page is worth writing, what belongs, fixing stale pages |
 
 How the skills hand off to each other. The `sstack` router picks one; `work` calls the others at fixed steps. Diamonds are gates: they wait for your yes. Step names below are the built-in defaults; `sstack-workflow show` prints the chain a repo actually has.
 

@@ -186,10 +186,11 @@ yes.
 
 ## pr
 
-1. **Wiki.** Add or update sstack wiki pages (`.sstack/wiki/`) for what this run learned that the
-   code doesn't show: how parts connect, why a choice was made, gotchas. Each page keeps `summary`,
-   `paths` and `updated` (`git rev-parse --short HEAD`). Then `<sstack>/bin/sstack-wiki index` and
-   `lint`; a lint error fails the step. List the pages touched in the gate report and the PR body.
+1. **Wiki.** Per [the wiki skill](../wiki/SKILL.md), add or update sstack wiki pages
+   (`.sstack/wiki/`) for what this run learned that the code doesn't show (how parts connect, why a
+   choice was made, gotchas), including findings children flagged in their reports. Refresh every
+   page `index` marks `[stale]` whose `paths` this run changed. Then `<sstack>/bin/sstack-wiki index`
+   and `lint`; a lint error fails the step. List the pages touched in the gate report and the PR body.
 2. `unslop` the diff and the PR text. Use the repo's PR template if it has one.
 3. Rebase/merge base; re-run the answer key and `<sstack>/bin/sstack-gate --run
    <run> --pr` on the result; either fails → back to the implement or review step.

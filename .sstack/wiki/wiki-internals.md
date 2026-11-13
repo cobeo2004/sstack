@@ -1,7 +1,7 @@
 ---
 summary: How sstack_wiki, sstack_lessons and the dashboard share the wiki folder, and why lessons resolve differently
-paths: lib/sstack_wiki.py, lib/sstack_lessons.py, lib/sstack_ui.py, ui/pages/wiki.js
-updated: fd96c9e
+paths: lib/sstack_wiki.py, lib/sstack_lessons.py, lib/sstack_skills.py, lib/sstack_ui.py, ui/pages/wiki.js
+updated: 8f32a81
 ---
 # Wiki internals
 
@@ -18,5 +18,9 @@ updated: fd96c9e
 - `index.md` is generated and never a node. Lint ERRORs when the index lines differ, but only WARNs
   when just the ` [stale]` markers differ, because any commit touching a page's `paths` would
   otherwise fail lint.
+
+- `sstack_skills.wiki_pages` turns page `paths` into `[practices]`-style read links for dispatched
+  children, so pages never need listing in `.sstack/project.toml`. Only repo pages: global pages'
+  `paths` would name files of no repo in particular.
 
 The dashboard reads the same folder; see [dashboard-file-safety](dashboard-file-safety.md).
