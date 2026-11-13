@@ -25,6 +25,7 @@ one candidate, not the answer.
 - PR numbers from commit subjects (`(#1234)`), then
   `gh pr view <n> --json title,body,author,mergedAt,labels,closingIssuesReferences,comments,reviews`.
 - Linked ticket IDs.
+- The sstack wiki pages whose `paths` cover the target: a past answer may already be there.
 
 Trace back past the latest commit: today's shape is often an accretion.
 
@@ -57,7 +58,8 @@ consulted** (one line per source, including empty and skipped ones, with reason)
 · **Confidence summary**.
 
 If the question precedes a change, end with **Preserve / Change / Avoid / Risk**
-constraints for planning it.
+constraints for planning it. Offer to save the direct and supported findings with `wiki`, with
+their sources; never save a hypothesis as fact.
 
 ---
 Adapted from pstack `why` and its epistemics reference

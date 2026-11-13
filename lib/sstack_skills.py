@@ -1,8 +1,13 @@
 """Skills a child must use (docs/spec/dispatch.md#skills): the role's `skills`, `[skills.kinds]` for
 the work kind, and project `[practices]` globs matching the files, deduped; each name resolved to
-the first SKILL.md on the skill path. Doc paths and URLs pass through as "read" links."""
+the first SKILL.md on the skill path. Doc paths and URLs pass through as "read" links, plus repo
+sstack wiki pages whose `paths` match the files."""
 import fnmatch
+import os
+import sys
 from pathlib import Path
+
+import sstack_wiki as W
 
 SSTACK_SKILLS = Path(__file__).resolve().parent.parent / "skills"
 # Harness skill dirs; a harness file's `skill_dirs` replaces its entry. Kept here, not in
@@ -57,7 +62,28 @@ def resolve(cfg: dict, root: Path, role: str, kind: str | None, files: list[str]
             found.append((n, p))
         else:
             missing.append(n)
+    if only is None:
+        have = {os.path.normpath(link) for _, link in found}  # a page [practices] already names isn't listed twice
+        found += [(path, link) for path, link in wiki_pages(root, files) if path not in have]
     return found, missing
+
+
+def wiki_pages(root: Path, files: list[str]) -> list[tuple[str, str]]:
+    """Repo sstack wiki pages whose `paths` match the files: [practices] derived from frontmatter.
+    The link carries a stale note when those paths changed since the page's `updated`."""
+    d = W.wiki_dir("repo", root)
+    if not files or not d.is_dir():
+        return []
+    try:
+        loaded = W.load(d)
+    except (OSError, UnicodeDecodeError) as e:  # the wiki is optional: never fail a dispatch over it
+        print(f"sstack-dispatch: skipping the sstack wiki ({e}); run sstack-wiki lint", file=sys.stderr)
+        return []
+    pages = {n: p for n, p in loaded.items()
+             if p.paths and any(W.match_any(f, p.paths) for f in files)}
+    stale = W.stale_names(pages, root)
+    return [(str(p.path), str(p.path) + (f" (stale since {p.updated}: trust the code)" if n in stale else ""))
+            for n, p in pages.items()]
 
 
 def section(found: list[tuple[str, str]], missing: list[str]) -> str:

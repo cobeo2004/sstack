@@ -12,6 +12,8 @@ token (`?t=<token>`); POST/PUT/DELETE also need `Content-Type: application/json`
 | `GET /api/config` | effective config + per thing `source()` layer (docs/spec/config.md) |
 | `GET /api/ade` | `sstack-dispatch ade` output (docs/spec/dispatch.md) |
 | `GET /api/runs` | `{"runs": [{"task", "ts", "children", "workflow"}]}`: index lines grouped by task (the top-level run folder), tasks newest first; each child is the old per-`run_dir` group object (`run_dir`, `lines`, `run`, `readonly_warning`, `ts`) with its `run.json`; a flat legacy run is a task with itself as its only child; `workflow` is the task folder's `workflow.json` (docs/spec/workflow.md), or `null` when it is missing or unreadable |
+| `GET /api/wiki` | the sstack wiki of `repo=<root>` (`.sstack/wiki/`, or the primary checkout's when a worktree holds no page) or `repo=global` (`~/.sstack/wiki/`, `$SSTACK_HOME/wiki/` when set): `{"scope", "dir", "exists", "pages": [{"name", "summary", "paths", "updated", "stale", "orphan", "links", "backlinks", "lines"}], "lint": {"errors", "warnings"}}`; pages sorted by name; lint messages without the `ERROR `/`WARN ` prefix; a missing dir gives `exists: false`, `pages: []` and empty lint lists; a symlinked page is left out; a symlinked wiki dir, or a symlinked repo `.sstack`, is 400 |
+| `GET /api/wiki/page?name=<page>` | one page: `{"name", "path", "text"}`, `text` the raw file; 400 when `name` is not a page listed by `GET /api/wiki` (so `index`, unknown names, `..` and separators are refused; non-ASCII names are fine), or the wiki dir, a repo's `.sstack` or the page is a symlink |
 
 A nested `run_dir` such as `.sstack/runs/<task>/dispatch/<HHMM>-<role>` belongs to task
 `.sstack/runs/<task>`; a flat `.sstack/runs/<YYYYMMDD-HHMM>-<role>` is its own task.

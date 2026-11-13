@@ -18,18 +18,17 @@ this file's resolved path (skills are symlinked; resolve the link, e.g.
    no ADE: use the harness note and say so once. Otherwise read its `note`: the
    active ADE's delegation, browser, device and capture procedure.
 2. Read the repo's `AGENTS.md` and/or `CLAUDE.md`.
-3. Read `.sstack/product.md` if it exists. In a linked worktree with none, read the
-   primary checkout's (`git worktree list --porcelain`, first entry) — the same
-   fallback config and repo lessons use. If neither has one and the task is more
-   than a one-liner, say once that `setup` would create it, then carry on.
+3. Read `.sstack/product.md` if it exists, then the sstack wiki indexes: `~/.sstack/wiki/index.md`
+   (`$SSTACK_HOME/wiki/` when set), then `.sstack/wiki/index.md`. Open a wiki page only when the
+   task needs it, never up front. In a linked worktree, read the primary checkout's copy of any of
+   these this checkout lacks (`git worktree list --porcelain`, first entry). No product.md anywhere
+   and more than a one-liner → say once that `setup` would create it, then carry on.
 4. Load accepted lessons from both scopes and follow them:
    `<sstack>/bin/sstack-lessons list --status accepted --scope repo` and
    `... --scope global`. Once the task's files are known, add `--paths <file>...`
    so a lesson pinned to other files does not load. A line ending `[stale]` was
    learned at a commit that has changed those files since: re-check it against the
    code before following it, and drop or re-`reflect` it if it no longer holds.
-   Repo scope in a linked worktree reads the primary's `.sstack/lessons.md` unless
-   this checkout has its own.
 5. Say back, in one or two sentences, the user's goal and the smallest change you
    expect to meet it. Don't wait for confirmation unless the evidence rules out
    what they asked for; then show it and stop.
@@ -58,7 +57,8 @@ this file's resolved path (skills are symlinked; resolve the link, e.g.
 | Impact of a change, dependency graph, "what does this touch" | `code-graph` |
 | Best practices for this stack, "link skills to this repo" | `practices` |
 | Clean up a diff or prose before a PR | `unslop` |
-| The user corrects you, you hit a dead end, or "remember this" | `reflect` |
+| Read or write the sstack wiki, "add this to the wiki", stale pages | `wiki` |
+| The user corrects you, you hit a dead end, "remember this" or "remember how X works" | `reflect` |
 | A fully specified one-line edit | do it, then the verification gate |
 
 Nothing fits → use `work` with the closest playbook and say which steps you

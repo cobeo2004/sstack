@@ -186,17 +186,22 @@ yes.
 
 ## pr
 
-1. `unslop` the diff and the PR text. Use the repo's PR template if it has one.
-2. Rebase/merge base; re-run the answer key and `<sstack>/bin/sstack-gate --run
+1. **Wiki.** Per [the wiki skill](../wiki/SKILL.md), add or update sstack wiki pages
+   (`.sstack/wiki/`) for what this run learned that the code doesn't show (how parts connect, why a
+   choice was made, gotchas), including findings children flagged in their reports. Refresh every
+   page `index` marks `[stale]` whose `paths` this run changed. Then `<sstack>/bin/sstack-wiki index`
+   and `lint`; a lint error fails the step. List the pages touched in the gate report and the PR body.
+2. `unslop` the diff and the PR text. Use the repo's PR template if it has one.
+3. Rebase/merge base; re-run the answer key and `<sstack>/bin/sstack-gate --run
    <run> --pr` on the result; either fails → back to the implement or review step.
    Show any `MEDIA WAIVED: <reason>` line at the gate.
-3. **The gate is always on** (`pr` cannot be disabled and its `gate` cannot be set
+4. **The gate is always on** (`pr` cannot be disabled and its `gate` cannot be set
    false): the user's explicit yes (unattended: none, see above) before commit, push or PR, and before publishing
    media. Then push, open the PR, and run
    `<sstack>/bin/sstack-pr-media <pr> <run>/media/* --edit-body` right after opening,
    so the Before | After table lands in the PR description per [testing.md](testing.md).
    PR comments are only for add-ons, never the main evidence.
-4. `sstack-workflow done pr --run <run>` prints `next: done`. When the PR opens (or
+5. `sstack-workflow done pr --run <run>` prints `next: done`. When the PR opens (or
    the user stops the task), append `done: <PR url | reason>` as the last line of the
    run's `progress.md`; `--prune-runs` reads it.
 

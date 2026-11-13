@@ -76,6 +76,7 @@ key must pin, when to stop early.
   wait for the user's explicit yes, even mid-chain, unless `sstack-workflow unattended` says `on`.
 - Verification gate from `sstack` before every claim; at the end, run `reflect` if
   the user corrected you or you hit a dead end.
+- What a run learned that the code doesn't show goes to the sstack wiki in the `pr` step ([steps.md](steps.md#pr)); the final reply lists the pages touched.
 
 ## Repo playbook overrides
 

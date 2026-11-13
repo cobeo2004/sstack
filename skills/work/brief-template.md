@@ -20,6 +20,8 @@ roles: "read and report only — do not edit files">.
   nearer one overrides the root.
 - The `docs` entries in `.sstack/project.toml`, and `.sstack/product.md` (what the
   app is).
+- The sstack wiki indexes, by path only: <absolute path of each `index.md` that exists, from
+  `~/.sstack/wiki/` and the repo's `.sstack/wiki/`>. Open a page only when the work needs it.
 - The nearest similar file to each one you'll change, and its test: match the
   naming, error style and helpers already there instead of inventing new ones.
 - <specific files, docs, ticket text>
@@ -42,7 +44,8 @@ diff range or PR and the lenses to apply.>
 2. **What I did** — short.
 3. **What I could not do** — and why.
 4. **Instructions that were wrong or stale** — instruction, what was true, what I
-   did instead (or "none").
+   did instead (or "none"). Include sstack wiki pages that were wrong, and anything the code
+   doesn't show that a page should say; don't edit the wiki yourself.
 5. **Status** — `PASS`, `ISSUES` or `BLOCKED`, with evidence: each command run and
    its trimmed output.
 ```

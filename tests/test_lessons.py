@@ -12,7 +12,7 @@ THREE = ("# Lessons\n\n"
 
 class LessonTests(TempEnv):
     def path(self):
-        return self.root / ".sstack/lessons.md"
+        return self.root / ".sstack/wiki/lessons.md"
 
     def test_roundtrip(self):
         items = L.parse(THREE)
@@ -115,10 +115,10 @@ class ReflectHookTests(TempEnv):
         self.glob_cfg(FAKE_SCOUT + "[reflect]\nauto = true\n")
         r = self.hook(self.payload(), "--foreground")
         self.assertEqual(r.returncode, 0, r.stderr)
-        text = (self.root / ".sstack/lessons.md").read_text()
+        text = (self.root / ".sstack/wiki/lessons.md").read_text()
         self.assertIn("- [pending] seen=1 id=L1 | run pnpm, not npm | evidence: user said so at turn 4", text)
         self.assertNotIn("accepted", text)
-        self.assertFalse((self.home / ".sstack/lessons.md").exists())  # placeholder + bad scope skipped
+        self.assertFalse((self.home / ".sstack/wiki/lessons.md").exists())  # placeholder + bad scope skipped
         brief = next((self.root / ".sstack/runs").glob("reflect/*/scout.brief.md")).read_text()
         self.assertIn("transcript.jsonl", brief)
         self.assertIn("LESSON:", brief)
@@ -133,7 +133,7 @@ class ReflectHookTests(TempEnv):
         self.glob_cfg(FAKE_SCOUT + "[reflect]\nauto = true\n")
         r = self.hook(self.payload())
         self.assertEqual(r.returncode, 0, r.stderr)
-        p = self.root / ".sstack/lessons.md"
+        p = self.root / ".sstack/wiki/lessons.md"
         for _ in range(100):
             if p.exists() and "L1" in p.read_text():
                 break
@@ -149,7 +149,7 @@ class ReflectHookTests(TempEnv):
                       '[reflect]\nauto = true\n')
         r = self.hook(self.payload(), "--foreground")
         self.assertEqual(r.returncode, 0, r.stderr)
-        return (self.root / ".sstack/lessons.md").read_text()
+        return (self.root / ".sstack/wiki/lessons.md").read_text()
 
     def test_reflect_hook_skips_failed_panel_member(self):
         text = self.panel_hook("print('LESSON: repo | from ' + m + ' | why')\nsys.exit(m == 'bad')\n")
@@ -175,7 +175,7 @@ class LessonScopeTests(TempEnv):
         return self.git("rev-parse", "--short", "HEAD")
 
     def path(self):
-        return self.root / ".sstack/lessons.md"
+        return self.root / ".sstack/wiki/lessons.md"
 
     def cli(self, *a):
         out = io.StringIO()
@@ -288,3 +288,96 @@ class LessonScopeTests(TempEnv):
         _, out = self.cli("list")
         self.assertIn("pin it", out)
         self.assertNotIn("[stale]", out)
+
+
+class LessonsInWiki(TempEnv):
+    """R22–R24: lessons live in the wiki dir; an old .sstack/lessons.md is read, then moved on write."""
+
+    def cli(self, *a, cwd=None):
+        out = io.StringIO()
+        old = os.getcwd(); os.chdir(cwd or self.root)
+        try:
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+                code = L.main(list(a))
+        finally:
+            os.chdir(old)
+        return code, out.getvalue()
+
+    def git(self, *a):
+        subprocess.run(["git", "-C", str(self.root), *a], check=True, capture_output=True)
+
+    def worktree(self):
+        self.git("commit", "-q", "--allow-empty", "-m", "i")
+        wt = (self.root.parent / "wt").resolve()
+        self.git("worktree", "add", "-q", str(wt))
+        return wt
+
+    @property
+    def new(self):
+        return self.root / ".sstack/wiki/lessons.md"
+
+    @property
+    def old(self):
+        return self.root / ".sstack/lessons.md"
+
+    def test_new_lessons_go_to_wiki(self):
+        self.assertEqual(self.cli("add", "x")[0], 0)
+        self.assertTrue(self.new.exists())
+        self.assertFalse(self.old.exists())
+
+    def test_reads_old_path_when_only_old_exists(self):
+        self.write(self.root, ".sstack/lessons.md", "# Lessons\n\n- [accepted] seen=1 id=L1 | old\n")
+        code, out = self.cli("list")
+        self.assertEqual(code, 0)
+        self.assertIn("id=L1 | old", out)
+        self.assertEqual(L.lessons_path("repo", self.root), self.old)
+
+    def test_next_write_moves_file_and_keeps_every_line(self):
+        self.write(self.root, ".sstack/lessons.md",
+                   "# Lessons\n\n- [accepted] seen=1 id=L1 | old\nnote: keep me\n")
+        self.assertEqual(self.cli("add", "y")[0], 0)
+        text = self.new.read_text()
+        for want in ("id=L1 | old", "note: keep me", "id=L2 | y"):
+            self.assertIn(want, text)
+        self.assertFalse(self.old.exists())
+
+    def test_both_exist_new_wins(self):
+        self.write(self.root, ".sstack/wiki/lessons.md", "# Lessons\n\n- [pending] seen=1 id=L1 | new\n")
+        legacy = "# Lessons\n\n- [pending] seen=1 id=L1 | old\n"
+        self.write(self.root, ".sstack/lessons.md", legacy)
+        _, out = self.cli("list")
+        self.assertIn("| new", out)
+        self.assertNotIn("| old", out)
+        self.assertEqual(self.cli("accept", "L1")[0], 0)
+        self.assertIn("[accepted]", self.new.read_text())
+        self.assertEqual(self.old.read_text(), legacy)
+
+    def test_global_legacy_migrates(self):
+        self.write(self.home, ".sstack/lessons.md", "# Lessons\n\n- [pending] seen=1 id=L1 | h\n")
+        self.assertEqual(self.cli("add", "--scope", "global", "g")[0], 0)
+        self.assertIn("id=L2 | g", (self.home / ".sstack/wiki/lessons.md").read_text())
+        self.assertFalse((self.home / ".sstack/lessons.md").exists())
+
+    def test_global_follows_sstack_home(self):
+        sh = self.home.parent / "sh"
+        self.profile(sh)
+        os.environ["SSTACK_HOME"] = str(sh)
+        self.assertEqual(self.cli("add", "--scope", "global", "g")[0], 0)
+        self.assertIn("| g", (sh / "wiki/lessons.md").read_text())
+
+    def test_worktree_legacy_in_primary_migrates_into_primary(self):
+        wt = self.worktree()
+        self.write(self.root, ".sstack/lessons.md", "# Lessons\n\n- [pending] seen=1 id=L1 | p\n")
+        self.assertEqual(L.lessons_path("repo", wt), self.old)
+        self.assertEqual(self.cli("add", "w", cwd=wt)[0], 0)
+        self.assertIn("id=L2 | w", self.new.read_text())
+        self.assertFalse(self.old.exists())
+        self.assertFalse((wt / ".sstack/wiki").exists())
+
+    def test_worktree_with_committed_wiki_writes_lessons_to_primary(self):
+        wt = self.worktree()
+        (self.root / ".sstack").mkdir()
+        self.write(wt, ".sstack/wiki/a.md", "---\nsummary: a\n---\n")
+        self.assertEqual(self.cli("add", "w", cwd=wt)[0], 0)
+        self.assertIn("| w", self.new.read_text())
+        self.assertFalse((wt / ".sstack/wiki/lessons.md").exists())

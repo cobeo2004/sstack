@@ -35,7 +35,7 @@ class ReflectDedupeTests(TempEnv):
         return sorted(self.home.glob("brief-*.md"))
 
     def test_bump_by_id(self):
-        p = self.root / ".sstack/lessons.md"
+        p = self.root / ".sstack/wiki/lessons.md"
         L.add(p, "run pnpm, not npm", "s1")
         l = L.bump(p, "L1", "s2")
         self.assertEqual((l.seen, l.fields["evidence"]), (2, "s1; s2"))
@@ -43,8 +43,8 @@ class ReflectDedupeTests(TempEnv):
             L.bump(p, "L9", None)
 
     def test_brief_lists_known_lessons_from_both_scopes(self):
-        L.add(self.root / ".sstack/lessons.md", "run pnpm, not npm", None)
-        L.add(self.home / ".sstack/lessons.md", "keep personal config out of GitHub", None)
+        L.add(self.root / ".sstack/wiki/lessons.md", "run pnpm, not npm", None)
+        L.add(self.home / ".sstack/wiki/lessons.md", "keep personal config out of GitHub", None)
         self.setup_agent("NONE\nPASS")
         t = self.root / "t.jsonl"; t.write_text("{}\n")
         self.hook(t)
@@ -54,14 +54,14 @@ class ReflectDedupeTests(TempEnv):
         self.assertIn("SEEN:", b)
 
     def test_seen_line_bumps_and_adds_nothing(self):
-        p = self.root / ".sstack/lessons.md"
+        p = self.root / ".sstack/wiki/lessons.md"
         L.add(p, "run pnpm, not npm", None)
         self.setup_agent("SEEN: repo:L1 | user said pnpm again\nSEEN: global:L7 | no such lesson\nPASS")
         t = self.root / "t.jsonl"; t.write_text("{}\n")
         self.hook(t)
         les = [i for i in L.parse(p.read_text()) if isinstance(i, L.Lesson)]
         self.assertEqual([(l.id, l.seen) for l in les], [("L1", 2)])
-        self.assertFalse((self.home / ".sstack/lessons.md").exists())
+        self.assertFalse((self.home / ".sstack/wiki/lessons.md").exists())
 
     def test_reflects_only_new_transcript_lines_per_session(self):
         self.setup_agent("NONE\nPASS")
@@ -124,5 +124,5 @@ class ReflectDedupeTests(TempEnv):
         self.setup_agent("LESSON: repo | use the api client | t.jsonl\nPASS")
         t = self.root / "t.jsonl"; t.write_text("{}\n")
         self.hook(t)
-        les = [i for i in L.parse((self.root / ".sstack/lessons.md").read_text()) if isinstance(i, L.Lesson)]
+        les = [i for i in L.parse((self.root / ".sstack/wiki/lessons.md").read_text()) if isinstance(i, L.Lesson)]
         self.assertEqual(les[0].fields.get("commit"), sha)
