@@ -8,7 +8,9 @@ are read, as a fallback when no layer has one."""
 import os
 import shutil
 import subprocess
+import sys
 import tomllib
+import urllib.parse
 from pathlib import Path
 
 from sstack_worktree import primary_of
@@ -165,7 +167,9 @@ def load(root: Path | None, _ls: list | None = None) -> dict:
     plus config.toml keys (ade, dispatch, rules, reflect, routing)}. ADEs: see ades().
     `_ls` reads a different [(name, dir)] stack, for validating a staged layer."""
     cfg: dict = {}
-    for _, data in _layer_datas(root, _ls):
+    for name, data in _layer_datas(root, _ls):
+        if name == "repo" and isinstance(data.get("decider"), dict):  # the API key goes to this url
+            data["decider"].pop("url", None)
         cfg = merge(cfg, data)
     return cfg
 
@@ -334,10 +338,18 @@ DECIDER_VIAS = ("heuristic", "jev", "openrouter", "llm")
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 
+def _safe_url(u) -> bool:
+    """https, or plain http only to this machine: the decider sends an API key to it."""
+    p = urllib.parse.urlsplit(u) if isinstance(u, str) else None
+    return bool(p) and (p.scheme == "https" and bool(p.hostname) or
+                        p.scheme == "http" and p.hostname in ("localhost", "127.0.0.1"))
+
+
 def decider(cfg: dict) -> dict:
     """`[decider]` settings: {"via", "timeout", "min_confidence", "url", "model", "member"}. Defaults:
     heuristic (no decider call), 20 s, 0.5. `jev` needs `url`; `openrouter` needs `model` (an OpenRouter
-    model id, e.g. typesafe/jev-router; `url` defaults to its chat completions endpoint); `llm` needs a
+    model id, e.g. typesafe/jev-1.14; `url` defaults to its chat completions endpoint). A url must be https
+    (http only to localhost) and a url set only in the repo layer is dropped by load(). `llm` needs a
     `harness` (optional model/effort) with a headless_readonly. Keys come from $JEV_API_KEY and
     $OPENROUTER_API_KEY only, never from config."""
     t = cfg.get("decider", {})
@@ -352,10 +364,12 @@ def decider(cfg: dict) -> dict:
     if not num(conf) or not 0 <= conf <= 1:
         raise ConfigError(f"[decider] min_confidence {conf!r} is not a number from 0 to 1")
     if via == "jev" and not t.get("url"):
-        raise ConfigError("[decider] via = \"jev\" needs url")
+        raise ConfigError("[decider] via = \"jev\" needs url (in ~/.sstack or .sstack/local, not the repo layer)")
+    if t.get("url") is not None and not _safe_url(t["url"]):
+        raise ConfigError(f"[decider] url {t['url']!r} must be https (http only to localhost or 127.0.0.1)")
     model = t.get("model") if via == "openrouter" else None
     if via == "openrouter" and not (isinstance(model, str) and model):
-        raise ConfigError("[decider] via = \"openrouter\" needs model (an OpenRouter model id, e.g. typesafe/jev-router)")
+        raise ConfigError("[decider] via = \"openrouter\" needs model (an OpenRouter model id, e.g. typesafe/jev-1.14)")
     member = None
     if via == "llm":
         member = _member(cfg, t)
@@ -389,6 +403,8 @@ def resolve(cfg: dict, role: str) -> list[dict] | None:
     if not spec:
         return None
     raw = spec["panel"] if "panel" in spec else [spec]
+    if "panel" in spec and any(isinstance(x, dict) and x.get("tier") == "any" for x in raw):
+        print(f'sstack: role {role} panel: tier = "any" is for a single role member; skipped', file=sys.stderr)
     members = [m for m in (_spec_member(cfg, x) for x in raw) if m]
     if role == "review" and cfg.get("rules", {}).get("review_not_implementer", True):
         impl = resolve(cfg, "implement")

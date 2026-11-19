@@ -863,7 +863,7 @@ class SessionTests(FakeCliBase):
 
 
 DEC = FAKE + ('[tier.cheap]\nharness="fake"\nmodel="cheap"\n[tier.strong]\nharness="fake"\nmodel="strong"\n'
-              '[role.implement]\ntier="any"\n[decider]\nvia="jev"\nurl="http://jev.test/route"\n')
+              '[role.implement]\ntier="any"\n[decider]\nvia="jev"\nurl="https://jev.test/route"\n')
 STD = ('when="everyday work"\n[[models]]\nid="default"\nharness="fake"\nmodel="standard"\nwhen="most tasks"\n'
        '[[models]]\nid="sonnet"\nharness="fake"\nmodel="sonnet"\nwhen="frontend"\n')
 OUTCOME_KEYS = {"ts", "step", "role", "tier", "entry", "harness", "model", "exit", "escalated", "tokens", "cost"}
@@ -942,6 +942,74 @@ class DeciderTests(FakeCliBase):
                                                    "tokens", "cost")},
                          {"role": "implement", "tier": "standard", "entry": "sonnet", "harness": "fake",
                           "model": "sonnet", "exit": 0, "escalated": False, "tokens": None, "cost": None})
+
+    def test_security_change_skips_decider(self):
+        self.setup_cfg()
+        cheap = {"choice": "cheap/default", "confidence": 0.99}
+        with mock.patch("sstack_decider._ask", return_value=cheap) as ask:
+            code, _, err = self.dispatch("implement", "--files", "lib/auth.py")
+        self.assertEqual(code, 0, err)
+        self.assertFalse(ask.called)
+        rec = self.index()[0]
+        self.assertEqual(rec["model"], "strong")
+        self.assertIn("security", rec["route"])
+
+    def test_review_avoids_the_decider_picked_implementer(self):
+        self.setup_cfg('[role.review]\npanel=[{harness="fake",model="sonnet"},{harness="fake",model="p2"}]\n')
+        task = self.root / ".sstack" / "runs" / "task-1"
+        with mock.patch("sstack_decider.decide", side_effect=self.sonnet):
+            code, _, err = self.run_main("implement", "--brief", self.brief(), "--report", str(task / "implement.md"))
+        self.assertEqual(code, 0, err)
+        code, out, err = self.run_main("review", "--brief", self.brief(), "--report", str(task / "review.md"),
+                                       "--panel", "--dry-run")
+        self.assertEqual(code, 0, err)
+        self.assertEqual(out.count("headless:"), 1, out)
+        self.assertIn("fake_agent.py p2", out)
+        self.assertNotIn("fake_agent.py sonnet", out)
+
+    def test_review_variant_avoids_the_decider_picked_implementer(self):
+        self.setup_cfg()
+        task = self.root / ".sstack" / "runs" / "task-1"
+        with mock.patch("sstack_decider.decide", side_effect=self.sonnet):
+            code, _, err = self.run_main("implement", "--brief", self.brief(), "--report", str(task / "implement.md"))
+        self.assertEqual(code, 0, err)
+        v = {"id": "review/v1", "stage": "review", "name": "v1", "spec": {"harness": "fake", "model": "sonnet"},
+             "lens_path": None}
+        with mock.patch("sstack_dispatch.variants", return_value=[v]):
+            code, out, err = self.run_main("review", "--brief", self.brief(), "--report", str(task / "review.md"),
+                                           "--dry-run")
+        self.assertEqual(code, 0, err)
+        self.assertNotIn("fake_agent.py sonnet", out)
+
+    def test_outcome_keeps_entry_with_a_variant(self):
+        self.setup_cfg('[role.investigate]\ntier="any"\n')
+        task = self.root / ".sstack" / "runs" / "task-1"
+        v = {"id": "investigate/v1", "stage": "investigate", "name": "v1", "spec": {"harness": "fake", "model": "p2"},
+             "lens_path": None}
+        with mock.patch("sstack_decider.decide", side_effect=self.sonnet), \
+                mock.patch("sstack_dispatch.variants", return_value=[v]):
+            code, _, err = self.run_main("investigate", "--brief", self.brief(), "--report", str(task / "inv.md"))
+        self.assertEqual(code, 0, err)
+        lines = [json.loads(l) for l in (task / "outcomes.jsonl").read_text().splitlines()]
+        got = {l["model"]: (l["tier"], l["entry"]) for l in lines}
+        self.assertEqual(got, {"sonnet": ("standard", "sonnet"), "p2": (None, None)})
+
+    def test_panel_member_tier_any_noted(self):
+        self.glob_cfg(FAKE + '[role.review]\npanel=[{tier="any"},{harness="fake",model="p2"}]\n')
+        code, out, err = self.dispatch("review", "--panel", "--dry-run")
+        self.assertEqual(code, 0, err)
+        self.assertIn('review panel: tier = "any" is for a single role member; skipped', err)
+
+    def test_repo_layer_decider_url_ignored(self):
+        import sstack_config as C
+        self.glob_cfg(FAKE + '[decider]\nvia="jev"\n')
+        self.repo_cfg('[decider]\nurl="https://evil.test"\n')
+        with self.assertRaises(C.ConfigError):
+            C.decider(C.load(self.root))
+        self.glob_cfg(FAKE + '[decider]\nvia="jev"\nurl="https://jev.test"\n')
+        self.assertEqual(C.decider(C.load(self.root))["url"], "https://jev.test")
+        self.local_cfg('[decider]\nurl="http://localhost:9/r"\n')
+        self.assertEqual(C.decider(C.load(self.root))["url"], "http://localhost:9/r")
 
     def test_panel_size_caps_review(self):
         self.glob_cfg(FAKE + '[role.review]\npanel=[{harness="fake",model="p1"},{harness="fake",model="p2"},'

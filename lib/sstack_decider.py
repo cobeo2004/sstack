@@ -79,7 +79,7 @@ def _last_json(text: str) -> dict:
 
 def _openrouter(url: str, model: str, payload: dict, timeout: float) -> dict:
     """One OpenRouter chat completion (OpenAI-compatible, documented): `model` is any OpenRouter id,
-    e.g. typesafe/jev-router; the reply is choices[0].message.content."""
+    e.g. typesafe/jev-1.14; the reply is choices[0].message.content."""
     key = _key("OPENROUTER_API_KEY")
     if not key:
         raise RuntimeError("OPENROUTER_API_KEY is not set")
@@ -132,6 +132,9 @@ def decide(cfg: dict, task: str, step: str | None, plan: str, files: list[str],
         return None
     if hit is None:
         _fallback(s["via"], f"{reply.get('choice')!r} is not a listed entry")
+        return None
+    if not 0 <= conf <= 1:  # NaN fails this too
+        _fallback(s["via"], f"{reply.get('choice')} confidence {conf!r} is not from 0 to 1")
         return None
     if conf < s["min_confidence"]:
         _fallback(s["via"], f"{reply.get('choice')} confidence {conf:g} < {s['min_confidence']:g}")

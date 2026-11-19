@@ -17,7 +17,7 @@ import sstack_configcli as CC
 import sstack_dispatch as D
 import sstack_skills as S
 import sstack_workflow as W
-from sstack_config import (READONLY_ROLES, TEMPLATE, ConfigError, ades, decider, git_root, harness_installed, home_dir,
+from sstack_config import (READONLY_ROLES, TEMPLATE, ConfigError, _layer_data, ades, decider, git_root, harness_installed, home_dir,
                            layers, legacy, load, require_profile, resolve, steps as step_folders, tier_entries,
                            unattended, variants)
 import sstack_route as R
@@ -81,7 +81,8 @@ def _used(cfg) -> set[str]:
 def _tiers(root):
     """Tier files: FAIL on a tier named `any` (reserved), a bad [[models]] shape, both a top-level
     harness and [[models]], or a bad [decider]; WARN on a non-default entry whose harness is not
-    installed (the decider never offers it). A default entry's harness is checked by `harness CLIs`."""
+    installed (the decider never offers it), a repo-layer [decider] url (ignored), and openrouter
+    without $OPENROUTER_API_KEY. A default entry's harness is checked by `harness CLIs`."""
     cfg, bad = load(root), []
     for t, spec in cfg.get("tier", {}).items():
         if t == "any":
@@ -106,8 +107,15 @@ def _tiers(root):
     if bad:
         raise ConfigError("; ".join(bad))
     entries = [e for t in cfg.get("tier", {}) for e in tier_entries(cfg, t)]
-    if warn := [f"{e['tier']}/{e['id']}: {e['harness']} not on PATH (excluded from decider choices)"
-                for t in cfg.get("tier", {}) for e in tier_entries(cfg, t)[1:] if not harness_installed(cfg, e["harness"])]:
+    warn = [f"{e['tier']}/{e['id']}: {e['harness']} not on PATH (excluded from decider choices)"
+            for t in cfg.get("tier", {}) for e in tier_entries(cfg, t)[1:] if not harness_installed(cfg, e["harness"])]
+    repo = dict(layers(root)).get("repo")
+    if repo and "url" in (_layer_data("repo", repo).get("decider") or {}):
+        warn.append("[decider] url in the repo layer is ignored (the API key goes to it); "
+                    "set it in ~/.sstack or .sstack/local")
+    if via == "openrouter" and not os.environ.get("OPENROUTER_API_KEY"):
+        warn.append("OPENROUTER_API_KEY is not set (the openrouter decider falls back to the heuristic)")
+    if warn:
         raise Warn("; ".join(warn))
     return f"{len(cfg.get('tier', {}))} tiers, {len(entries)} entries; decider {via}"
 

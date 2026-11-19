@@ -263,7 +263,7 @@ class CatalogueTests(DispatchBase):
 
     def test_role_tier_any_label_no_decider(self):
         from unittest import mock
-        self.glob_cfg(TIERS + '[role.scout]\ntier="any"\n[decider]\nvia="jev"\nurl="http://jev.test"\n')
+        self.glob_cfg(TIERS + '[role.scout]\ntier="any"\n[decider]\nvia="jev"\nurl="https://jev.test"\n')
         with mock.patch("sstack_decider.decide", side_effect=AssertionError):
             code, out, err = self.dry("scout")
         self.assertEqual(code, 0, err)
@@ -277,7 +277,7 @@ class CatalogueTests(DispatchBase):
 
     def test_escalation_repicks_within_next_tier(self):
         from unittest import mock
-        self.cat('[rules]\ntier_order=["cheap","strong"]\n[decider]\nvia="jev"\nurl="http://jev.test"\n',
+        self.cat('[rules]\ntier_order=["cheap","strong"]\n[decider]\nvia="jev"\nurl="https://jev.test"\n',
                  tier="cheap", text='harness="fake"\nmodel="fail"\n')
         self.write(self.home / ".sstack", "tiers/strong.toml", CAT)
         pick_b = lambda cfg, *a, **k: {**R.tier_entries(cfg, "strong")[1], "confidence": 0.9}
@@ -302,14 +302,20 @@ class CatalogueTests(DispatchBase):
         self.assertEqual((m["id"], t), ("b", "strong"))
 
     def test_routes_lists_entries_and_decider(self):
-        self.cat('[decider]\nvia="jev"\nurl="http://jev.test"\n')
+        self.cat('[decider]\nvia="jev"\nurl="https://jev.test"\n')
         code, out, _ = self.run_main("routes")
         self.assertEqual(code, 0)
         lines = out.splitlines()
         i = lines.index("  tier.strong → fake/sa")
         self.assertEqual(lines[i + 1:i + 3], ["    strong/a: fake/sa — deep reasoning",
                                               "    strong/b: fake/sb — long context"])
-        self.assertIn("decider: jev http://jev.test (timeout 20s, min_confidence 0.5)", lines)
+        self.assertIn("decider: jev https://jev.test (timeout 20s, min_confidence 0.5)", lines)
+
+    def test_routes_shows_openrouter_model(self):
+        self.cat('[decider]\nvia="openrouter"\nmodel="openai/gpt-x"\n')
+        code, out, err = self.run_main("routes")
+        self.assertEqual(code, 0, err)
+        self.assertIn("decider: openrouter openai/gpt-x (timeout 20s, min_confidence 0.5)", out.splitlines())
 
     def test_routes_one_entry_unchanged(self):
         self.glob_cfg(TIERS)

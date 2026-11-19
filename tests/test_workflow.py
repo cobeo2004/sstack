@@ -438,6 +438,29 @@ class ProposeTests(WorkflowBase):
         _, out, _ = self.done("plan")
         self.assertIn("GATE: wait for the user's yes", out)
 
+    def test_skip_review_rechecked_when_diff_turns_security(self):
+        self.assertEqual(self.propose(payload={"skip": ["review"]})[0], 0)
+        self.write(self.root, "api/auth.py", "x = 1\n")
+        self.done("implement")
+        _, out, err = self.done("gate")
+        self.assertIn("next: review", out)
+        self.assertIn("security change; review stays", err)
+
+    def test_skip_implement_or_on_fail_target_rejected(self):
+        code, _, err = self.propose(payload={"skip": ["implement"]})
+        self.assertEqual(code, 1)
+        self.assertIn("skip implement: implement", err)
+        self.step(self.repo(), "lint", 'after = "plan"\non_fail = "recon"\n', run_sh="#!/bin/sh\n")
+        code, _, err = self.propose(payload={"skip": ["recon"]})
+        self.assertEqual(code, 1)
+        self.assertIn("skip recon: the on_fail target of lint", err)
+        self.assertIsNone(self.stored())
+
+    def test_status_shows_proposal(self):
+        self.assertEqual(self.propose(payload={"skip": ["review"], "repeat": {"implement": 1}})[0], 0)
+        _, out, _ = self.wf("status", "--run", str(self.run_dir))
+        self.assertIn('proposal: {"repeat": {"implement": 1}, "skip": ["review"]}', out)
+
 
 class OutcomeTests(WorkflowBase):
     def test_done_appends_gate_and_score(self):

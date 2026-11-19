@@ -353,7 +353,10 @@ set to `openrouter`, `jev` or `llm`, dispatch asks it:
 - once more when the member fails and the run escalates, choosing only among the next tier's entries
   (with the decider off, escalation takes that tier's first entry);
 - never from `--dry-run` or `--route` (`--dry-run` prints `note: would ask decider (<via>)`; `--route` adds `"decider": "would ask decider (<via>)"` to its JSON), and never from
-  `sstack-workflow done` or anything else that only looks at a route.
+  `sstack-workflow done` or anything else that only looks at a route;
+- never for a security change (`--hint security`, or `--files` that classify as security). The route
+  keeps the security tier and ends with `(security: no decider)`, and an escalation takes the next
+  tier's first entry.
 
 A pick shows in the route as `decider standard/sonnet (0.9)`. A timeout, an error, an id that is not
 listed, or a confidence under `min_confidence` prints `sstack-dispatch: decider <via>: <why>;
@@ -361,9 +364,17 @@ heuristic route` on stderr. The run then goes on with the heuristic route, marke
 `(decider fallback)`. With no decider, `tier = "any"` takes the detected kind's tier, else the first
 tier on `[rules] tier_order`, else runs locally.
 
-`run.json` gains three optional keys: `tier` and `entry` (the catalogue entry a single-member run
-used, updated when it escalates) and `files` (the dispatch's `--files`). `index.jsonl` keys do not
-change.
+`run.json` gains three optional keys: `tier` and `entry` (the catalogue entry the run's first member
+used, updated when it escalates) and `files` (the files routing saw: `--files`, or for a review
+without `--files`, the changed files). `index.jsonl` keys do not change.
+
+With `review_not_implementer` on, the review leaves out whoever implemented the task: the member of
+the latest implement dispatch whose report sits beside the review's `--report` (so a decider pick
+or an escalation counts), else the member routing would pick for `implement`.
+
+`via = "openrouter"` sends the same prompt as `llm` as one user message to OpenRouter's chat
+completions API with `Authorization: Bearer $OPENROUTER_API_KEY`, and reads the answer from
+`choices[0].message.content`. A missing key, an HTTP error, a timeout or a bad reply falls back.
 
 ### Outcome records
 

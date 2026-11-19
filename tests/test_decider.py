@@ -22,8 +22,8 @@ def cfg(decider=None):
             **({"decider": decider} if decider is not None else {})}
 
 
-JEV = {"via": "jev", "url": "http://jev.test/route"}
-OR = {"via": "openrouter", "model": "typesafe/jev-router"}
+JEV = {"via": "jev", "url": "https://jev.test/route"}
+OR = {"via": "openrouter", "model": "typesafe/jev-1.14"}
 
 
 def chat(content: str):
@@ -32,6 +32,12 @@ def chat(content: str):
     resp.__enter__.return_value.read.return_value = json.dumps(
         {"model": "some/routed-model", "choices": [{"message": {"role": "assistant", "content": content}}]}).encode()
     return resp
+
+
+def resp(body: bytes):
+    r = mock.MagicMock()
+    r.__enter__.return_value.read.return_value = body
+    return r
 
 
 def decide(c, **kw):
@@ -57,6 +63,18 @@ class SettingsTests(unittest.TestCase):
             C.decider(cfg({"via": "jev"}))
         self.assertEqual(C.decider(cfg(JEV))["url"], JEV["url"])
 
+    def test_url_must_be_https_or_localhost(self):
+        for url in ("http://jev.test/route", "ftp://jev.test", "jev.test", "http://localhost.evil.test/x"):
+            with self.assertRaises(C.ConfigError, msg=url):
+                C.decider(cfg({"via": "jev", "url": url}))
+        for url in ("https://jev.test/r", "http://localhost:8080/r", "http://127.0.0.1/r"):
+            self.assertEqual(C.decider(cfg({"via": "jev", "url": url}))["url"], url)
+
+    def test_openrouter_needs_model(self):
+        with self.assertRaises(C.ConfigError):
+            C.decider(cfg({"via": "openrouter"}))
+        self.assertEqual(C.decider(cfg(OR))["model"], "openai/gpt-x")
+
     def test_key_in_config_ignored(self):
         resp = mock.MagicMock()
         resp.__enter__.return_value.read.return_value = b'{"choice": "standard/sonnet", "confidence": 0.9}'
@@ -74,11 +92,11 @@ class SettingsTests(unittest.TestCase):
             with self.assertRaises(C.ConfigError, msg=bad):
                 C.decider(cfg(bad))
         s = C.decider(cfg(OR))
-        self.assertEqual((s["url"], s["model"]), ("https://openrouter.ai/api/v1/chat/completions", "typesafe/jev-router"))
+        self.assertEqual((s["url"], s["model"]), ("https://openrouter.ai/api/v1/chat/completions", "typesafe/jev-1.14"))
 
     def test_routes_names_openrouter_model(self):
         import sstack_route as R
-        self.assertIn("decider: openrouter typesafe/jev-router (timeout 20s, min_confidence 0.5)",
+        self.assertIn("decider: openrouter typesafe/jev-1.14 (timeout 20s, min_confidence 0.5)",
                       R.routes_text(cfg(OR)).splitlines())
 
 
@@ -154,6 +172,13 @@ class DecideTests(unittest.TestCase):
         self.assertFalse(u.called)
         self.assertIn("JEV_API_KEY", err)
 
+    def test_confidence_out_of_range_none(self):
+        for conf in (float("nan"), 1.5, -0.1, "nan"):
+            with mock.patch("sstack_decider._ask", return_value={"choice": "standard/sonnet", "confidence": conf}):
+                hit, err = decide(cfg(JEV))
+            self.assertIsNone(hit, conf)
+            self.assertIn("heuristic route", err)
+
     def test_openrouter_request_shape(self):
         reply = chat('{"choice": "standard/sonnet", "confidence": 0.8}')
         with mock.patch.dict(os.environ, {"OPENROUTER_API_KEY": "or-key"}), \
@@ -163,7 +188,7 @@ class DecideTests(unittest.TestCase):
         self.assertEqual((req.full_url, req.get_method()), ("https://openrouter.ai/api/v1/chat/completions", "POST"))
         self.assertEqual(req.get_header("Authorization"), "Bearer or-key")
         body = json.loads(req.data)
-        self.assertEqual(body["model"], "typesafe/jev-router")
+        self.assertEqual(body["model"], "typesafe/jev-1.14")
         self.assertEqual(body["response_format"], {"type": "json_object"})
         user = body["messages"][-1]["content"]
         self.assertIn("standard/sonnet: frontend (standard: everyday work)", user)
@@ -203,6 +228,18 @@ class DecideTests(unittest.TestCase):
                     "urllib.request.urlopen", return_value=chat('{"choice": "cheap/default", "confidence": 0.9}')) as u:
                 decide(cfg(OR))
             self.assertEqual(u.call_args.args[0].get_header("Authorization"), "Bearer env-key")  # env wins
+
+    def test_openrouter_failures_fall_back(self):
+        import urllib.error
+        bad = (urllib.error.HTTPError("u", 500, "boom", {}, None), TimeoutError("timed out"),
+               resp(b"not json"), resp(b'{"choices": []}'), resp(b'{"choices": [{"message": {"content": "no"}}]}'))
+        for b in bad:
+            kw = {"side_effect": b} if isinstance(b, Exception) else {"return_value": b}
+            with mock.patch.dict(os.environ, {"OPENROUTER_API_KEY": "k"}), \
+                    mock.patch("urllib.request.urlopen", **kw):
+                hit, err = decide(cfg(OR))
+            self.assertIsNone(hit, b)
+            self.assertIn("decider openrouter:", err)
 
     def test_llm_parses_last_json_line(self):
         out = ('thinking...\n{"choice": "cheap/default", "confidence": 0.1}\n'

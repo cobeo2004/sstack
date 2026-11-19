@@ -156,18 +156,25 @@ where `harness` does, so a detected kind still wins for `implement`.
 # config.toml
 [decider]
 via = "heuristic"         # heuristic (default) | openrouter | jev | llm
-model = "typesafe/jev-router"  # openrouter only: any OpenRouter model id; key $OPENROUTER_API_KEY
-url = "https://…"         # jev: required, key $JEV_API_KEY; openrouter: optional endpoint override
+model = "typesafe/jev-1.14"  # openrouter only: any OpenRouter model id; key $OPENROUTER_API_KEY
+url = "https://…"         # jev: required, key $JEV_API_KEY; openrouter: optional endpoint override;
+                          # https, or http to localhost/127.0.0.1; ignored in the repo layer
 harness = "claude"        # llm only: the deciding model, run through its headless_readonly
-model = "haiku"
+model = "haiku"           # llm: the harness's model; openrouter (required): the OpenRouter model id,
+                          # key $OPENROUTER_API_KEY
 timeout = 20              # seconds, > 0
 min_confidence = 0.5      # 0..1
 ```
 
 `decider(cfg)` returns `{"via", "timeout", "min_confidence", "url", "model", "member"}` (`url` defaults to
 OpenRouter's chat completions endpoint for `openrouter`) and raises ConfigError on an unknown `via`, a
-non-positive or non-number `timeout`, a `min_confidence` outside 0..1, `jev` without `url`, `openrouter`
-without a non-empty string `model`, or `llm` without a harness that has `headless_readonly`.
+non-positive or non-number `timeout`, a `min_confidence` outside 0..1, `jev` without `url`, a url that is
+not https (http is allowed only to `localhost` / `127.0.0.1`), `openrouter` without a non-empty string
+`model`, or `llm` without a harness that has `headless_readonly`. `load()` drops `[decider] url` from the
+repo layer before merging, since the API key is sent to it; only home and local may set it.
+
+A panel member with `tier = "any"` is skipped by `resolve()`, which prints
+`sstack: role <role> panel: tier = "any" is for a single role member; skipped` on stderr.
 
 ## Stage variants
 

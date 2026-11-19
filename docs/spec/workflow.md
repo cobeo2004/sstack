@@ -97,7 +97,7 @@ review score (`null` for every step without `--findings`). `progress.md` gains o
 
 ```
 sstack-workflow show [--json]
-sstack-workflow status --run <run>
+sstack-workflow status --run <run>            # also prints `proposal: {...}` when one is stored
 sstack-workflow done <step> [--fail] [--findings <json>] [--no-dispatch <reason>] --run <run>
 sstack-workflow run <step> --run <run>
 sstack-workflow propose --run <run> [--json <file>]
@@ -109,9 +109,11 @@ or the `--json` file, and stores it in `workflow.json` only when `bounds()` find
 Otherwise it prints the errors and exits 1 with `workflow.json` unchanged. `bounds()` rejects: a key other than
 `skip`, `repeat`, `panel_size` (so a gate answer such as `answer`, `approve` or `gate` is rejected);
 skipping `pr` or `gate` (protecting `gate` is new: config can still disable it); a skip or repeat
-naming no step in the chain, or repeating `pr`; skipping a step whose role is `review` when
-`classify(changed(root))` is `security`; a `panel_size` that is not an int in 1..8. `done` then uses
-the chain minus `skip`, sends a passing step back to itself until it has passed `1 + repeat[step]` times,
+naming no step in the chain, or repeating `pr`; skipping the step whose role is `implement`, or a step
+named by any chain step's `on_fail`; skipping a step whose role is `review` when
+`classify(changed(root))` is `security` (`security_skips()`); a `panel_size` that is not an int in 1..8.
+`done` then uses the chain minus `skip`, except that it re-runs `security_skips()` each time: a skipped
+review step is kept, with a stderr line, once the diff is a security change. It sends a passing step back to itself until it has passed `1 + repeat[step]` times,
 and prints every gate line as before. `sstack-dispatch review` caps the panel at `panel_size` read from
 `workflow.json` beside its `--report`.
 

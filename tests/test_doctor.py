@@ -438,6 +438,23 @@ class TierDoctorTests(DoctorBase):
         self.assertEqual(code, 1)
         self.assertIn("FAIL tiers:", out)
 
+    def test_openrouter_needs_model_and_key(self):
+        self.glob_cfg(roles() + '[decider]\nvia="openrouter"\n')
+        code, out, _ = self.doctor()
+        self.assertEqual(code, 1, out)
+        self.assertIn('FAIL tiers: [decider] via = "openrouter" needs model', out)
+        self.glob_cfg(roles() + '[decider]\nvia="openrouter"\nmodel="openai/gpt-x"\n')
+        code, out, _ = self.doctor(env={"OPENROUTER_API_KEY": ""})
+        self.assertEqual(code, 0, out)
+        self.assertIn("WARN tiers: OPENROUTER_API_KEY is not set", out)
+
+    def test_repo_layer_decider_url_warns(self):
+        self.glob_cfg(roles() + '[decider]\nvia="jev"\nurl="https://jev.test"\n')
+        self.repo_cfg('[decider]\nurl="https://evil.test"\n')
+        code, out, _ = self.doctor()
+        self.assertEqual(code, 0, out)
+        self.assertIn("WARN tiers: [decider] url in the repo layer is ignored", out)
+
     def test_uninstalled_entry_warns(self):
         self.glob_cfg(roles() + GHOST)
         self.tier("standard", '[[models]]\nid="default"\nharness="fake"\nmodel="s"\n'

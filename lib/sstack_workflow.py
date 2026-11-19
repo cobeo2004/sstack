@@ -181,8 +181,12 @@ def bounds(p, wf: dict, root: Path) -> list[str]:
         errs, skip = errs + ["skip must be a list of step names"], []
     if not isinstance(repeat, dict):
         errs, repeat = errs + ["repeat must be a table of step = n"], {}
+    steps = wf["steps"]
     for x in skip:
-        errs += [f"skip {x}: {x} is locked"] if x in LOCKED else [] if x in chain else [f"skip {x}: no such step"]
+        fixers = sorted(n for n in chain if steps[n]["on_fail"] == x)
+        errs += [f"skip {x}: {x} is locked"] if x in LOCKED else [f"skip {x}: no such step"] if x not in chain else \
+            [f"skip {x}: {x} is the implement step"] if steps[x]["role"] == "implement" else \
+            [f"skip {x}: the on_fail target of {', '.join(fixers)}"] if fixers else []
     for x, n in repeat.items():
         if x == "pr" or x not in chain:
             errs.append(f"repeat {x}: {'pr is locked' if x == 'pr' else 'no such step'}")
@@ -191,10 +195,16 @@ def bounds(p, wf: dict, root: Path) -> list[str]:
     n = p.get("panel_size", 1)
     if type(n) is not int or not 1 <= n <= 8:
         errs.append(f"panel_size {n!r} is not a whole number from 1 to 8")
-    if [x for x in skip if (wf["steps"].get(x) or {}).get("role") == "review"] and \
-            R.classify(R.changed(root)[0]) == "security":
+    if security_skips(skip, wf, root):
         errs.append("skip review: this is a security change; review stays")
     return errs
+
+
+def security_skips(skip: list, wf: dict, root: Path) -> list[str]:
+    """The review steps in `skip` that must run: the diff is a security change. Checked by propose and
+    again by every advance, since the plan's tree is clean and the code comes later."""
+    rs = [x for x in skip if (wf["steps"].get(x) or {}).get("role") == "review"]
+    return rs if rs and R.classify(R.changed(root)[0]) == "security" else []
 
 
 def propose(root: Path, run_dir: Path, path: str | None) -> int:
@@ -319,7 +329,12 @@ def advance(root: Path, run_dir: Path, wf: dict, step: str, failed: bool = False
     when a routed role step passes with no recorded dispatch (`no_dispatch` = the reason to skip it)."""
     st = read_state(run_dir, wf["chain"])
     prop = st.get("proposal") if isinstance(st.get("proposal"), dict) else {}
-    chain = [s for s in wf["chain"] if s not in (prop.get("skip") or [])]  # the effective chain
+    skip = prop.get("skip") or []
+    if keep := security_skips(skip, wf, root):
+        print(f"sstack-workflow: proposal skip {', '.join(keep)} dropped: this is a security change; review stays",
+              file=sys.stderr)
+        skip = [x for x in skip if x not in keep]
+    chain = [s for s in wf["chain"] if s not in skip]  # the effective chain
     steps = wf["steps"]
     if step not in chain:
         print(f"sstack-workflow: no step {step!r} in the chain ({' → '.join(chain) or NO_STEPS})",
@@ -414,6 +429,8 @@ def status(root: Path, run_dir: Path) -> int:
         return 1
     st = read_state(run_dir, wf["chain"])
     print(f"at: {st['current']}")
+    if isinstance(st.get("proposal"), dict):
+        print(f"proposal: {json.dumps(st['proposal'], sort_keys=True)}")
     for n in wf["chain"]:
         e = st["steps"].get(n) or {}
         bits = [e.get("status") or "todo", f"loops {e.get('loops') or 0}/{wf['steps'][n]['max_loops']}"]

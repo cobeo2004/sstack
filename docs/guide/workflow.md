@@ -256,6 +256,8 @@ A bounds check runs first. It rejects the whole proposal (exit 1, `workflow.json
 - skips `pr` or `gate`. Protecting `gate` is new: config alone can still disable `gate`, a proposal
   cannot;
 - names a step that is not in the chain, or repeats `pr`;
+- skips the `implement` step, or a step some step's `on_fail` sends work back to (a failing gate
+  could not return there);
 - skips a `review` step while the change is a security change (`sstack-dispatch routes` kinds);
 - has any key other than `skip`, `repeat` and `panel_size`, so a proposal can never answer a gate;
 - has a `panel_size` that is not a whole number from 1 to 8.
@@ -275,6 +277,10 @@ Expected: the first call prints `skip pr: pr is locked` on stderr. The second st
 # expect
 proposal stored: {"panel_size": 2, "repeat": {"implement": 1}, "skip": ["recon"]}
 ```
+
+The plan's tree is usually clean, so the security check runs again on every `done`: once the diff
+holds a security file, a stored skip of `review` is dropped with `proposal skip review dropped: this
+is a security change; review stays` on stderr, and review runs.
 
 From then on `done` skips `recon`, sends a passing `implement` back to itself once (`repeat` means
 "pass n more times"), and the review panel holds at most two members. Every gate still prints
@@ -296,8 +302,8 @@ that passed counts its passes in `"passes"`. Each `done` also appends a gate lin
 
 Each `done` or `run` mirrors one line into `<run>/progress.md`, which is what
 `sstack-doctor --prune-runs` and a resumed session read. `sstack-workflow status --run <run>`
-prints the current step and each recorded step's status and loops, without changing
-anything.
+prints the current step, the stored proposal (`proposal: {...}`) if there is one, and each
+recorded step's status and loops, without changing anything.
 
 ## How to change this
 
