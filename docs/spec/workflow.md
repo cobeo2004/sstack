@@ -88,7 +88,10 @@ The tracker's whole state; one file per run folder, written by `done` and `run`:
 
 `status` is `pass`, `fail` or `null`; `loops` counts the step's fails; `score` is the recomputed
 review score (`null` for every step without `--findings`). `progress.md` gains one line per
-`done`/`run` (`implement: pass`, `review: fail (loop 1/2)`).
+`done`/`run` (`implement: pass`, `review: fail (loop 1/2)`). `passes` counts a step's passes (for
+`repeat`). `proposal`, when present, is what `propose` stored: `{"skip": [step], "repeat": {step: n},
+"panel_size": n}`. Each `done`/`run` also appends `{"ts", "step", "gate": "pass" | "fail", "score"}` to
+`<run>/outcomes.jsonl` (docs/spec/dispatch.md § Outcome records).
 
 ## `sstack-workflow` (CLI)
 
@@ -97,7 +100,20 @@ sstack-workflow show [--json]
 sstack-workflow status --run <run>
 sstack-workflow done <step> [--fail] [--findings <json>] [--no-dispatch <reason>] --run <run>
 sstack-workflow run <step> --run <run>
+sstack-workflow propose --run <run> [--json <file>]
 ```
+
+`propose` (run by `work` after `plan` passes; never by `done`) takes the decider's proposal
+(`sstack_decider.propose`, from `<run>/plan.md` and the chain; none with `via = "heuristic"`, exit 0)
+or the `--json` file, and stores it in `workflow.json` only when `bounds()` finds nothing wrong.
+Otherwise it prints the errors and exits 1 with `workflow.json` unchanged. `bounds()` rejects: a key other than
+`skip`, `repeat`, `panel_size` (so a gate answer such as `answer`, `approve` or `gate` is rejected);
+skipping `pr` or `gate` (protecting `gate` is new: config can still disable it); a skip or repeat
+naming no step in the chain, or repeating `pr`; skipping a step whose role is `review` when
+`classify(changed(root))` is `security`; a `panel_size` that is not an int in 1..8. `done` then uses
+the chain minus `skip`, sends a passing step back to itself until it has passed `1 + repeat[step]` times,
+and prints every gate line as before. `sstack-dispatch review` caps the panel at `panel_size` read from
+`workflow.json` beside its `--report`.
 
 `show` prints the chain with each step's kind, role, gate, `on_fail`, caps and the layer of every
 key and file, plus `disabled: …` for steps dropped by `enabled = false`. `--json` prints

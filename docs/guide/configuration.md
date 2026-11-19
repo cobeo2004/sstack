@@ -267,6 +267,79 @@ The dry run (`sstack-dispatch implement … --hint complex`) picks `tier.strong`
 not defined (here `standard`) falls back to the role's own file. A config hint or a
 `[routing.kinds]` remap that names an undefined tier is a config error.
 
+## Catalogues, `tier = "any"` and the decider
+
+A tier file can hold several models, a catalogue. Each `[[models]]` table has `id`, `harness`,
+`model`, optional `effort` and a `when` that says what it is for. A tier-level `when` describes
+the whole tier. The first entry is the tier's default, so with no decider a catalogue tier routes
+exactly like a one-model file. A plain `harness`/`model` file is a one-entry catalogue with
+`id = "default"`.
+
+A role can name a tier: `tier = "strong"` runs that tier's default. `tier = "any"` lets the
+decider pick from every tier at dispatch time. `any` is reserved, so no tier file may be called
+`any.toml`. Before this change a role's `tier` key was ignored and the role ran locally; it now
+routes to that tier.
+
+The decider is off by default (`via = "heuristic"`). Turn it on with a `[decider]` table in
+`config.toml`:
+
+```sh
+home="${SSTACK_HOME:-$HOME/.sstack}"
+mkdir -p "$home/tiers" "$home/roles"
+printf 'harness = "pi"\nmodel = "opencode-go/deepseek-v4.1-flash"\nwhen = "small, mechanical edits"\n' > "$home/tiers/cheap.toml"
+cat > "$home/tiers/standard.toml" <<'EOF'
+when = "everyday feature work"
+[[models]]
+id = "default"
+harness = "codex"
+model = "gpt-6.1-terra"
+when = "backend and general code"
+[[models]]
+id = "sonnet"
+harness = "claude"
+model = "sonnet"
+when = "frontend and UI"
+EOF
+printf 'tier = "any"\n' > "$home/roles/scout.toml"
+printf '\n[decider]\nvia = "openrouter"\nmodel = "typesafe/jev-router"\n' >> "$home/config.toml"
+sstack-dispatch scout --brief /dev/null --report /dev/null --dry-run
+sstack-dispatch routes
+```
+
+Expected (abridged). A dry run never asks the decider; it names the route it would fall back to.
+`routes` lists each catalogue entry under its tier, then the active decider:
+
+```text
+# expect
+route: tier any → tier.cheap
+note: would ask decider (openrouter)
+tiers:
+  tier.cheap → pi/opencode-go/deepseek-v4.1-flash
+  tier.standard → codex/gpt-6.1-terra
+    standard/default: codex/gpt-6.1-terra — backend and general code
+    standard/sonnet: claude/sonnet — frontend and UI
+escalation: cheap → standard → strong
+decider: openrouter typesafe/jev-router (timeout 20s, min_confidence 0.5)
+```
+
+`[decider]` keys:
+
+| key | meaning |
+|---|---|
+| `via` | `heuristic` (default: no decider call, routing as before), `openrouter`, `jev`, or `llm` |
+| `model` | the OpenRouter model id that decides (`via = "openrouter"`), for example `typesafe/jev-router` (Jev on OpenRouter) or any other id. The key comes from `OPENROUTER_API_KEY` in the environment, else from that line in `~/.sstack/.env` (`chmod 600`; the profile, never the repo), never from a config file |
+| `url` | the Jev endpoint (`via = "jev"`, key from `JEV_API_KEY`); with `openrouter`, an optional override of `https://openrouter.ai/api/v1/chat/completions` |
+| `harness`, `model`, `effort` | the model that decides (`via = "llm"`), run once through that harness's `headless_readonly` |
+| `timeout` | seconds per decider call; default 20 |
+| `min_confidence` | 0 to 1; a pick below it is ignored; default 0.5 |
+
+The decider gets the brief, the step, `<run>/plan.md` when it exists, and the changed files, plus
+one line per installed entry (`standard/sonnet: frontend and UI (standard: everyday feature work)`).
+It answers with one `tier/id` and a confidence. A timeout, an error, an unknown id or a low
+confidence falls back to the heuristic route. Entries whose harness is not installed are never
+offered; `sstack-doctor` warns about them. When and how often it runs:
+[dispatch.md](dispatch.md#the-decider).
+
 ## Migrate an old config
 
 Legacy config is a `config.toml` holding any of `[harness.*]`, `[role.*]`, `[tier.*]`, `[project]`,
@@ -314,7 +387,8 @@ then run the smoke test ([doctor.md](doctor.md#run-the-smoke-test)).
 
 ## How to change this
 
-- Loader: `lib/sstack_config.py` (`load`, `layers`, `source`, `steps`, `legacy`, `ades`, `resolve`).
+- Loader: `lib/sstack_config.py` (`load`, `layers`, `source`, `steps`, `legacy`, `ades`, `resolve`,
+  `tier_entries`, `decider`). The decider itself: `lib/sstack_decider.py`.
 - `sstack-config` CLI: `lib/sstack_configcli.py`, `bin/sstack-config`.
 - Template values: `defaults/config.toml`, `defaults/roles/`, `defaults/harnesses/`; sync is
   `sync()` in `lib/sstack_configcli.py`.

@@ -16,15 +16,17 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import sstack_ade as A
+import sstack_decider as DC
 import sstack_route as R
 import sstack_skills as S
 import sstack_workflow as W
-from sstack_config import READONLY_ROLES, VARIANT_STAGES, ConfigError, ades, git_root, load, resolve, variants
+from sstack_config import READONLY_ROLES, VARIANT_STAGES, ConfigError, ades, decider, git_root, load, resolve, variants
 
 VIAS = ("auto", "headless", "local", "ade-cli")
 WARNING = "\n\nWARNING: read-only role changed the working tree:\n"
 INDEX = ".sstack/runs/index.jsonl"
 RUNS = ".sstack/runs"
+OUTCOMES = "outcomes.jsonl"  # per task run folder (docs/spec/dispatch.md § Outcome records)
 LOCK = "implement.lock"  # the per-checkout write lock (docs/spec/dispatch.md)
 OURS = {INDEX, f"{RUNS}/{LOCK}", f"{RUNS}/{LOCK}.mutex", f"{RUNS}/{LOCK}.tmp"}  # never a warning
 fill, key, unkey = A.fill, A.key, A.unkey
@@ -453,6 +455,27 @@ def index_line(root: Path, run_dir: Path, run: dict, rec: dict) -> None:
                         **{k: run[k] for k in ("skills", "skills_missing") if k in run}})
 
 
+def append_outcome(root: Path, run_dir: Path, report: Path, run: dict, member_key: str, code: int) -> None:
+    """One outcome line per finished member, in outcomes.jsonl of the folder that holds this dispatch's
+    `dispatch/` (the task run, `<run>/`, for a report at `<run>/<step>.md`), else of the flat run dir:
+    never beside a report out in the tree. tokens and cost stay null until a harness reports them."""
+    h, _, m = member_key.partition("#")[0].partition("/")
+    parent, nested = _run_parent(root, report)
+    p = (parent.parent if nested else run_dir) / OUTCOMES
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with open(p, "a") as f:
+        f.write(json.dumps({"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "step": run.get("step"), "role": run["role"],
+                            "tier": run.get("tier"), "entry": run.get("entry"), "harness": h, "model": m,
+                            "exit": code, "escalated": bool(run.get("escalated")), "tokens": None,
+                            "cost": None}) + "\n")
+
+
+def _plan_text(report) -> str:
+    """The task run's plan: plan.md beside the report, else ""."""
+    p = Path(report).resolve().parent / "plan.md" if report else None
+    return p.read_text(errors="replace") if p and p.is_file() else ""
+
+
 def _latest(root: Path, run_dir: Path) -> dict:
     """The latest index line per member key from this run dir."""
     rd, latest = rel(root, run_dir), {}
@@ -521,7 +544,12 @@ def _escalate(root: Path, run_dir: Path, run: dict, failed: dict, report: Path, 
             sum("#" not in k for k in run["members"]) != 1 or not cfg.get("rules", {}).get("auto_escalate", True):
         return None
     avoid = R.pick(cfg, "implement", run.get("hint"), [])[0] if run["role"] == "review" else None
-    up = R.escalation(cfg, failed, avoid)
+    bp = root / run["brief"] if run.get("brief") else None
+    brief = bp.read_text() if bp and bp.is_file() else ""
+    plan = _plan_text(report)
+    # the one decider call per escalation: a re-pick within the next tier only (first entry when off)
+    choose = lambda t, cands: DC.decide(cfg, brief, run.get("step"), plan, run.get("files", []), tiers=[t])
+    up = R.escalation(cfg, failed, avoid, choose)
     if not up:
         return None
     if isolated and ade and not isolates(ade, [up[0]]) and _other_writers(root, report, cfg):
@@ -534,17 +562,15 @@ def _escalate(root: Path, run_dir: Path, run: dict, failed: dict, report: Path, 
     for src, dst in ((report, gone), (Path(str(report) + ".err"), Path(str(gone) + ".err"))):
         if src.exists():
             src.replace(dst)
-    print(f"sstack-dispatch: {key(failed)} exit {code}; escalating once to tier.{up[1]} ({key(up[0])})",
+    print(f"sstack-dispatch: {key(failed)} exit {code}; escalating once to tier.{up[1]}/{up[0]['id']} ({key(up[0])})",
           file=sys.stderr)
     edits = ("Its partial edits, if any, are in its own worktree, not in this tree; start from this tree."
              if isolated else "The working tree may hold its partial edits: read `git diff` first and keep "
                               "only what is right.")
     note = (f"\n\n---\nNote: a previous attempt on a cheaper model failed (exit {code}); its report is "
             f"{gone}. {edits}\n")
-    bp = root / run["brief"] if run.get("brief") else None
-    brief = bp.read_text() if bp and bp.is_file() else ""
     run.update(members=[key(up[0]) if k == key(failed) else k for k in run["members"]], escalated=True, started_at=time.time(),
-               route=f"escalated from {run.get('route')} → tier.{up[1]}")
+               route=f"escalated from {run.get('route')} → tier.{up[1]}/{up[0]['id']}", tier=up[1], entry=up[0]["id"])
     return up[0], brief + note
 
 
@@ -595,6 +621,7 @@ def _record(a, root: Path, run_dir: Path) -> int:
                                     "secs": round(time.time() - run.get("started_at", time.time()), 1),
                                     "via": run.get("via", "auto"), "readonly_warning": warning,
                                     "session": {"id": a.session, "kind": a.session_kind} if a.session else None})
+    append_outcome(root, run_dir, report, run, a.member, code)
     if code != 0:
         failed = unkey(a.member)
         try:
@@ -683,6 +710,13 @@ def main(argv: list[str] | None = None) -> int:
             detected, lines = R.changed(root, a.base)
             files = files if a.files is not None else detected
         member, route, notes = R.pick(cfg, a.role, a.hint, files)
+        if route.startswith("tier any") and (dvia := decider(cfg)["via"]) != "heuristic":
+            if a.route or a.dry_run:  # never a model or network call from a preview
+                notes.append(f"would ask decider ({dvia})")
+            elif (hit := DC.decide(cfg, Path(a.brief).read_text(errors="replace"), a.step, _plan_text(a.report), files)):
+                member, route = hit, f"decider {hit['tier']}/{hit['id']} ({hit['confidence']:g})"
+            else:
+                route += " (decider fallback)"
         if a.role == "review" and via != "local":
             members, route = _review_members(cfg, a, member, files, lines, rules)
         elif route == "panel":
@@ -713,7 +747,8 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 p = {"ade": ade and ade["name"], "role": a.role, "readonly": readonly, "run_dir": run_dir,
                      "calls": [{"member": key(m), "via": shape} for m in members or []]}
-            print(json.dumps({**p, "route": route}, indent=2))
+            ask = [n for n in notes if n.startswith("would ask decider")]
+            print(json.dumps({**p, "route": route, **({"decider": ask[0]} if ask else {})}, indent=2))
             return 0 if members else 3
         # the write lock: one writer per checkout, whatever runs it (docs/spec/dispatch.md)
         timeout_s = float(cfg.get("dispatch", {}).get("timeout_min", 30)) * 60
@@ -772,7 +807,9 @@ def main(argv: list[str] | None = None) -> int:
                       {"title": title, "brief": rel(root, brief_p), "route": route, "ade": ade_name,
                        **({"session": sess} if sess else {}),
                        "via": "headless" if shape == "headless" else via, "hint": a.hint,
-                       "no_escalate": a.no_escalate, "step": a.step, "max_agents": cap})
+                       "no_escalate": a.no_escalate, "step": a.step, "max_agents": cap, "files": files,
+                       **({"tier": members[0]["tier"], "entry": members[0]["id"]}
+                          if len(members) == 1 and members[0].get("tier") else {})})
     run = json.loads((run_dir / "run.json").read_text())
     if found or missing:  # a derived brief, like brief.escalated.md; escalation reuses run["brief"]
         for n in missing:
@@ -852,6 +889,7 @@ def main(argv: list[str] | None = None) -> int:
         index_line(root, run_dir, run, {"member": key(m), "exit": code, "secs": round(time.monotonic() - t, 1),
                                         "report": rp, "ade": used, "via": how, "readonly_warning": warning,
                                         "session": session_of(sx)})
+        append_outcome(root, run_dir, rp, run, key(m), code)
         return code
 
     if len(members) == 1:
@@ -906,6 +944,15 @@ def _add_variants(cfg, root, a, members, files, rules):
     return members, vs
 
 
+def _panel_size(report) -> int | None:
+    """`proposal.panel_size` from the task run's workflow.json beside the report (sstack-workflow propose)."""
+    try:
+        n = json.loads((Path(report).resolve().parent / "workflow.json").read_text())["proposal"]["panel_size"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    return n if type(n) is int and n > 0 else None
+
+
 def _review_members(cfg, a, picked, files, lines, rules):
     """One reviewer by default; the full panel for risky kinds, big diffs, --panel or mode=panel."""
     spec = cfg.get("role", {}).get("review") or {}
@@ -920,6 +967,8 @@ def _review_members(cfg, a, picked, files, lines, rules):
         impl, _, _ = R.pick(cfg, "implement", a.hint, files)
     if reason and "panel" in spec:
         panel = [m for m in resolve(cfg, "review") or [] if not R.same(m, impl)]
+        if (n := _panel_size(a.report)) and n < len(panel):
+            return panel[:n], f"panel ({reason}, proposal panel_size {n})"
         return panel, f"panel ({reason})"
     candidates = [picked] + [R._member(cfg, x) for x in spec.get("panel", [])] + [R.tier_member(cfg, "strong")]
     for c in candidates:

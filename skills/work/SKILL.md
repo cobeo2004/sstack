@@ -42,6 +42,8 @@ After every step, record it and read what it prints:
   `done review --run <run> --findings <run>/review/findings.json`.
 - `sstack-workflow run <step> --run <run>` for a command step: it executes the
   step's `run.sh` from the repo root and records pass or fail.
+- After `plan` passes, run `sstack-workflow propose --run <run>` once: with a decider on, it may
+  skip or repeat unlocked steps or cap the review panel, inside a bounds check. Gates still ask.
 - `next: <step>` → go there, by running the `do: …` line printed after it. `next: done`
   → the chain is finished.
 - `done` refuses (exit 1) a routed role step that nobody dispatched, and prints the

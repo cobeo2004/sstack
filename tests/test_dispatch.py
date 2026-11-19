@@ -860,3 +860,96 @@ class SessionTests(FakeCliBase):
         self.assertEqual(code, 0, err)
         self.assertEqual(self.index()[0]["readonly_warning"], [])
         self.assertNotIn("WARNING", self.report().read_text())
+
+
+DEC = FAKE + ('[tier.cheap]\nharness="fake"\nmodel="cheap"\n[tier.strong]\nharness="fake"\nmodel="strong"\n'
+              '[role.implement]\ntier="any"\n[decider]\nvia="jev"\nurl="http://jev.test/route"\n')
+STD = ('when="everyday work"\n[[models]]\nid="default"\nharness="fake"\nmodel="standard"\nwhen="most tasks"\n'
+       '[[models]]\nid="sonnet"\nharness="fake"\nmodel="sonnet"\nwhen="frontend"\n')
+OUTCOME_KEYS = {"ts", "step", "role", "tier", "entry", "harness", "model", "exit", "escalated", "tokens", "cost"}
+
+
+class DeciderTests(FakeCliBase):
+    """`tier = "any"` asks the decider once per dispatch (mocked); never from --dry-run or `done`."""
+
+    def setup_cfg(self, extra=""):
+        import sstack_config as C
+        self.glob_cfg(DEC + extra)
+        self.write(self.home / ".sstack", "tiers/standard.toml", STD)
+        return C.load(self.root)
+
+    def sonnet(self, cfg, *a, **k):
+        return {**D.R.tier_entries(cfg, "standard")[1], "confidence": 0.9}
+
+    def index(self):
+        return [json.loads(l) for l in (self.root / ".sstack/runs/index.jsonl").read_text().splitlines()]
+
+    def test_any_tier_decider_pick_recorded(self):
+        self.setup_cfg()
+        with mock.patch("sstack_decider.decide", side_effect=self.sonnet) as dec:
+            code, _, err = self.dispatch("implement")
+        self.assertEqual(code, 0, err)
+        self.assertEqual(dec.call_args.args[1:], ("do the thing", None, "", []))
+        rec = self.index()[0]
+        self.assertEqual(rec["model"], "sonnet")
+        self.assertEqual(rec["route"], "decider standard/sonnet (0.9)")
+        self.assertLessEqual(set(rec), INDEX_KEYS | {"session", "skills", "skills_missing"})
+        run = json.loads((self.root / rec["run_dir"] / "run.json").read_text())
+        self.assertEqual((run["tier"], run["entry"], run["files"]), ("standard", "sonnet", []))
+
+    def test_decider_timeout_falls_back(self):
+        self.setup_cfg()
+        with mock.patch("sstack_decider._ask", side_effect=TimeoutError("timed out")):
+            code, _, err = self.dispatch("implement")
+        self.assertEqual(code, 0, err)
+        self.assertIn("decider jev: timed out; heuristic route", err)
+        rec = self.index()[0]
+        self.assertEqual(rec["model"], "cheap")
+        self.assertTrue(rec["route"].endswith("(decider fallback)"), rec["route"])
+
+    def test_dry_run_never_asks(self):
+        self.setup_cfg()
+        with mock.patch("sstack_decider.decide", side_effect=AssertionError):
+            code, out, err = self.dispatch("implement", "--dry-run")
+            self.assertEqual(code, 0, err)
+            self.assertIn("would ask decider (jev)", out)
+            code, out, err = self.run_main("implement", "--route")
+            self.assertEqual(code, 0, err)
+            self.assertEqual(json.loads(out)["decider"], "would ask decider (jev)")
+
+    def test_workflow_done_never_asks(self):
+        import sstack_workflow as W
+        self.setup_cfg()
+        spec = {"kind": "role", "role": "implement", "max_agents": 1}
+        with mock.patch("sstack_decider.decide", side_effect=AssertionError):
+            self.assertTrue(W.routed(self.root, spec))
+
+    def test_dispatch_appends_outcome(self):
+        self.setup_cfg()
+        task = self.root / ".sstack" / "runs" / "task-1"
+        with mock.patch("sstack_decider.decide", side_effect=self.sonnet):
+            code, _, err = self.run_main("implement", "--brief", self.brief(), "--report", str(task / "implement.md"))
+            self.assertEqual(code, 0, err)
+            code, _, err = self.dispatch("implement")  # a flat report: the line goes in its run dir, not out/
+        self.assertEqual(code, 0, err)
+        self.assertFalse((self.root / "out" / "outcomes.jsonl").exists())
+        flat = self.root / self.index()[1]["run_dir"] / "outcomes.jsonl"
+        self.assertEqual(len(flat.read_text().splitlines()), 1)
+        lines = [json.loads(l) for l in (task / "outcomes.jsonl").read_text().splitlines()]
+        self.assertEqual(len(lines), 1)
+        self.assertEqual(set(lines[0]), OUTCOME_KEYS)
+        self.assertEqual({k: lines[0][k] for k in ("role", "tier", "entry", "harness", "model", "exit", "escalated",
+                                                   "tokens", "cost")},
+                         {"role": "implement", "tier": "standard", "entry": "sonnet", "harness": "fake",
+                          "model": "sonnet", "exit": 0, "escalated": False, "tokens": None, "cost": None})
+
+    def test_panel_size_caps_review(self):
+        self.glob_cfg(FAKE + '[role.review]\npanel=[{harness="fake",model="p1"},{harness="fake",model="p2"},'
+                             '{harness="fake",model="p3"}]\n')
+        code, out, _ = self.dispatch("review", "--panel", "--dry-run")
+        self.assertEqual(out.count("headless:"), 3, out)
+        self.write(self.root, "out/workflow.json", json.dumps({"current": "review", "steps": {},
+                                                               "proposal": {"panel_size": 2}}))
+        code, out, err = self.dispatch("review", "--panel", "--dry-run")
+        self.assertEqual(code, 0, err)
+        self.assertEqual(out.count("headless:"), 2, out)

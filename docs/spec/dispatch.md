@@ -91,7 +91,9 @@ Keys: `role`, `members`, `report_base`, `panel_report`, `started_at`, `readonly`
 none was used), `via` (`auto` | `headless` | `ade-cli`), `hint` (`--hint` or null), `no_escalate`
 (`--no-escalate`: never escalate this run; sstack-doctor smoke), `step` (`--step` or null),
 `max_agents` (the cap this dispatch used; an escalated run's payload carries it), `skills` /
-`skills_missing` (only with skills; see Skills). Written later:
+`skills_missing` (only with skills; see Skills), `files` (the `--files` used for routing), and
+`tier` / `entry` (the catalogue entry of a single-member run, when it came from a tier; updated on
+escalation). `files`, `tier` and `entry` are optional; `index.jsonl` keys are unchanged. Written later:
 `escalated` (true once `record` or dispatch escalated; never twice) and `panel_written` (true once
 the panel index was written; never rewritten).
 
@@ -350,6 +352,62 @@ Panel index (`bin/sstack-reflect-hook` parses `: exit 0 → (.+)$`):
 - codex/gpt-6.1-sol: exit 0 → .sstack/runs/task/dispatch/1200-review/r.codex-gpt-6.1-sol.md
 - claude/opus: exit 1 → gap (no report)
 ```
+
+## Decider
+
+`lib/sstack_decider.py`; settings from `[decider]` (docs/spec/config.md). `decide()` and `propose()` are the
+only functions that call Jev, OpenRouter or a model. `route.pick()` and its callers (`sstack_workflow.routed` on
+every `done`, `_add_variants`, `_review_members`, `--route`, `--dry-run`) never call them.
+
+When it runs: once per dispatch whose `pick` route starts with `tier any` (`--dry-run` adds
+the note `would ask decider (<via>)`, `--route` a `"decider"` key with the same text; neither calls it), plus once per escalation with
+`tiers=[<next tier>]`. `via = "heuristic"` never calls anything.
+
+Input payload (task and plan cut to 8000 characters each):
+
+```json
+{"task": "<brief text>", "step": "implement", "plan": "<run>/plan.md or \"\"", "files": ["web/a.tsx"],
+ "choices": ["cheap/default: small edits", "standard/sonnet: frontend (standard: everyday work)"],
+ "reply": "one JSON line: {\"choice\": \"<tier>/<id>\", \"confidence\": <0..1>}"}
+```
+
+`choices` covers every tier on `rules.tier_order`, then the other tiers, and drops entries whose harness
+is not installed. The reply `{"choice": "<tier>/<id>", "confidence": <float>}` is used only when `choice`
+is listed and `confidence >= min_confidence`. The route is then `decider <tier>/<id> (<confidence>)`. Any
+error, a timeout, an unlisted choice or a low confidence prints `sstack-dispatch: decider <via>: <why>;
+heuristic route` and keeps the heuristic route plus ` (decider fallback)`.
+
+- `openrouter`: a `urllib` POST to `url` (default `https://openrouter.ai/api/v1/chat/completions`) with
+  `Authorization: Bearer $OPENROUTER_API_KEY` and body `{"model": <model>, "messages": [{"role": "user",
+  "content": <prompt + payload>}], "response_format": {"type": "json_object"}}` (OpenRouter's documented,
+  OpenAI-compatible API). The reply is `choices[0].message.content`, parsed as JSON or else its last `{...}`
+  line. `model = "typesafe/jev-router"` is Jev on OpenRouter: Jev routes this one decider request to a model
+  of its choosing, and the price varies with that model. A missing `OPENROUTER_API_KEY` falls back.
+- Keys (`OPENROUTER_API_KEY`, `JEV_API_KEY`) come from the environment, else from a `NAME=value` line
+  (optional `export`, quotes stripped) in `$SSTACK_HOME/.env`, so agent shells without the variable still
+  reach the decider. Never from config or a repo file (`_key()`).
+- `jev`: a `urllib` POST of the payload as JSON to `url` with `Authorization: Bearer $JEV_API_KEY`; the
+  response body is the reply. **This request/response shape is assumed; Jev's vendor docs were not
+  checked.** It lives only in `_jev()`. A missing `JEV_API_KEY` falls back.
+- `llm`: the `[decider]` member's `headless_readonly`, once, with a prompt plus the payload on stdin and
+  `timeout`; the reply is the last stdout line that is a `{...}` JSON object.
+
+`propose(cfg, plan, chain)` sends `{"plan", "chain", "reply"}` the same way and returns the reply object
+(or None) for `sstack-workflow propose` (docs/spec/workflow.md).
+
+## Outcome records
+
+Each finished member appends one line to `outcomes.jsonl` in the folder that holds the run's `dispatch/`
+(the task run folder), or in the flat run dir:
+
+```json
+{"ts": "2026-11-19T15:40:00", "step": "implement", "role": "implement", "tier": "standard", "entry": "sonnet",
+ "harness": "claude", "model": "sonnet", "exit": 0, "escalated": false, "tokens": null, "cost": null}
+```
+
+Written by headless/hook/ade-cli dispatch beside each index line, and by `record`. `tier` and `entry` are
+the run's (null when it has none). `tokens` and `cost` are null until a harness reports them.
+`sstack-workflow done` appends `{"ts", "step", "gate", "score"}` lines to `<run>/outcomes.jsonl`.
 
 ## `ade` subcommand
 

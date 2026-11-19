@@ -6,6 +6,7 @@ tiers/ ades/ (one file per thing, replaced whole). <sstack>/defaults is the prof
 `sstack-config sync` copies into home; at runtime only its code files (steps/*/run.sh, ades/*.hook)
 are read, as a fallback when no layer has one."""
 import os
+import shutil
 import subprocess
 import tomllib
 from pathlib import Path
@@ -305,6 +306,81 @@ def _member(cfg: dict, m: dict) -> dict | None:
     return {"harness": h, "model": m.get("model"), "effort": m.get("effort")}
 
 
+def tier_entries(cfg: dict, tier: str | None) -> list[dict]:
+    """A tier's catalogue, first entry = the tier default: each `[[models]]` table, or the plain
+    file's harness/model as one entry `id = "default"`. An entry is a member plus `tier`, `id`,
+    `when` and the tier-level `tier_when`. A missing tier is []; a malformed `models` (doctor FAILs
+    it) keeps only its tables. `[[models]]` wins over a top-level harness (doctor FAILs both)."""
+    spec = cfg.get("tier", {}).get(tier) if tier else None
+    if not isinstance(spec, dict):
+        return []
+    tw = spec.get("when", "")
+    if "models" in spec:
+        rows = [e for e in spec["models"] if isinstance(e, dict)] if isinstance(spec["models"], list) else []
+        return [{**m, "tier": tier, "id": e.get("id"), "when": e.get("when", ""), "tier_when": tw}
+                for e in rows if (m := _member(cfg, e))]
+    m = _member(cfg, spec)
+    return [{**m, "tier": tier, "id": "default", "when": tw, "tier_when": ""}] if m else []
+
+
+def harness_installed(cfg: dict, h: str) -> bool:
+    """Every headless argv[0] of harness `h` is on PATH (the rule doctor's `harness CLIs` applies)."""
+    spec = cfg.get("harness", {}).get(h) or {}
+    argvs = [spec[k] for k in ("headless", "headless_readonly") if spec.get(k)]
+    return bool(argvs) and all(shutil.which(a[0]) for a in argvs)
+
+
+DECIDER_VIAS = ("heuristic", "jev", "openrouter", "llm")
+OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+
+
+def decider(cfg: dict) -> dict:
+    """`[decider]` settings: {"via", "timeout", "min_confidence", "url", "model", "member"}. Defaults:
+    heuristic (no decider call), 20 s, 0.5. `jev` needs `url`; `openrouter` needs `model` (an OpenRouter
+    model id, e.g. typesafe/jev-router; `url` defaults to its chat completions endpoint); `llm` needs a
+    `harness` (optional model/effort) with a headless_readonly. Keys come from $JEV_API_KEY and
+    $OPENROUTER_API_KEY only, never from config."""
+    t = cfg.get("decider", {})
+    if not isinstance(t, dict):
+        raise ConfigError(f"decider {t!r} is not a table")
+    via, timeout, conf = t.get("via", "heuristic"), t.get("timeout", 20), t.get("min_confidence", 0.5)
+    num = lambda v: isinstance(v, (int, float)) and not isinstance(v, bool)
+    if via not in DECIDER_VIAS:
+        raise ConfigError(f"[decider] via {via!r} is not one of: {', '.join(DECIDER_VIAS)}")
+    if not num(timeout) or timeout <= 0:
+        raise ConfigError(f"[decider] timeout {timeout!r} is not a positive number of seconds")
+    if not num(conf) or not 0 <= conf <= 1:
+        raise ConfigError(f"[decider] min_confidence {conf!r} is not a number from 0 to 1")
+    if via == "jev" and not t.get("url"):
+        raise ConfigError("[decider] via = \"jev\" needs url")
+    model = t.get("model") if via == "openrouter" else None
+    if via == "openrouter" and not (isinstance(model, str) and model):
+        raise ConfigError("[decider] via = \"openrouter\" needs model (an OpenRouter model id, e.g. typesafe/jev-router)")
+    member = None
+    if via == "llm":
+        member = _member(cfg, t)
+        if member is None:
+            raise ConfigError("[decider] via = \"llm\" needs harness (and optional model, effort)")
+        if "headless_readonly" not in cfg["harness"][member["harness"]]:
+            raise ConfigError(f"[decider] harness {member['harness']!r} has no headless_readonly")
+    url = t.get("url") or (OPENROUTER_URL if via == "openrouter" else None)
+    return {"via": via, "timeout": float(timeout), "min_confidence": float(conf), "url": url, "model": model,
+            "member": member}
+
+
+def _spec_member(cfg: dict, x: dict) -> dict | None:
+    """A role or panel member: `tier = "<name>"` is that tier's default entry, `tier = "any"` is
+    left to dispatch (route.pick and the decider), else harness/model."""
+    t = x.get("tier")
+    if t == "any":
+        return None
+    if t:
+        if t not in cfg.get("tier", {}):
+            raise ConfigError(f"tier {t!r} is not defined (add [tier.{t}])")
+        return (tier_entries(cfg, t) or [None])[0]
+    return _member(cfg, x)
+
+
 def resolve(cfg: dict, role: str) -> list[dict] | None:
     """None = run locally in this session; else a list of members."""
     if cfg.get("dispatch", {}).get("via") == "local":
@@ -313,7 +389,7 @@ def resolve(cfg: dict, role: str) -> list[dict] | None:
     if not spec:
         return None
     raw = spec["panel"] if "panel" in spec else [spec]
-    members = [m for m in (_member(cfg, x) for x in raw) if m]
+    members = [m for m in (_spec_member(cfg, x) for x in raw) if m]
     if role == "review" and cfg.get("rules", {}).get("review_not_implementer", True):
         impl = resolve(cfg, "implement")
         if impl:

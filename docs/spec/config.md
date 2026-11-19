@@ -7,7 +7,7 @@ Owner: `lib/sstack_config.py`. Fixtures: `tests/fixtures/config/<case>/` (each w
 
 ```
 <layer>/
-  config.toml            ade, [dispatch], [rules], [reflect], [routing], [overnight], [unattended] — merged key by key
+  config.toml            ade, [dispatch], [rules], [reflect], [routing], [overnight], [unattended], [decider] — merged key by key
   project.toml           repo layers only (repo, local); replaced whole      — was [project]
   harnesses/<name>.toml  one harness                                         — replaced whole
   roles/<role>.toml      one role (sub-tables like [hint.ui] allowed)        — replaced whole
@@ -118,6 +118,56 @@ The env beats the config; the config beats the default. Any other `plan_gate` or
 value, or a non-bool `enabled`, is a `ConfigError` naming the allowed values (`auto, inbox`), and
 `sstack-doctor`'s `unattended` check FAILs it. The defaults live in code and the template lists the
 keys commented out, so `load()` output and `sstack-config sync` are unchanged until a layer sets them.
+
+## Tiers, catalogues and `[decider]`
+
+`tiers/<tier>.toml` is either one member (`harness`, `model`, `effort`, optional `when`) or a
+catalogue:
+
+```toml
+# tiers/standard.toml
+when = "everyday feature work"     # tier-level, shown to the decider
+[[models]]
+id = "default"                     # first entry = the tier default (no decider, escalation, routes)
+harness = "codex"
+model = "gpt-6.1-terra"
+when = "backend and general code"
+[[models]]
+id = "sonnet"
+harness = "claude"
+model = "sonnet"
+effort = "high"
+when = "frontend and UI"
+```
+
+`tier_entries(cfg, tier)` returns the entries in file order, each a member plus `tier`, `id`, `when`
+and `tier_when`. A one-member file is one entry `id = "default"` (its `when` is the entry's). A missing
+tier is `[]`. A file with both a top-level `harness` and `[[models]]` uses `[[models]]` (doctor FAILs it).
+`harness_installed(cfg, h)` is true when every `headless`/`headless_readonly` argv[0] of `h` is on `PATH`.
+
+A tier may not be named `any`. In a role (or a panel member), `tier = "<name>"` resolves to that
+tier's default entry; an undefined tier is a ConfigError. `tier = "any"` resolves to no member in
+`resolve()`; `route.pick` labels it `tier any → <fallback>` (the kind's tier, else the first defined
+tier on `rules.tier_order`, else local) and dispatch may ask the decider (docs/spec/dispatch.md § Decider).
+For `implement`, `tier = "any"` is checked before kind routing, after config hints. A named tier comes
+where `harness` does, so a detected kind still wins for `implement`.
+
+```toml
+# config.toml
+[decider]
+via = "heuristic"         # heuristic (default) | openrouter | jev | llm
+model = "typesafe/jev-router"  # openrouter only: any OpenRouter model id; key $OPENROUTER_API_KEY
+url = "https://…"         # jev: required, key $JEV_API_KEY; openrouter: optional endpoint override
+harness = "claude"        # llm only: the deciding model, run through its headless_readonly
+model = "haiku"
+timeout = 20              # seconds, > 0
+min_confidence = 0.5      # 0..1
+```
+
+`decider(cfg)` returns `{"via", "timeout", "min_confidence", "url", "model", "member"}` (`url` defaults to
+OpenRouter's chat completions endpoint for `openrouter`) and raises ConfigError on an unknown `via`, a
+non-positive or non-number `timeout`, a `min_confidence` outside 0..1, `jev` without `url`, `openrouter`
+without a non-empty string `model`, or `llm` without a harness that has `headless_readonly`.
 
 ## Stage variants
 

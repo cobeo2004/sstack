@@ -8,7 +8,7 @@ import fnmatch
 import subprocess
 from pathlib import Path
 
-from sstack_config import ConfigError, _member
+from sstack_config import ConfigError, _member, decider, tier_entries
 
 KINDS = {  # checked by _kind(); order of the checks lives there
     "security": ["*auth*", "*crypto*", "*payment*", "*billing*", "*secret*", "*permission*",
@@ -86,14 +86,23 @@ def same(a: dict | None, b: dict | None) -> bool:
 
 
 def tier_member(cfg: dict, tier: str | None, strict: bool = False) -> dict | None:
-    spec = cfg.get("tier", {}).get(tier) if tier else None
-    if tier and spec is None and strict:
+    """The tier's default: its first catalogue entry."""
+    if tier and strict and tier not in cfg.get("tier", {}):
         raise ConfigError(f"tier {tier!r} is not defined (add [tier.{tier}])")
-    return _member(cfg, spec) if spec else None
+    return (tier_entries(cfg, tier) or [None])[0]
 
 
 def tier_of(cfg: dict, member: dict | None) -> str | None:
-    return next((t for t in cfg.get("tier", {}) if same(tier_member(cfg, t), member)), None)
+    return next((t for t in cfg.get("tier", {}) if any(same(e, member) for e in tier_entries(cfg, t))), None)
+
+
+def _any_fallback(cfg: dict, kind: str | None) -> tuple[dict | None, str]:
+    """`tier = "any"` without a decider pick: the kind's tier, else the first tier on the ladder, else local."""
+    order = cfg.get("rules", {}).get("tier_order", TIER_ORDER)
+    for t in ([kind_tiers(cfg)[kind]] if kind else []) + list(order):
+        if (m := tier_member(cfg, t)):
+            return m, f"tier.{t}"
+    return None, "local"
 
 
 def kind_tiers(cfg: dict) -> dict[str, str]:
@@ -141,10 +150,15 @@ def pick(cfg: dict, role: str, hint: str | None, files: list[str]) -> tuple[dict
             return _hint_member(cfg, h), f"hint {name} (paths)", notes
     if hint and hint not in kt:
         notes.append(f"unknown hint {hint!r}; known: {', '.join([*hints, *kt])}")
+    if spec.get("tier") == "any":  # dispatch may ask the decider; pick never does (it runs on every `done`)
+        m, label = _any_fallback(cfg, kind)
+        return m, f"tier any → {label}", notes
     if role == "implement" and kind and cfg.get("tier"):
         remapped = kind in cfg.get("routing", {}).get("kinds", {})
         if (m := tier_member(cfg, kt[kind], strict=remapped)):  # a built-in default tier may be absent
             return m, f"{'hint' if hint == kind else 'auto'} {kind} → tier.{kt[kind]}", notes
+    if spec.get("tier"):
+        return tier_member(cfg, spec["tier"], strict=True), f"role tier.{spec['tier']}", notes
     if spec.get("harness"):
         return _member(cfg, spec), "role default", notes
     if "panel" in spec:
@@ -152,24 +166,33 @@ def pick(cfg: dict, role: str, hint: str | None, files: list[str]) -> tuple[dict
     return None, "local", notes  # an unlisted role stays in this session: cheapest, context is here
 
 
-def escalation(cfg: dict, member: dict, avoid: dict | None = None) -> tuple[dict, str] | None:
-    """The first tier above the failed member's on rules.tier_order that is a different agent and
-    not `avoid` (the implementer, for a review). A member outside every tier goes to the top tier."""
+def escalation(cfg: dict, member: dict, avoid: dict | None = None, choose=None) -> tuple[dict, str] | None:
+    """The first tier above the failed member's on rules.tier_order holding an entry that is a different
+    agent and not `avoid` (the implementer, for a review). A member outside every tier goes to the top
+    tier. Within that tier `choose(tier, candidates)` may pick (the decider); a pick outside the
+    candidates, or none, takes the first candidate."""
     order = [t for t in cfg.get("rules", {}).get("tier_order", TIER_ORDER) if t in cfg.get("tier", {})]
     cur = tier_of(cfg, member)
     if cur is not None and cur not in order:
         return None  # a tier off the ladder doesn't escalate
     for t in (order[order.index(cur) + 1:] if cur else order[-1:]):
-        m = tier_member(cfg, t)
-        if m and not same(m, member) and not same(m, avoid):
-            return m, t
+        cands = [e for e in tier_entries(cfg, t) if not same(e, member) and not same(e, avoid)]
+        if cands:
+            hit = choose(t, cands) if choose else None
+            return next((c for c in cands if hit and c["id"] == hit.get("id")), cands[0]), t
     return None
 
 
 def routes_text(cfg: dict, variants: list[dict] = ()) -> str:
     fmt = lambda m: f"{m['harness']}/{m['model'] or 'default'}" if m else "local"
     out = ["tiers:"]
-    out += [f"  tier.{t} → {fmt(tier_member(cfg, t))}" for t in cfg.get("tier", {})] or ["  (none: kinds off)"]
+    for t in cfg.get("tier", {}):
+        es = tier_entries(cfg, t)
+        out.append(f"  tier.{t} → {fmt(es[0] if es else None)}")
+        if len(es) > 1:  # a one-entry tier prints as it always did
+            out += [f"    {t}/{e['id']}: {fmt(e)}" + (f" — {e['when']}" if e["when"] else "") for e in es]
+    if not cfg.get("tier"):
+        out.append("  (none: kinds off)")
     order = cfg.get("rules", {}).get("tier_order", TIER_ORDER)
     out.append(f"escalation: {' → '.join(order)}")
     out.append("kinds (implement; --hint <kind> or detected from --files):")
@@ -184,4 +207,9 @@ def routes_text(cfg: dict, variants: list[dict] = ()) -> str:
     for v in variants:
         ms = ", ".join(map(fmt, variant_members(cfg, v))) or "local"
         out.append(f"  {v['id']}: {v['spec'].get('when', '')} → {ms} ({v['layer']})")
+    d = decider(cfg)
+    how = {"heuristic": "", "jev": f" {d['url']}", "openrouter": f" {d['model']}",
+           "llm": f" {fmt(d['member'])}"}[d["via"]]
+    out.append(f"decider: {d['via']}{how}" + (f" (timeout {d['timeout']:g}s, min_confidence {d['min_confidence']:g})"
+                                              if d["via"] != "heuristic" else ""))
     return "\n".join(out) + "\n"

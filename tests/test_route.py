@@ -220,3 +220,102 @@ class ReviewFixTests(DispatchBase):
         self.assertIn("tier.gpu → fake/gpu", out)
         self.assertIn("frontend: tier.ui-fast → fake/uifast", out)
         self.assertIn("data: tier.gpu → fake/gpu", out)
+
+
+CAT = ('when = "hard work"\n'
+       '[[models]]\nid = "a"\nharness = "fake"\nmodel = "sa"\nwhen = "deep reasoning"\n'
+       '[[models]]\nid = "b"\nharness = "fake"\nmodel = "sb"\neffort = "high"\nwhen = "long context"\n')
+
+
+class CatalogueTests(DispatchBase):
+    """Tier catalogues ([[models]]), role-level tier and tier = "any", escalation re-picks, routes output."""
+    dry = RouteTests.dry
+
+    def cat(self, extra="", tier="strong", text=CAT):
+        import sstack_config as C
+        self.glob_cfg(TIERS + extra)
+        self.write(self.home / ".sstack", f"tiers/{tier}.toml", text)
+        return C.load(self.root)
+
+    def test_plain_tier_is_one_entry(self):
+        cfg = self.cat()
+        self.assertEqual(R.tier_entries(cfg, "cheap"), [{"harness": "fake", "model": "cheap", "effort": None,
+                                                         "tier": "cheap", "id": "default", "when": "",
+                                                         "tier_when": ""}])
+        self.assertEqual(R.tier_entries(cfg, "nope"), [])
+
+    def test_models_first_entry_is_default(self):
+        cfg = self.cat()
+        self.assertEqual(R.tier_member(cfg, "strong")["model"], "sa")
+        self.assertEqual([(e["id"], e["when"], e["tier_when"]) for e in R.tier_entries(cfg, "strong")],
+                         [("a", "deep reasoning", "hard work"), ("b", "long context", "hard work")])
+
+    def test_tier_of_matches_any_entry(self):
+        cfg = self.cat()
+        self.assertEqual(R.tier_of(cfg, {"harness": "fake", "model": "sb", "effort": None}), "strong")
+
+    def test_role_tier_name_resolves(self):
+        self.glob_cfg(TIERS + '[role.scout]\ntier="strong"\n')
+        code, out, err = self.dry("scout")
+        self.assertEqual(code, 0, err)
+        self.assertIn("route: role tier.strong", out)
+        self.assertIn("fake_agent.py strong", out)
+
+    def test_role_tier_any_label_no_decider(self):
+        from unittest import mock
+        self.glob_cfg(TIERS + '[role.scout]\ntier="any"\n[decider]\nvia="jev"\nurl="http://jev.test"\n')
+        with mock.patch("sstack_decider.decide", side_effect=AssertionError):
+            code, out, err = self.dry("scout")
+        self.assertEqual(code, 0, err)
+        self.assertIn("route: tier any → tier.cheap", out)
+        self.assertIn("would ask decider (jev)", out)
+
+    def test_escalation_first_entry_when_off(self):
+        cfg = self.cat()
+        m, t = R.escalation(cfg, {"harness": "fake", "model": "standard", "effort": None})
+        self.assertEqual((m["id"], m["model"], t), ("a", "sa", "strong"))
+
+    def test_escalation_repicks_within_next_tier(self):
+        from unittest import mock
+        self.cat('[rules]\ntier_order=["cheap","strong"]\n[decider]\nvia="jev"\nurl="http://jev.test"\n',
+                 tier="cheap", text='harness="fake"\nmodel="fail"\n')
+        self.write(self.home / ".sstack", "tiers/strong.toml", CAT)
+        pick_b = lambda cfg, *a, **k: {**R.tier_entries(cfg, "strong")[1], "confidence": 0.9}
+        with mock.patch("sstack_decider.decide", side_effect=pick_b) as dec:
+            code, _, err = self.run_main("implement", "--brief", self.brief(), "--report", str(self.report()),
+                                         "--hint", "docs")
+        self.assertEqual(code, 0, err)
+        self.assertEqual(dec.call_count, 1)
+        self.assertEqual(dec.call_args.kwargs["tiers"], ["strong"])
+        recs = [json.loads(l) for l in (self.root / ".sstack/runs/index.jsonl").read_text().splitlines()]
+        self.assertEqual([(r["model"], r["exit"]) for r in recs], [("fail", 1), ("sb", 0)])
+        self.assertIn("tier.strong/b", recs[1]["route"])
+        run = json.loads((self.root / recs[1]["run_dir"] / "run.json").read_text())
+        self.assertEqual((run["tier"], run["entry"]), ("strong", "b"))
+
+    def test_escalation_never_reuses_failed_entry(self):
+        cfg = self.cat(text='[[models]]\nid="a"\nharness="fake"\nmodel="standard"\n'
+                            '[[models]]\nid="b"\nharness="fake"\nmodel="sb"\n')
+        std = {"harness": "fake", "model": "standard", "effort": None}
+        a = R.tier_entries(cfg, "strong")[0]
+        m, t = R.escalation(cfg, std, choose=lambda tier, cands: a)
+        self.assertEqual((m["id"], t), ("b", "strong"))
+
+    def test_routes_lists_entries_and_decider(self):
+        self.cat('[decider]\nvia="jev"\nurl="http://jev.test"\n')
+        code, out, _ = self.run_main("routes")
+        self.assertEqual(code, 0)
+        lines = out.splitlines()
+        i = lines.index("  tier.strong → fake/sa")
+        self.assertEqual(lines[i + 1:i + 3], ["    strong/a: fake/sa — deep reasoning",
+                                              "    strong/b: fake/sb — long context"])
+        self.assertIn("decider: jev http://jev.test (timeout 20s, min_confidence 0.5)", lines)
+
+    def test_routes_one_entry_unchanged(self):
+        self.glob_cfg(TIERS)
+        _, out, _ = self.run_main("routes")
+        lines = out.splitlines()
+        self.assertEqual(lines[:5], ["tiers:", "  tier.cheap → fake/cheap", "  tier.standard → fake/standard",
+                                     "  tier.strong → fake/strong", "escalation: cheap → standard → strong"])
+        self.assertEqual(lines[-1], "decider: heuristic")
+        self.assertNotIn("cheap/default", out)

@@ -17,8 +17,9 @@ import sstack_configcli as CC
 import sstack_dispatch as D
 import sstack_skills as S
 import sstack_workflow as W
-from sstack_config import (READONLY_ROLES, TEMPLATE, ConfigError, ades, git_root, home_dir, layers, legacy, load,
-                           require_profile, resolve, steps as step_folders, unattended, variants)
+from sstack_config import (READONLY_ROLES, TEMPLATE, ConfigError, ades, decider, git_root, harness_installed, home_dir,
+                           layers, legacy, load, require_profile, resolve, steps as step_folders, tier_entries,
+                           unattended, variants)
 import sstack_route as R
 
 DISPATCH = Path(__file__).resolve().parent.parent / "bin" / "sstack-dispatch"
@@ -74,7 +75,41 @@ def _variants(root):
 def _used(cfg) -> set[str]:
     """Harnesses a role (any panel member) or a tier routes to."""
     used = {m["harness"] for r in cfg.get("role", {}) for m in resolve(cfg, r) or []}
-    return used | {t["harness"] for t in cfg.get("tier", {}).values() if t.get("harness") not in (None, "local")}
+    return used | {es[0]["harness"] for t in cfg.get("tier", {}) if (es := tier_entries(cfg, t))}
+
+
+def _tiers(root):
+    """Tier files: FAIL on a tier named `any` (reserved), a bad [[models]] shape, both a top-level
+    harness and [[models]], or a bad [decider]; WARN on a non-default entry whose harness is not
+    installed (the decider never offers it). A default entry's harness is checked by `harness CLIs`."""
+    cfg, bad = load(root), []
+    for t, spec in cfg.get("tier", {}).items():
+        if t == "any":
+            bad.append('tiers/any.toml: "any" is reserved (a role\'s tier = "any" asks the decider)')
+        if "models" not in spec:
+            continue
+        ms = spec["models"]
+        if spec.get("harness"):
+            bad.append(f"{t}: both a top-level harness and [[models]]; keep one")
+        if not isinstance(ms, list) or not all(isinstance(m, dict) for m in ms):
+            bad.append(f"{t}: models must be [[models]] tables")
+            continue
+        if any(not m.get("id") or not m.get("harness") for m in ms):
+            bad.append(f"{t}: every [[models]] entry needs id and harness")
+        ids = [m.get("id") for m in ms]
+        if dup := sorted({i for i in ids if i and ids.count(i) > 1}):
+            bad.append(f"{t}: duplicate ids {', '.join(map(str, dup))}")
+    try:
+        via = decider(cfg)["via"]
+    except ConfigError as e:
+        bad.append(str(e))
+    if bad:
+        raise ConfigError("; ".join(bad))
+    entries = [e for t in cfg.get("tier", {}) for e in tier_entries(cfg, t)]
+    if warn := [f"{e['tier']}/{e['id']}: {e['harness']} not on PATH (excluded from decider choices)"
+                for t in cfg.get("tier", {}) for e in tier_entries(cfg, t)[1:] if not harness_installed(cfg, e["harness"])]:
+        raise Warn("; ".join(warn))
+    return f"{len(cfg.get('tier', {}))} tiers, {len(entries)} entries; decider {via}"
 
 
 def _clis(root):
@@ -275,7 +310,7 @@ def _unattended(root):
     return f"{'on' if u['enabled'] else 'off'}, plan_gate {u['plan_gate']}"
 
 
-CHECKS = [("profile", _profile), ("config loads", _loads), ("no legacy files", _legacy), ("roles resolve", _roles),
+CHECKS = [("profile", _profile), ("config loads", _loads), ("no legacy files", _legacy), ("roles resolve", _roles), ("tiers", _tiers),
           ("stage variants", _variants), ("workflow", _workflow), ("overnight", _overnight), ("unattended", _unattended),
           ("harness CLIs", _clis), ("active ADE", _ade), ("session harness", _session), ("hooks executable", _hooks),
           ("entry pointers", _pointers),
