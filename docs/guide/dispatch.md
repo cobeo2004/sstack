@@ -343,10 +343,58 @@ scout 0
 scout 0
 ```
 
+## The decider
+
+A role with `tier = "any"` can have a decider pick its model
+([configuration.md](configuration.md#catalogues-tier--any-and-the-decider)). With `[decider] via`
+set to `openrouter`, `jev` or `llm`, dispatch asks it:
+
+- once per dispatch, right after routing picks `tier any`;
+- once more when the member fails and the run escalates, choosing only among the next tier's entries
+  (with the decider off, escalation takes that tier's first entry);
+- never from `--dry-run` or `--route` (`--dry-run` prints `note: would ask decider (<via>)`; `--route` adds `"decider": "would ask decider (<via>)"` to its JSON), and never from
+  `sstack-workflow done` or anything else that only looks at a route;
+- never for a security change (`--hint security`, or `--files` that classify as security). The route
+  keeps the security tier and ends with `(security: no decider)`, and an escalation takes the next
+  tier's first entry.
+
+A pick shows in the route as `decider standard/sonnet (0.9)`. A timeout, an error, an id that is not
+listed, or a confidence under `min_confidence` prints `sstack-dispatch: decider <via>: <why>;
+heuristic route` on stderr. The run then goes on with the heuristic route, marked
+`(decider fallback)`. With no decider, `tier = "any"` takes the detected kind's tier, else the first
+tier on `[rules] tier_order`, else runs locally.
+
+`run.json` gains three optional keys: `tier` and `entry` (the catalogue entry the run's first member
+used, updated when it escalates) and `files` (the files routing saw: `--files`, or for a review
+without `--files`, the changed files). `index.jsonl` keys do not change.
+
+With `review_not_implementer` on, the review leaves out whoever implemented the task: the member of
+the latest implement dispatch whose report sits beside the review's `--report` (so a decider pick
+or an escalation counts), else the member routing would pick for `implement`.
+
+`via = "openrouter"` sends the same prompt as `llm` as one user message to OpenRouter's chat
+completions API with `Authorization: Bearer $OPENROUTER_API_KEY`, and reads the answer from
+`choices[0].message.content`. A missing key, an HTTP error, a timeout or a bad reply falls back.
+
+### Outcome records
+
+Every finished member appends one line to `outcomes.jsonl` in the task run folder: the folder holding
+the run's `dispatch/`, which is `<run>/` for a report at `<run>/<step>.md`. A flat run writes the line
+into its own run dir.
+
+```json
+{"ts": "2026-11-19T15:40:00", "step": "implement", "role": "implement", "tier": "standard", "entry": "sonnet",
+ "harness": "claude", "model": "sonnet", "exit": 0, "escalated": false, "tokens": null, "cost": null}
+```
+
+`sstack-workflow done` adds `{"ts", "step", "gate": "pass" | "fail", "score"}` to `<run>/outcomes.jsonl`.
+`tokens` and `cost` stay `null` until a harness reports them. The lines are for a later learned router;
+nothing reads them yet.
+
 ## How to change this
 
 - Dispatch, `record`, the run dir, the read-only check and the write lock: `lib/sstack_dispatch.py`;
-  routing, kinds and tiers: `lib/sstack_route.py`; ADE payloads and hooks: `lib/sstack_ade.py`;
+  routing, kinds, tiers and catalogues: `lib/sstack_route.py`; the decider: `lib/sstack_decider.py`; ADE payloads and hooks: `lib/sstack_ade.py`;
   step folders and caps: `lib/sstack_workflow.py` ([workflow.md](workflow.md)).
 - Spec first: [docs/spec/dispatch.md](../spec/dispatch.md). Payload shapes are frozen fixtures in
   `tests/fixtures/payloads/*.json`; add a new fixture instead of editing one.

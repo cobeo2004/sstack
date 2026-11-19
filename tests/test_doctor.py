@@ -402,3 +402,71 @@ class WorkflowDoctorTests(DoctorBase):
         self.step("review", "max_agents = 9\n")
         code, _ = self.check("WARN")
         self.assertEqual(code, 0)
+
+
+GHOST = '[harness.ghost]\nheadless = ["no-such-cli-xyz"]\n'
+
+
+class TierDoctorTests(DoctorBase):
+    """The `tiers` check: catalogue shape, the reserved name `any`, uninstalled entries, [decider]."""
+
+    def tier(self, name, text):
+        self.write(self.home / ".sstack", f"tiers/{name}.toml", text)
+
+    def test_tier_named_any_fails(self):
+        self.glob_cfg(roles())
+        self.tier("any", 'harness="fake"\nmodel="x"\n')
+        code, out, _ = self.doctor()
+        self.assertEqual(code, 1, out)
+        self.assertIn("FAIL tiers:", out)
+        self.assertIn("reserved", out)
+
+    def test_bad_models_shape_fails(self):
+        for text in ('models = "x"\n',
+                     '[[models]]\nharness="fake"\n',
+                     '[[models]]\nid="a"\nharness="fake"\n[[models]]\nid="a"\nharness="fake"\n',
+                     'harness="fake"\n[[models]]\nid="a"\nharness="fake"\n'):
+            self.glob_cfg(roles())
+            self.tier("strong", text)
+            code, out, _ = self.doctor()
+            self.assertEqual(code, 1, text)
+            self.assertIn("FAIL tiers:", out, text)
+
+    def test_bad_decider_fails(self):
+        self.glob_cfg(roles() + '[decider]\nvia="nope"\n')
+        code, out, _ = self.doctor()
+        self.assertEqual(code, 1)
+        self.assertIn("FAIL tiers:", out)
+
+    def test_openrouter_needs_model_and_key(self):
+        self.glob_cfg(roles() + '[decider]\nvia="openrouter"\n')
+        code, out, _ = self.doctor()
+        self.assertEqual(code, 1, out)
+        self.assertIn('FAIL tiers: [decider] via = "openrouter" needs model', out)
+        self.glob_cfg(roles() + '[decider]\nvia="openrouter"\nmodel="openai/gpt-x"\n')
+        code, out, _ = self.doctor(env={"OPENROUTER_API_KEY": ""})
+        self.assertEqual(code, 0, out)
+        self.assertIn("WARN tiers: OPENROUTER_API_KEY is not set", out)
+
+    def test_repo_layer_decider_url_warns(self):
+        self.glob_cfg(roles() + '[decider]\nvia="jev"\nurl="https://jev.test"\n')
+        self.repo_cfg('[decider]\nurl="https://evil.test"\n')
+        code, out, _ = self.doctor()
+        self.assertEqual(code, 0, out)
+        self.assertIn("WARN tiers: [decider] url in the repo layer is ignored", out)
+
+    def test_uninstalled_entry_warns(self):
+        self.glob_cfg(roles() + GHOST)
+        self.tier("standard", '[[models]]\nid="default"\nharness="fake"\nmodel="s"\n'
+                              '[[models]]\nid="sonnet"\nharness="ghost"\nmodel="g"\n')
+        code, out, _ = self.doctor()
+        self.assertEqual(code, 0, out)
+        self.assertIn("WARN tiers: standard/sonnet: ghost not on PATH (excluded from decider choices)", out)
+
+    def test_default_entry_uninstalled_still_fails(self):
+        self.glob_cfg(roles() + GHOST)
+        self.tier("standard", '[[models]]\nid="default"\nharness="ghost"\nmodel="g"\n'
+                              '[[models]]\nid="b"\nharness="fake"\nmodel="s"\n')
+        code, out, _ = self.doctor()
+        self.assertEqual(code, 1, out)
+        self.assertIn("FAIL harness CLIs: not on PATH: ghost.headless: no-such-cli-xyz", out)

@@ -157,6 +157,84 @@ def release(root: Path, run_dir: Path) -> None:
     D.lock_release(root, owner)
 
 
+def outcome(run_dir: Path, step: str, gate: str, score) -> None:
+    """A gate result line in <run>/outcomes.jsonl, beside dispatch's member lines."""
+    run_dir.mkdir(parents=True, exist_ok=True)
+    with (run_dir / "outcomes.jsonl").open("a") as f:
+        f.write(json.dumps({"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "step": step, "gate": gate, "score": score}) + "\n")
+
+
+PROPOSAL_KEYS = ("skip", "repeat", "panel_size")
+LOCKED = ("pr", "gate")  # never skipped by a proposal; config alone can still disable gate
+
+
+def bounds(p, wf: dict, root: Path) -> list[str]:
+    """Why a workflow proposal is out of bounds ([] = in bounds): unknown keys (a gate answer among
+    them), skipping pr or gate, an unknown step, repeating pr, skipping review on a security change,
+    or a panel_size outside 1..8."""
+    if not isinstance(p, dict):
+        return ["a proposal is a JSON object"]
+    errs = [f"unknown key {k!r} (allowed: {', '.join(PROPOSAL_KEYS)}; a proposal never answers a gate)"
+            for k in p if k not in PROPOSAL_KEYS]
+    chain, skip, repeat = wf["chain"], p.get("skip", []), p.get("repeat", {})
+    if not isinstance(skip, list) or not all(isinstance(x, str) for x in skip):
+        errs, skip = errs + ["skip must be a list of step names"], []
+    if not isinstance(repeat, dict):
+        errs, repeat = errs + ["repeat must be a table of step = n"], {}
+    steps = wf["steps"]
+    for x in skip:
+        fixers = sorted(n for n in chain if steps[n]["on_fail"] == x)
+        errs += [f"skip {x}: {x} is locked"] if x in LOCKED else [f"skip {x}: no such step"] if x not in chain else \
+            [f"skip {x}: {x} is the implement step"] if steps[x]["role"] == "implement" else \
+            [f"skip {x}: the on_fail target of {', '.join(fixers)}"] if fixers else []
+    for x, n in repeat.items():
+        if x == "pr" or x not in chain:
+            errs.append(f"repeat {x}: {'pr is locked' if x == 'pr' else 'no such step'}")
+        if type(n) is not int or n < 1:
+            errs.append(f"repeat {x}: {n!r} is not a whole number >= 1")
+    n = p.get("panel_size", 1)
+    if type(n) is not int or not 1 <= n <= 8:
+        errs.append(f"panel_size {n!r} is not a whole number from 1 to 8")
+    if security_skips(skip, wf, root):
+        errs.append("skip review: this is a security change; review stays")
+    return errs
+
+
+def security_skips(skip: list, wf: dict, root: Path) -> list[str]:
+    """The review steps in `skip` that must run: the diff is a security change. Checked by propose and
+    again by every advance, since the plan's tree is clean and the code comes later."""
+    rs = [x for x in skip if (wf["steps"].get(x) or {}).get("role") == "review"]
+    return rs if rs and R.classify(R.changed(root)[0]) == "security" else []
+
+
+def propose(root: Path, run_dir: Path, path: str | None) -> int:
+    """Store a reshape proposal (the decider's, or --json FILE) in workflow.json after the bounds
+    check; out of bounds → exit 1 and workflow.json unchanged."""
+    import sstack_decider as DC  # lazy: only propose asks the decider
+    wf = resolved(root)
+    if path:
+        try:
+            p = json.loads(Path(path).read_text())
+        except (OSError, ValueError) as e:
+            print(f"sstack-workflow: --json {path}: {e}", file=sys.stderr)
+            return 1
+    else:
+        plan = run_dir / "plan.md"
+        p = DC.propose(C.load(root), plan.read_text(errors="replace") if plan.is_file() else "", wf["chain"])
+        if p is None:
+            print("proposal: nothing proposed (decider off or no reply); the chain stays")
+            return 0
+    if errs := bounds(p, wf, root):
+        print("sstack-workflow: proposal rejected:\n" + "\n".join(f"  {e}" for e in errs), file=sys.stderr)
+        return 1
+    st = read_state(run_dir, wf["chain"])
+    st["proposal"] = p
+    write_state(run_dir, st)
+    progress(run_dir, f"proposal: {json.dumps(p, sort_keys=True)}")
+    print(f"proposal stored: {json.dumps(p, sort_keys=True)}")
+    return 0
+
+
 def routed(root: Path, spec: dict) -> bool:
     """A role step that sstack-dispatch hands to a member: not inline (max_agents 0), and its role
     routes to one (`review` always does, as a panel, unless dispatch.via = local)."""
@@ -249,13 +327,21 @@ def advance(root: Path, run_dir: Path, wf: dict, step: str, failed: bool = False
             findings: str | None = None, no_dispatch: str | None = None) -> int:
     """Record one step's result, print what the agent does next, and exit 0, 2 at the loop cap, or 1
     when a routed role step passes with no recorded dispatch (`no_dispatch` = the reason to skip it)."""
-    chain, steps = wf["chain"], wf["steps"]
+    st = read_state(run_dir, wf["chain"])
+    prop = st.get("proposal") if isinstance(st.get("proposal"), dict) else {}
+    skip = prop.get("skip") or []
+    if keep := security_skips(skip, wf, root):
+        print(f"sstack-workflow: proposal skip {', '.join(keep)} dropped: this is a security change; review stays",
+              file=sys.stderr)
+        skip = [x for x in skip if x not in keep]
+    chain = [s for s in wf["chain"] if s not in skip]  # the effective chain
+    steps = wf["steps"]
     if step not in chain:
         print(f"sstack-workflow: no step {step!r} in the chain ({' → '.join(chain) or NO_STEPS})",
               file=sys.stderr)
         return 1
     spec = steps[step]
-    st, at = read_state(run_dir, chain), chain.index(step)
+    at = chain.index(step)
     entry = st["steps"].setdefault(step, {"status": None, "loops": 0, "score": None})
     entry.setdefault("loops", 0)
     entry.setdefault("score", None)
@@ -281,7 +367,11 @@ def advance(root: Path, run_dir: Path, wf: dict, step: str, failed: bool = False
     line = gate_line(root, step) if ok and spec["gate"] else None  # before any write: a bad value fails clean
     if ok:
         entry["status"] = "pass"
+        entry["passes"] = int(entry.get("passes") or 0) + 1
         nxt = chain[at + 1] if at + 1 < len(chain) else None
+        if entry["passes"] < 1 + int((prop.get("repeat") or {}).get(step, 0)):
+            nxt = step  # a proposal's repeat: pass this step n more times
+        outcome(run_dir, step, "pass", entry["score"])
         st["current"] = nxt or "done"
         write_state(run_dir, st)
         if no_dispatch is not None:
@@ -296,6 +386,7 @@ def advance(root: Path, run_dir: Path, wf: dict, step: str, failed: bool = False
         return 0
     entry["status"] = "fail"
     entry["loops"] = int(entry["loops"] or 0) + 1
+    outcome(run_dir, step, "fail", entry["score"])
     progress(run_dir, f"{step}: fail (loop {entry['loops']}/{spec['max_loops']})")
     if entry["loops"] >= spec["max_loops"] or not spec["on_fail"]:
         st["current"] = step
@@ -338,6 +429,8 @@ def status(root: Path, run_dir: Path) -> int:
         return 1
     st = read_state(run_dir, wf["chain"])
     print(f"at: {st['current']}")
+    if isinstance(st.get("proposal"), dict):
+        print(f"proposal: {json.dumps(st['proposal'], sort_keys=True)}")
     for n in wf["chain"]:
         e = st["steps"].get(n) or {}
         bits = [e.get("status") or "todo", f"loops {e.get('loops') or 0}/{wf['steps'][n]['max_loops']}"]
@@ -402,6 +495,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--no-dispatch", metavar="REASON", help="record a routed role step nobody dispatched, "
                    "and why (progress.md)")
     p.add_argument("--run", required=True, metavar="RUN", help="run folder")
+    p = sub.add_parser("propose", help="after plan: store the decider's (or --json) skip/repeat/panel_size "
+                       "proposal in workflow.json, if it passes the bounds check")
+    p.add_argument("--run", required=True, metavar="RUN", help="run folder")
+    p.add_argument("--json", metavar="FILE", help="a proposal file instead of asking the decider")
     p = sub.add_parser("run", help="run a command step's run.sh and record its exit")
     p.add_argument("step")
     p.add_argument("--run", required=True, metavar="RUN", help="run folder")
@@ -420,6 +517,8 @@ def main(argv: list[str] | None = None) -> int:
             return status(root, run_dir)
         if a.cmd == "run":
             return cmd_run(root, run_dir, a.step)
+        if a.cmd == "propose":
+            return propose(root, run_dir, a.json)
         return advance(root, run_dir, resolved(root), a.step, a.fail, a.findings, a.no_dispatch)
     except C.ConfigError as e:
         print(f"sstack-workflow: {e}", file=sys.stderr)

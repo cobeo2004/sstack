@@ -243,6 +243,49 @@ dmm: role review <repo>/.sstack/steps/dmm/brief.md
 come from the folder; nothing in the skill has to know it exists. A repo brief
 beside a home-layer one wins whole.
 
+## Reshape the chain: `propose`
+
+After `plan` passes, `work` runs `sstack-workflow propose --run <run>`. With a decider on
+(`[decider] via`, [configuration.md](configuration.md#catalogues-tier--any-and-the-decider)), it asks
+the decider once, giving it `<run>/plan.md` and the chain. The decider can propose skipping steps,
+repeating steps, or a review panel size. With the decider off, nothing is proposed and the chain stays as it is.
+`--json FILE` stores your own proposal instead of asking.
+
+A bounds check runs first. It rejects the whole proposal (exit 1, `workflow.json` unchanged) when it:
+
+- skips `pr` or `gate`. Protecting `gate` is new: config alone can still disable `gate`, a proposal
+  cannot;
+- names a step that is not in the chain, or repeats `pr`;
+- skips the `implement` step, or a step some step's `on_fail` sends work back to (a failing gate
+  could not return there);
+- skips a `review` step while the change is a security change (`sstack-dispatch routes` kinds);
+- has any key other than `skip`, `repeat` and `panel_size`, so a proposal can never answer a gate;
+- has a `panel_size` that is not a whole number from 1 to 8.
+
+```sh
+run="$PWD/.sstack/runs/demo"
+mkdir -p "$run"
+printf '{"skip": ["pr"]}\n' > "$run/p.json"
+sstack-workflow propose --run "$run" --json "$run/p.json" # exit 1
+printf '{"skip": ["recon"], "repeat": {"implement": 1}, "panel_size": 2}\n' > "$run/p.json"
+sstack-workflow propose --run "$run" --json "$run/p.json"
+```
+
+Expected: the first call prints `skip pr: pr is locked` on stderr. The second stores the proposal:
+
+```text
+# expect
+proposal stored: {"panel_size": 2, "repeat": {"implement": 1}, "skip": ["recon"]}
+```
+
+The plan's tree is usually clean, so the security check runs again on every `done`: once the diff
+holds a security file, a stored skip of `review` is dropped with `proposal skip review dropped: this
+is a security change; review stays` on stderr, and review runs.
+
+From then on `done` skips `recon`, sends a passing `implement` back to itself once (`repeat` means
+"pass n more times"), and the review panel holds at most two members. Every gate still prints
+`GATE: wait for the user's yes`.
+
 ## Where a run's state lives
 
 `<run>/workflow.json` holds the chain's progress:
@@ -253,10 +296,14 @@ beside a home-layer one wins whole.
            "review": {"status": "running", "loops": 1, "score": 8}}}
 ```
 
+A stored proposal adds `"proposal": {"skip": [...], "repeat": {...}, "panel_size": n}`, and a step
+that passed counts its passes in `"passes"`. Each `done` also appends a gate line to
+`<run>/outcomes.jsonl` ([dispatch.md](dispatch.md#outcome-records)).
+
 Each `done` or `run` mirrors one line into `<run>/progress.md`, which is what
 `sstack-doctor --prune-runs` and a resumed session read. `sstack-workflow status --run <run>`
-prints the current step and each recorded step's status and loops, without changing
-anything.
+prints the current step, the stored proposal (`proposal: {...}`) if there is one, and each
+recorded step's status and loops, without changing anything.
 
 ## How to change this
 

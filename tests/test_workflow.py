@@ -358,3 +358,115 @@ class DispatchCheckTests(WorkflowBase):
         self.assertIn(f"do: sstack-workflow run gate --run {self.run_dir}", out)
         _, out, _ = self.done("gate")
         self.assertIn("do: sstack-dispatch review --step review", out)
+
+
+class ProposeTests(WorkflowBase):
+    """`sstack-workflow propose`: a decider (or --json) proposal, kept only inside the bounds."""
+
+    def propose(self, reply=None, payload=None):
+        import contextlib, io
+        from unittest import mock
+        import sstack_workflow as W
+        extra = []
+        if payload is not None:
+            p = self.run_dir / "proposal.json"
+            p.write_text(json.dumps(payload))
+            extra = ["--json", str(p)]
+        out, err = io.StringIO(), io.StringIO()
+        old = os.getcwd()
+        os.chdir(self.root)
+        try:
+            with mock.patch("sstack_decider.propose", return_value=reply), \
+                    contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                code = W.main(["propose", "--run", str(self.run_dir), *extra])
+        finally:
+            os.chdir(old)
+        return code, out.getvalue(), err.getvalue()
+
+    def stored(self):
+        p = self.run_dir / "workflow.json"
+        return json.loads(p.read_text()).get("proposal") if p.exists() else None
+
+    def test_decider_drop_pr_rejected(self):
+        code, _, err = self.propose(reply={"skip": ["pr"]})
+        self.assertEqual(code, 1)
+        self.assertIn("pr", err)
+        self.assertIsNone(self.stored())
+
+    def test_drop_gate_rejected(self):
+        code, _, err = self.propose(payload={"skip": ["gate"]})
+        self.assertEqual(code, 1)
+        self.assertIn("skip gate", err)
+        self.assertIsNone(self.stored())
+
+    def test_skip_review_on_security_rejected(self):
+        self.write(self.root, "api/auth.py", "x = 1\n")
+        code, _, err = self.propose(payload={"skip": ["review"]})
+        self.assertEqual(code, 1)
+        self.assertIn("security", err)
+        self.assertIsNone(self.stored())
+
+    def test_gate_answer_rejected(self):
+        for p in ({"answer": "yes"}, {"approve": True}, {"gate": "pass"}, {"panel_size": 9}, {"repeat": {"pr": 1}}):
+            code, _, _ = self.propose(payload=p)
+            self.assertEqual(code, 1, p)
+        self.assertIsNone(self.stored())
+
+    def test_heuristic_proposes_nothing(self):
+        code, out, _ = self.propose(reply=None)
+        self.assertEqual(code, 0)
+        self.assertIn("nothing proposed", out)
+        self.assertIsNone(self.stored())
+
+    def test_skip_applies(self):
+        code, _, err = self.propose(payload={"skip": ["review"]})
+        self.assertEqual(code, 0, err)
+        self.assertEqual(self.stored(), {"skip": ["review"]})
+        _, out, _ = self.done("gate")
+        self.assertIn("next: pr", out)
+        self.assertIn("proposal", (self.run_dir / "progress.md").read_text())
+
+    def test_repeat_applies(self):
+        self.assertEqual(self.propose(payload={"repeat": {"implement": 1}})[0], 0)
+        _, out, _ = self.done("implement")
+        self.assertIn("next: implement", out)
+        _, out, _ = self.done("implement")
+        self.assertIn("next: gate", out)
+
+    def test_gate_still_asks_after_proposal(self):
+        self.assertEqual(self.propose(reply={"skip": ["recon"], "panel_size": 2})[0], 0)
+        _, out, _ = self.done("plan")
+        self.assertIn("GATE: wait for the user's yes", out)
+
+    def test_skip_review_rechecked_when_diff_turns_security(self):
+        self.assertEqual(self.propose(payload={"skip": ["review"]})[0], 0)
+        self.write(self.root, "api/auth.py", "x = 1\n")
+        self.done("implement")
+        _, out, err = self.done("gate")
+        self.assertIn("next: review", out)
+        self.assertIn("security change; review stays", err)
+
+    def test_skip_implement_or_on_fail_target_rejected(self):
+        code, _, err = self.propose(payload={"skip": ["implement"]})
+        self.assertEqual(code, 1)
+        self.assertIn("skip implement: implement", err)
+        self.step(self.repo(), "lint", 'after = "plan"\non_fail = "recon"\n', run_sh="#!/bin/sh\n")
+        code, _, err = self.propose(payload={"skip": ["recon"]})
+        self.assertEqual(code, 1)
+        self.assertIn("skip recon: the on_fail target of lint", err)
+        self.assertIsNone(self.stored())
+
+    def test_status_shows_proposal(self):
+        self.assertEqual(self.propose(payload={"skip": ["review"], "repeat": {"implement": 1}})[0], 0)
+        _, out, _ = self.wf("status", "--run", str(self.run_dir))
+        self.assertIn('proposal: {"repeat": {"implement": 1}, "skip": ["review"]}', out)
+
+
+class OutcomeTests(WorkflowBase):
+    def test_done_appends_gate_and_score(self):
+        self.done("implement", "--fail")
+        self.done("review", "--findings", self.findings([{"reviewer": "a", "score": 9, "findings": []}]))
+        rows = [json.loads(l) for l in (self.run_dir / "outcomes.jsonl").read_text().splitlines()]
+        self.assertEqual([(r["step"], r["gate"], r["score"]) for r in rows],
+                         [("implement", "fail", None), ("review", "pass", 9)])
+        self.assertTrue(all(set(r) == {"ts", "step", "gate", "score"} for r in rows))
