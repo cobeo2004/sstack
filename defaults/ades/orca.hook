@@ -10,9 +10,8 @@ from pathlib import Path
 
 cap, d = sys.argv[1], json.loads(sys.stdin.read() or "{}")
 state = Path(os.environ.get("SSTACK_HOOK_STATE", "."))
-orca_bin = os.environ.get("ORCA_CLI_COMMAND") or "orca"
 # `--environment local`: this machine's Orca, whatever ORCA_ENVIRONMENT or a pairing code selects
-orca = lambda cmd, *a, **kw: subprocess.run([orca_bin, "orchestration", cmd, "--environment", "local", *a],
+orca = lambda cmd, *a, **kw: subprocess.run(["orca", "orchestration", cmd, "--environment", "local", *a],
                                             capture_output=True, text=True, **kw)
 
 
@@ -27,7 +26,7 @@ def result(r) -> dict:
 if cap == "detect":
     sys.exit(0 if os.environ.get("ORCA_AGENT_SESSION_ID") else 1)
 if cap == "delegate":
-    if not shutil.which(orca_bin):
+    if not shutil.which("orca"):
         print(json.dumps({"action": "none", "note": "orca CLI not on PATH; running headless"}))
         sys.exit(0)
     agent, _, model = d["member"].partition("/")
