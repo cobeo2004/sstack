@@ -22,7 +22,7 @@ def cfg(decider=None):
             **({"decider": decider} if decider is not None else {})}
 
 
-JEV = {"via": "jev", "url": "https://jev.test/route"}
+JEV = {"via": "jev"}
 OR = {"via": "openrouter", "model": "typesafe/jev-1.14"}
 
 
@@ -32,6 +32,14 @@ def chat(content: str):
     resp.__enter__.return_value.read.return_value = json.dumps(
         {"model": "some/routed-model", "choices": [{"message": {"role": "assistant", "content": content}}]}).encode()
     return resp
+
+
+def decision(answer=None):
+    """A fake urlopen() response holding one Decisions API reply; answer None = no `tier` answer."""
+    body = {"id": "d1", "model": "typesafe/jev-1.14-20261014", "provider": "TypeSafe",
+            "answers": {} if answer is None else {"tier": answer},
+            "usage": {"input_tokens": 381, "output_tokens": 44, "cost": 1.6e-05}}
+    return resp(json.dumps(body).encode())
 
 
 def resp(body: bytes):
@@ -58,10 +66,14 @@ class SettingsTests(unittest.TestCase):
             with self.assertRaises(C.ConfigError, msg=bad):
                 C.decider(cfg(bad))
 
-    def test_jev_needs_url(self):
-        with self.assertRaises(C.ConfigError):
-            C.decider(cfg({"via": "jev"}))
-        self.assertEqual(C.decider(cfg(JEV))["url"], JEV["url"])
+    def test_jev_defaults_to_decisions_api(self):
+        s = C.decider(cfg(JEV))
+        self.assertEqual((s["url"], s["model"]), ("https://openrouter.ai/api/alpha/decisions", "typesafe/jev-1.14"))
+        s = C.decider(cfg({**JEV, "model": "typesafe/jev-2", "url": "https://proxy.test/d"}))
+        self.assertEqual((s["url"], s["model"]), ("https://proxy.test/d", "typesafe/jev-2"))
+        for bad in ({**JEV, "model": ""}, {**JEV, "model": 3}):
+            with self.assertRaises(C.ConfigError, msg=bad):
+                C.decider(cfg(bad))
 
     def test_url_must_be_https_or_localhost(self):
         for url in ("http://jev.test/route", "ftp://jev.test", "jev.test", "http://localhost.evil.test/x"):
@@ -70,16 +82,10 @@ class SettingsTests(unittest.TestCase):
         for url in ("https://jev.test/r", "http://localhost:8080/r", "http://127.0.0.1/r"):
             self.assertEqual(C.decider(cfg({"via": "jev", "url": url}))["url"], url)
 
-    def test_openrouter_needs_model(self):
-        with self.assertRaises(C.ConfigError):
-            C.decider(cfg({"via": "openrouter"}))
-        self.assertEqual(C.decider(cfg(OR))["model"], "openai/gpt-x")
-
     def test_key_in_config_ignored(self):
-        resp = mock.MagicMock()
-        resp.__enter__.return_value.read.return_value = b'{"choice": "standard/sonnet", "confidence": 0.9}'
-        with mock.patch.dict(os.environ, {"JEV_API_KEY": "envkey"}), \
-                mock.patch("urllib.request.urlopen", return_value=resp) as u:
+        reply = decision({"type": "choice", "choice": "standard/sonnet", "confidence": 0.9})
+        with mock.patch.dict(os.environ, {"OPENROUTER_API_KEY": "envkey"}), \
+                mock.patch("urllib.request.urlopen", return_value=reply) as u:
             hit, _ = decide(cfg({**JEV, "key": "x"}))
         req = u.call_args.args[0]
         self.assertEqual(req.get_header("Authorization"), "Bearer envkey")
@@ -93,6 +99,11 @@ class SettingsTests(unittest.TestCase):
                 C.decider(cfg(bad))
         s = C.decider(cfg(OR))
         self.assertEqual((s["url"], s["model"]), ("https://openrouter.ai/api/v1/chat/completions", "typesafe/jev-1.14"))
+
+    def test_routes_names_jev_model(self):
+        import sstack_route as R
+        self.assertIn("decider: jev typesafe/jev-1.14 (timeout 20s, min_confidence 0.5)",
+                      R.routes_text(cfg(JEV)).splitlines())
 
     def test_routes_names_openrouter_model(self):
         import sstack_route as R
@@ -147,30 +158,121 @@ class DecideTests(unittest.TestCase):
         self.assertIn("decider jev: timed out; heuristic route", err)
 
     def test_jev_request_shape(self):
-        resp = mock.MagicMock()
-        resp.__enter__.return_value.read.return_value = b'{"choice": "cheap/default", "confidence": 0.7}'
-        with mock.patch.dict(os.environ, {"JEV_API_KEY": "k"}), \
-                mock.patch("urllib.request.urlopen", return_value=resp) as u:
+        """The Decisions API wire contract (verified live 2026-11-19 with typesafe/jev-1.14)."""
+        reply = decision({"type": "choice", "choice": "cheap/default",
+                          "probabilities": {"cheap/default": 0.7, "standard/sonnet": 0.3}, "confidence": 0.7})
+        with mock.patch.dict(os.environ, {"OPENROUTER_API_KEY": "k"}), \
+                mock.patch("urllib.request.urlopen", return_value=reply) as u:
             hit, _ = decide(cfg({**JEV, "timeout": 5}))
         req = u.call_args.args[0]
-        self.assertEqual((req.full_url, req.get_method()), (JEV["url"], "POST"))
+        self.assertEqual((req.full_url, req.get_method()), ("https://openrouter.ai/api/alpha/decisions", "POST"))
         self.assertEqual(req.get_header("Authorization"), "Bearer k")
+        self.assertEqual(req.get_header("Content-type"), "application/json")
         body = json.loads(req.data)
-        self.assertEqual((body["task"], body["step"], body["plan"], body["files"]),
-                         ("the task", "implement", "the plan", ["web/a.tsx"]))
-        self.assertIn("cheap/default: small edits", body["choices"])
+        self.assertEqual(set(body), {"model", "state", "questions"})
+        self.assertEqual(body["model"], "typesafe/jev-1.14")
+        self.assertEqual(body["state"], {"task": "the task", "step": "implement", "files": ["web/a.tsx"],
+                                         "plan": "the plan"})
+        q = body["questions"]["tier"]
+        self.assertEqual((q["type"], q["instructions"]), ("choice", "Which model tier should do this task?"))
+        self.assertEqual(q["criteria"]["cheap/default"], "small edits")
+        self.assertEqual(q["criteria"]["standard/sonnet"], "frontend (standard: everyday work)")
+        self.assertNotIn("standard/ghost", q["criteria"])
         self.assertEqual(u.call_args.kwargs["timeout"], 5.0)
+        self.assertEqual((hit["id"], hit["confidence"]), ("default", 0.7))
+
+    def test_jev_confidence_from_probabilities(self):
+        reply = decision({"type": "choice", "choice": "strong/default",
+                          "probabilities": {"cheap/default": 0.1, "strong/default": 0.9}})
+        with mock.patch.dict(os.environ, {"OPENROUTER_API_KEY": "k"}), \
+                mock.patch("urllib.request.urlopen", return_value=reply):
+            hit, _ = decide(cfg(JEV))
+        self.assertEqual((hit["tier"], hit["confidence"]), ("strong", 0.9))
+
+    def test_jev_failures_fall_back(self):
+        import urllib.error
+        err_body = io.BytesIO(b'{"error": {"code": 400, "message": "bad model"}}')
+        bad = (decision({"type": "refusal"}), decision(None),
+               decision({"type": "choice", "choice": "x/y", "confidence": 1}),
+               resp(b'{"error": {"code": 500, "message": "boom"}}'), resp(b"not json"),
+               urllib.error.HTTPError("u", 400, "Bad Request", {}, err_body), TimeoutError("timed out"))
+        for b in bad:
+            kw = {"side_effect": b} if isinstance(b, Exception) else {"return_value": b}
+            with mock.patch.dict(os.environ, {"OPENROUTER_API_KEY": "k"}), \
+                    mock.patch("urllib.request.urlopen", **kw):
+                hit, err = decide(cfg(JEV))
+            self.assertIsNone(hit, b)
+            self.assertIn("decider jev:", err)
+
+    def test_jev_state_stays_compact(self):
+        """A long brief and plan are cut so the request stays under Jev's long-context threshold."""
+        big = "é" * 40000  # escapes to 6 bytes a character in JSON
+        reply = decision({"type": "choice", "choice": "cheap/default", "confidence": 1})
+        with mock.patch.dict(os.environ, {"OPENROUTER_API_KEY": "k"}), \
+                mock.patch("urllib.request.urlopen", return_value=reply) as u, \
+                contextlib.redirect_stderr(io.StringIO()):
+            hit = DC.decide(cfg(JEV), big, "implement", big, ["a.py"])
+        data = u.call_args.args[0].data
+        self.assertLessEqual(len(data), DC.JEV_MAX_BYTES)
+        self.assertTrue(json.loads(data)["state"]["task"].startswith("é"))
         self.assertEqual(hit["id"], "default")
 
+    def test_jev_colon_in_entry_id(self):
+        """Criteria keys come from the entries, not from splitting display lines: an id may hold a colon."""
+        c = cfg(JEV)
+        c["tier"]["standard"]["models"][1]["id"] = "sonnet:fast"
+        reply = decision({"type": "choice", "choice": "standard/sonnet:fast", "confidence": 0.9})
+        with mock.patch.dict(os.environ, {"OPENROUTER_API_KEY": "k"}), \
+                mock.patch("urllib.request.urlopen", return_value=reply) as u:
+            hit, err = decide(c)
+        crit = json.loads(u.call_args.args[0].data)["questions"]["tier"]["criteria"]
+        self.assertEqual(crit["standard/sonnet:fast"], "frontend (standard: everyday work)")
+        self.assertEqual(hit["id"], "sonnet:fast", err)
+
+    def test_jev_cap_keeps_task_and_bounds_files(self):
+        """Many files: the task survives, files are cut with a count, and the request fits the cap."""
+        files = ["src/" + "x" * 90 + str(i) + ".py" for i in range(350)]
+        reply = decision({"type": "choice", "choice": "cheap/default", "confidence": 1})
+        with mock.patch.dict(os.environ, {"OPENROUTER_API_KEY": "k"}), \
+                mock.patch("urllib.request.urlopen", return_value=reply) as u, \
+                contextlib.redirect_stderr(io.StringIO()):
+            hit = DC.decide(cfg(JEV), "Review auth security", "review", "check correctness", files)
+        data = u.call_args.args[0].data
+        state = json.loads(data)["state"]
+        self.assertLessEqual(len(data), DC.JEV_MAX_BYTES)
+        self.assertEqual((state["task"], state["plan"]), ("Review auth security", "check correctness"))
+        self.assertLess(len(state["files"]), 350)
+        self.assertTrue(state["files"][-1].startswith("... "), state["files"][-1])
+        self.assertEqual(hit["id"], "default")
+
+    def test_jev_cap_unfittable_falls_back(self):
+        """A request that cannot fit even with no files and a short task is not sent."""
+        c = cfg(JEV)
+        c["tier"]["cheap"]["when"] = "w" * (DC.JEV_MAX_BYTES + 10)
+        with mock.patch.dict(os.environ, {"OPENROUTER_API_KEY": "k"}), \
+                mock.patch("urllib.request.urlopen", side_effect=AssertionError) as u:
+            hit, err = decide(c)
+        self.assertIsNone(hit)
+        self.assertFalse(u.called)
+        self.assertIn("decider jev:", err)
+
+    def test_jev_propose_none(self):
+        """Jev answers the tier question only; a workflow proposal is not asked of it."""
+        with mock.patch.dict(os.environ, {"OPENROUTER_API_KEY": "k"}), \
+                mock.patch("urllib.request.urlopen", side_effect=AssertionError) as u, \
+                contextlib.redirect_stderr(io.StringIO()):
+            self.assertIsNone(DC.propose(cfg(JEV), "plan", ["implement"]))
+        self.assertFalse(u.called)
+
     def test_jev_no_key_none(self):
-        env = {k: v for k, v in os.environ.items() if k != "JEV_API_KEY"}
+        env = {k: v for k, v in os.environ.items() if k != "OPENROUTER_API_KEY"}
         env["SSTACK_HOME"] = "/nonexistent-sstack-home"
         with mock.patch.dict(os.environ, env, clear=True), \
                 mock.patch("urllib.request.urlopen", side_effect=AssertionError) as u:
             hit, err = decide(cfg(JEV))
         self.assertIsNone(hit)
         self.assertFalse(u.called)
-        self.assertIn("JEV_API_KEY", err)
+        self.assertIn("OPENROUTER_API_KEY", err)
 
     def test_confidence_out_of_range_none(self):
         for conf in (float("nan"), 1.5, -0.1, "nan"):

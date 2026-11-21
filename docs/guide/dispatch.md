@@ -347,7 +347,7 @@ scout 0
 
 A role with `tier = "any"` can have a decider pick its model
 ([configuration.md](configuration.md#catalogues-tier--any-and-the-decider)). With `[decider] via`
-set to `openrouter`, `jev` or `llm`, dispatch asks it:
+set to `jev`, `openrouter` or `llm`, dispatch asks it:
 
 - once per dispatch, right after routing picks `tier any`;
 - once more when the member fails and the run escalates, choosing only among the next tier's entries
@@ -372,9 +372,17 @@ With `review_not_implementer` on, the review leaves out whoever implemented the 
 the latest implement dispatch whose report sits beside the review's `--report` (so a decider pick
 or an escalation counts), else the member routing would pick for `implement`.
 
+`via = "jev"` asks `typesafe/jev-1.14` (or `[decider] model`) one `choice` question through
+OpenRouter's Decisions API: the brief, step, files and plan go in `state`, and each entry's
+`<tier>/<id>` and `when` line are the choices. A refusal, a missing answer, an unlisted choice, an
+HTTP error, a timeout or a missing `OPENROUTER_API_KEY` falls back. `jev` answers routing only: it
+proposes no workflow reshape.
+
 `via = "openrouter"` sends the same prompt as `llm` as one user message to OpenRouter's chat
-completions API with `Authorization: Bearer $OPENROUTER_API_KEY`, and reads the answer from
+completions API, for chat models such as `typesafe/jev-router`, and reads the answer from
 `choices[0].message.content`. A missing key, an HTTP error, a timeout or a bad reply falls back.
+
+Both read `OPENROUTER_API_KEY` from the environment, else from `~/.sstack/.env`.
 
 ### Outcome records
 

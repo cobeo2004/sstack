@@ -301,7 +301,7 @@ model = "sonnet"
 when = "frontend and UI"
 EOF
 printf 'tier = "any"\n' > "$home/roles/scout.toml"
-printf '\n[decider]\nvia = "openrouter"\nmodel = "typesafe/jev-1.14"\n' >> "$home/config.toml"
+printf '\n[decider]\nvia = "jev"\n' >> "$home/config.toml"
 sstack-dispatch scout --brief /dev/null --report /dev/null --dry-run
 sstack-dispatch routes
 ```
@@ -312,25 +312,24 @@ Expected (abridged). A dry run never asks the decider; it names the route it wou
 ```text
 # expect
 route: tier any → tier.cheap
-note: would ask decider (openrouter)
+note: would ask decider (jev)
 tiers:
   tier.cheap → pi/opencode-go/deepseek-v4.1-flash
   tier.standard → codex/gpt-6.1-terra
     standard/default: codex/gpt-6.1-terra — backend and general code
     standard/sonnet: claude/sonnet — frontend and UI
 escalation: cheap → standard → strong
-decider: openrouter typesafe/jev-1.14 (timeout 20s, min_confidence 0.5)
+decider: jev typesafe/jev-1.14 (timeout 20s, min_confidence 0.5)
 ```
 
 `[decider]` keys:
 
 | key | meaning |
 |---|---|
-| `via` | `heuristic` (default: no decider call, routing as before), `openrouter`, `jev`, or `llm` |
-| `model` | the OpenRouter model id that decides (`via = "openrouter"`), for example `typesafe/jev-1.14` (Jev on OpenRouter) or any other id. The key comes from `OPENROUTER_API_KEY` in the environment, else from that line in `~/.sstack/.env` (`chmod 600`; the profile, never the repo), never from a config file |
-| `url` | the Jev endpoint (`via = "jev"`, key from `JEV_API_KEY`); with `openrouter`, an optional override of `https://openrouter.ai/api/v1/chat/completions`. Must be `https://` (plain `http://` only to `localhost` or `127.0.0.1`), because the key is sent to it. A `url` set in the repo layer (`.sstack/config.toml`) is ignored and `sstack-doctor` warns; set it in `~/.sstack` or `.sstack/local` |
+| `via` | `heuristic` (default: no decider call, routing as before), `jev`, `openrouter`, or `llm` |
+| `model` | `via = "jev"`: the decisions model, asked through OpenRouter's Decisions API (`https://openrouter.ai/api/alpha/decisions`); default `typesafe/jev-1.14`. `via = "openrouter"` (required): an OpenRouter chat model id, for example `typesafe/jev-router`, sent to its chat completions API. Decisions models such as `typesafe/jev-1.14` need `jev`: the chat API rejects them. Both read the key from `OPENROUTER_API_KEY` in the environment, else from that line in `~/.sstack/.env` (`chmod 600`; the profile, never the repo), never from a config file |
+| `url` | optional endpoint override: of `https://openrouter.ai/api/alpha/decisions` for `jev`, of `https://openrouter.ai/api/v1/chat/completions` for `openrouter`. Must be `https://` (plain `http://` only to `localhost` or `127.0.0.1`), because the key is sent to it. A `url` set in the repo layer (`.sstack/config.toml`) is ignored and `sstack-doctor` warns; set it in `~/.sstack` or `.sstack/local` |
 | `harness`, `model`, `effort` | the model that decides (`via = "llm"`), run once through that harness's `headless_readonly` |
-| `model` | for `via = "openrouter"`: the OpenRouter model id (required), sent to `https://openrouter.ai/api/v1/chat/completions` (fixed). The key comes only from `OPENROUTER_API_KEY` in the environment |
 | `timeout` | seconds per decider call; default 20 |
 | `min_confidence` | 0 to 1; a pick below it is ignored; default 0.5 |
 

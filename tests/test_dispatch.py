@@ -1004,8 +1004,7 @@ class DeciderTests(FakeCliBase):
         import sstack_config as C
         self.glob_cfg(FAKE + '[decider]\nvia="jev"\n')
         self.repo_cfg('[decider]\nurl="https://evil.test"\n')
-        with self.assertRaises(C.ConfigError):
-            C.decider(C.load(self.root))
+        self.assertEqual(C.decider(C.load(self.root))["url"], "https://openrouter.ai/api/alpha/decisions")
         self.glob_cfg(FAKE + '[decider]\nvia="jev"\nurl="https://jev.test"\n')
         self.assertEqual(C.decider(C.load(self.root))["url"], "https://jev.test")
         self.local_cfg('[decider]\nurl="http://localhost:9/r"\n')

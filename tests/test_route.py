@@ -309,7 +309,7 @@ class CatalogueTests(DispatchBase):
         i = lines.index("  tier.strong → fake/sa")
         self.assertEqual(lines[i + 1:i + 3], ["    strong/a: fake/sa — deep reasoning",
                                               "    strong/b: fake/sb — long context"])
-        self.assertIn("decider: jev https://jev.test (timeout 20s, min_confidence 0.5)", lines)
+        self.assertIn("decider: jev typesafe/jev-1.14 (timeout 20s, min_confidence 0.5)", lines)
 
     def test_routes_shows_openrouter_model(self):
         self.cat('[decider]\nvia="openrouter"\nmodel="openai/gpt-x"\n')

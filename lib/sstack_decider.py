@@ -1,6 +1,6 @@
 """The decider (docs/spec/dispatch.md § Decider): picks a catalogue entry for a dispatch, or proposes a
 workflow reshape, from `[decider] via = "jev" | "openrouter" | "llm"`. `decide()` and `propose()` are the only
-functions that call Jev or a model; route.pick() and its callers never call them. Off by default
+functions that call Jev (OpenRouter's Decisions API) or a model; route.pick() and its callers never call them. Off by default
 (`via = "heuristic"`), bounded by `timeout`, and any error falls back to the heuristic route."""
 import json
 import os
@@ -11,6 +11,10 @@ import urllib.request
 import sstack_config as C
 
 MAX_TEXT = 8000  # task and plan are cut to this many characters each
+# Jev 1.14 switches to a slower long-context mode above ~32,000 bytes: the whole request is kept under
+# this (the longer of task and plan cut down to JEV_MIN_TASK chars each, then files), else it is not sent.
+JEV_MAX_BYTES = 30000
+JEV_MIN_TASK = 1000
 REPLY = 'one JSON line: {"choice": "<tier>/<id>", "confidence": <0..1>}'
 PROPOSAL_REPLY = ('one JSON line: {"skip": [step], "repeat": {step: n}, "panel_size": n}; '
                   'only unlocked steps, never pr or gate')
@@ -26,9 +30,12 @@ def choices(cfg: dict, tiers: list[str] | None = None) -> list[dict]:
             for e in C.tier_entries(cfg, t) if C.harness_installed(cfg, e["harness"])]
 
 
+def _desc(e: dict) -> str:
+    return (e["when"].strip() + (f" ({e['tier']}: {e['tier_when']})" if e["tier_when"] else "")).strip()
+
+
 def lines(cs: list[dict]) -> list[str]:
-    return [f"{e['tier']}/{e['id']}: {e['when']}".rstrip() + (f" ({e['tier']}: {e['tier_when']})" if e["tier_when"] else "")
-            for e in cs]
+    return [f"{e['tier']}/{e['id']}: {_desc(e)}".rstrip() for e in cs]
 
 
 def _key(name: str) -> str | None:
@@ -47,17 +54,42 @@ def _key(name: str) -> str | None:
     return None
 
 
-def _jev(url: str, payload: dict, timeout: float) -> dict:
-    # ASSUMED shape, vendor docs unverified: POST the payload as JSON with `Authorization: Bearer
-    # $JEV_API_KEY`; the reply body is the JSON object asked for in payload["reply"]. All of Jev's
-    # shape lives in this function.
-    key = _key("JEV_API_KEY")
+def _jev(url: str, model: str, payload: dict, timeout: float, cs: list[dict]) -> dict:
+    """One OpenRouter Decisions API call (alpha; wire shape verified live 2026-11-19 with typesafe/jev-1.14).
+    One `choice` question whose criteria are the `<tier>/<id>` choices and their `when` lines; the answer is
+    answers.tier.choice, its confidence else probabilities[choice]. All of the API's shape lives here."""
+    if "choices" not in payload:
+        raise RuntimeError("jev answers the tier question only")
+    key = _key("OPENROUTER_API_KEY")
     if not key:
-        raise RuntimeError("JEV_API_KEY is not set")
-    req = urllib.request.Request(url, data=json.dumps(payload).encode(), method="POST",
+        raise RuntimeError("OPENROUTER_API_KEY is not set")
+    files = list(payload["files"])
+    state = {"task": payload["task"], "step": payload["step"], "files": files, "plan": payload["plan"]}
+    criteria = {f"{e['tier']}/{e['id']}": _desc(e) for e in cs}
+    body = {"model": model, "state": state, "questions": {"tier": {
+        "type": "choice", "instructions": "Which model tier should do this task?", "criteria": criteria}}}
+    shown = len(files)
+    while (over := len(json.dumps(body).encode()) - JEV_MAX_BYTES) > 0:
+        cut = max(1, over // 6)  # a char is 1-6 JSON bytes
+        k = max(("plan", "task"), key=lambda k: len(state[k]))
+        if len(state[k]) > JEV_MIN_TASK:
+            state[k] = state[k][:max(JEV_MIN_TASK, len(state[k]) - cut)]
+        elif shown:
+            shown -= 1
+            state["files"] = files[:shown] + [f"... {len(files) - shown} more files"]
+        else:
+            raise RuntimeError(f"request over {JEV_MAX_BYTES} bytes even with no files; not sent")
+    req = urllib.request.Request(url, data=json.dumps(body).encode(), method="POST",
                                  headers={"Content-Type": "application/json", "Authorization": f"Bearer {key}"})
     with urllib.request.urlopen(req, timeout=timeout) as r:
-        return json.loads(r.read().decode())
+        reply = json.loads(r.read().decode())
+    if "error" in reply:
+        raise RuntimeError(f"error {reply['error']}")
+    a = reply.get("answers", {}).get("tier")
+    if not a or a.get("type") != "choice" or "choice" not in a:
+        raise RuntimeError(f"no tier answer ({(a or {}).get('type', 'missing')})")
+    conf = a.get("confidence", (a.get("probabilities") or {}).get(a["choice"]))
+    return {"choice": a["choice"], "confidence": conf}
 
 
 def _prompt(payload: dict) -> str:
@@ -102,9 +134,9 @@ def _llm(cfg: dict, member: dict, payload: dict, timeout: float) -> dict:
     return _last_json(r.stdout)
 
 
-def _ask(cfg: dict, s: dict, payload: dict) -> dict:
+def _ask(cfg: dict, s: dict, payload: dict, cs: list[dict] | None = None) -> dict:
     if s["via"] == "jev":
-        return _jev(s["url"], payload, s["timeout"])
+        return _jev(s["url"], s["model"], payload, s["timeout"], cs or [])
     if s["via"] == "openrouter":
         return _openrouter(s["url"], s["model"], payload, s["timeout"])
     return _llm(cfg, s["member"], payload, s["timeout"])
@@ -124,7 +156,7 @@ def decide(cfg: dict, task: str, step: str | None, plan: str, files: list[str],
     try:
         payload = {"task": (task or "")[:MAX_TEXT], "step": step, "plan": (plan or "")[:MAX_TEXT],
                    "files": list(files), "choices": lines(cs), "reply": REPLY}
-        reply = _ask(cfg, s, payload)
+        reply = _ask(cfg, s, payload, cs=cs)
         hit = {f"{e['tier']}/{e['id']}": e for e in cs}.get(reply.get("choice"))
         conf = float(reply.get("confidence") or 0)
     except Exception as e:  # noqa: BLE001 - any decider failure falls back, by design (R14)
