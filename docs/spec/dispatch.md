@@ -388,21 +388,31 @@ heuristic route` and keeps the heuristic route plus ` (decider fallback)`.
   `Authorization: Bearer $OPENROUTER_API_KEY` and body `{"model": <model>, "messages": [{"role": "user",
   "content": <prompt + payload>}], "response_format": {"type": "json_object"}}` (OpenRouter's documented,
   OpenAI-compatible API). The reply is `choices[0].message.content`, parsed as JSON or else its last `{...}`
-  line. `model = "typesafe/jev-1.14"` is Jev on OpenRouter: Jev routes this one decider request to a model
-  of its choosing, and the price varies with that model. A missing `OPENROUTER_API_KEY` falls back.
-- Keys (`OPENROUTER_API_KEY`, `JEV_API_KEY`) come from the environment, else from a `NAME=value` line
-  (optional `export`, quotes stripped) in `$SSTACK_HOME/.env`, so agent shells without the variable still
-  reach the decider. Never from config or a repo file (`_key()`).
-- `jev`: a `urllib` POST of the payload as JSON to `url` with `Authorization: Bearer $JEV_API_KEY`; the
-  response body is the reply. **This request/response shape is assumed; Jev's vendor docs were not
-  checked.** It lives only in `_jev()`. A missing `JEV_API_KEY` falls back.
+  line. For chat models (e.g. `typesafe/jev-router`); decisions models such as `typesafe/jev-1.14` are
+  rejected here (HTTP 400) and need `jev`. A missing `OPENROUTER_API_KEY` falls back.
+- `OPENROUTER_API_KEY` (both `jev` and `openrouter`) comes from the environment, else from a `NAME=value`
+  line (optional `export`, quotes stripped) in `$SSTACK_HOME/.env`, so agent shells without the variable
+  still reach the decider. Never from config or a repo file (`_key()`). Doctor's warning reads the same.
+- `jev`: OpenRouter's Decisions API (alpha), all of it in `_jev()`. A `urllib` POST to `url` (default
+  `https://openrouter.ai/api/alpha/decisions`) with `Authorization: Bearer $OPENROUTER_API_KEY`:
+
+  ```json
+  {"model": "typesafe/jev-1.14",
+   "state": {"task": "<brief>", "step": "implement", "files": ["web/a.tsx"], "plan": "<plan or \"\">"},
+   "questions": {"tier": {"type": "choice", "instructions": "Which model tier should do this task?",
+     "criteria": {"cheap/default": "small edits", "standard/sonnet": "frontend (standard: everyday work)"}}}}
+  ```
+
+  `criteria` maps each listed `<tier>/<id>` (built from the entry, so an id may hold a colon) to its
+  `when` line. The whole body is kept under 30,000 bytes, because Jev 1.14 switches to a slower
+  long-context mode above ~32,000: the longer of task and plan is cut first, down to 1,000 characters
+  each, then `files` is cut from the end and ends with `"... <n> more files"`. A body that still does not
+  fit is not sent, and the route falls back. The answer is `answers.tier.choice`; its confidence is
+  `answers.tier.confidence`, else `answers.tier.probabilities[choice]`. A `{"type": "refusal"}` answer, a
+  missing `tier` answer, an `{"error": {"code", "message"}}` body, an HTTP error or a timeout falls back.
+  `propose()` is not asked of `jev` (it returns None).
 - `llm`: the `[decider]` member's `headless_readonly`, once, with a prompt plus the payload on stdin and
   `timeout`; the reply is the last stdout line that is a `{...}` JSON object.
-- `openrouter`: a `urllib` POST to `https://openrouter.ai/api/v1/chat/completions` (fixed) with
-  `Authorization: Bearer $OPENROUTER_API_KEY` and `{"model": <[decider] model>, "messages": [{"role":
-  "user", "content": <the llm prompt>}]}`; the reply is the last `{...}` line of
-  `choices[0].message.content`. Lives in `_openrouter()`. A missing key, an HTTP error, a timeout or a bad
-  body falls back.
 
 `propose(cfg, plan, chain)` sends `{"plan", "chain", "reply"}` the same way and returns the reply object
 (or None) for `sstack-workflow propose` (docs/spec/workflow.md).

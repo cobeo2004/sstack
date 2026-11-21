@@ -336,6 +336,8 @@ def harness_installed(cfg: dict, h: str) -> bool:
 
 DECIDER_VIAS = ("heuristic", "jev", "openrouter", "llm")
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+DECISIONS_URL = "https://openrouter.ai/api/alpha/decisions"  # OpenRouter's Decisions API (alpha), for Jev
+JEV_MODEL = "typesafe/jev-1.14"
 
 
 def _safe_url(u) -> bool:
@@ -347,11 +349,12 @@ def _safe_url(u) -> bool:
 
 def decider(cfg: dict) -> dict:
     """`[decider]` settings: {"via", "timeout", "min_confidence", "url", "model", "member"}. Defaults:
-    heuristic (no decider call), 20 s, 0.5. `jev` needs `url`; `openrouter` needs `model` (an OpenRouter
-    model id, e.g. typesafe/jev-1.14; `url` defaults to its chat completions endpoint). A url must be https
-    (http only to localhost) and a url set only in the repo layer is dropped by load(). `llm` needs a
-    `harness` (optional model/effort) with a headless_readonly. Keys come from $JEV_API_KEY and
-    $OPENROUTER_API_KEY only, never from config."""
+    heuristic (no decider call), 20 s, 0.5. `jev` asks a decisions model through OpenRouter's Decisions API
+    (`model` defaults to typesafe/jev-1.14, `url` to that endpoint); `openrouter` needs `model` (an OpenRouter
+    chat model id; `url` defaults to its chat completions endpoint). A url must be https (http only to
+    localhost) and a url set only in the repo layer is dropped by load(). `llm` needs a `harness` (optional
+    model/effort) with a headless_readonly. The key comes from $OPENROUTER_API_KEY (else ~/.sstack/.env),
+    never from config."""
     t = cfg.get("decider", {})
     if not isinstance(t, dict):
         raise ConfigError(f"decider {t!r} is not a table")
@@ -363,11 +366,11 @@ def decider(cfg: dict) -> dict:
         raise ConfigError(f"[decider] timeout {timeout!r} is not a positive number of seconds")
     if not num(conf) or not 0 <= conf <= 1:
         raise ConfigError(f"[decider] min_confidence {conf!r} is not a number from 0 to 1")
-    if via == "jev" and not t.get("url"):
-        raise ConfigError("[decider] via = \"jev\" needs url (in ~/.sstack or .sstack/local, not the repo layer)")
     if t.get("url") is not None and not _safe_url(t["url"]):
         raise ConfigError(f"[decider] url {t['url']!r} must be https (http only to localhost or 127.0.0.1)")
-    model = t.get("model") if via == "openrouter" else None
+    model = t.get("model", JEV_MODEL) if via == "jev" else t.get("model") if via == "openrouter" else None
+    if via == "jev" and not (isinstance(model, str) and model):
+        raise ConfigError(f"[decider] model {model!r} is not an OpenRouter model id (default {JEV_MODEL})")
     if via == "openrouter" and not (isinstance(model, str) and model):
         raise ConfigError("[decider] via = \"openrouter\" needs model (an OpenRouter model id, e.g. typesafe/jev-1.14)")
     member = None
@@ -377,7 +380,7 @@ def decider(cfg: dict) -> dict:
             raise ConfigError("[decider] via = \"llm\" needs harness (and optional model, effort)")
         if "headless_readonly" not in cfg["harness"][member["harness"]]:
             raise ConfigError(f"[decider] harness {member['harness']!r} has no headless_readonly")
-    url = t.get("url") or (OPENROUTER_URL if via == "openrouter" else None)
+    url = t.get("url") or {"openrouter": OPENROUTER_URL, "jev": DECISIONS_URL}.get(via)
     return {"via": via, "timeout": float(timeout), "min_confidence": float(conf), "url": url, "model": model,
             "member": member}
 

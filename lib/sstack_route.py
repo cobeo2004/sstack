@@ -208,7 +208,7 @@ def routes_text(cfg: dict, variants: list[dict] = ()) -> str:
         ms = ", ".join(map(fmt, variant_members(cfg, v))) or "local"
         out.append(f"  {v['id']}: {v['spec'].get('when', '')} → {ms} ({v['layer']})")
     d = decider(cfg)
-    how = {"heuristic": "", "jev": f" {d['url']}", "openrouter": f" {d['model']}",
+    how = {"heuristic": "", "jev": f" {d['model']}", "openrouter": f" {d['model']}",
            "llm": f" {fmt(d['member'])}"}[d["via"]]
     out.append(f"decider: {d['via']}{how}" + (f" (timeout {d['timeout']:g}s, min_confidence {d['min_confidence']:g})"
                                               if d["via"] != "heuristic" else ""))

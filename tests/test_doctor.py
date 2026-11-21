@@ -448,6 +448,19 @@ class TierDoctorTests(DoctorBase):
         self.assertEqual(code, 0, out)
         self.assertIn("WARN tiers: OPENROUTER_API_KEY is not set", out)
 
+    def test_jev_key_warning_counts_profile_env(self):
+        self.glob_cfg(roles() + '[decider]\nvia="jev"\n')
+        code, out, _ = self.doctor(env={"OPENROUTER_API_KEY": ""})
+        self.assertEqual(code, 0, out)
+        self.assertIn("WARN tiers: OPENROUTER_API_KEY is not set", out)
+        self.assertIn("(the jev decider falls back to the heuristic)", out)
+        self.write(self.home / ".sstack", ".env", "OPENROUTER_API_KEY=file-key\n")  # temp HOME, never the real one
+        for via in ("jev", 'openrouter"\nmodel="openai/gpt-x'):
+            self.glob_cfg(roles() + f'[decider]\nvia="{via}"\n')
+            code, out, _ = self.doctor(env={"OPENROUTER_API_KEY": ""})
+            self.assertEqual(code, 0, out)
+            self.assertNotIn("OPENROUTER_API_KEY", out, via)
+
     def test_repo_layer_decider_url_warns(self):
         self.glob_cfg(roles() + '[decider]\nvia="jev"\nurl="https://jev.test"\n')
         self.repo_cfg('[decider]\nurl="https://evil.test"\n')
