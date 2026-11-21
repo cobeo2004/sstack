@@ -199,8 +199,8 @@ Expected (`<repo>` is the repo root):
 The agent then, for each call:
 
 1. loads the tool (`load_hint`) and calls `tool` with `args` exactly as given;
-2. waits for the child; if the child returned its report as its final message instead of writing
-   it, writes that text to the report path;
+2. waits for the child; if it returned its report as its final message, saves the message and
+   adds `--report-from <saved-file>` to its `record` command;
 3. runs the call's `record` command with `{exit}` replaced by the child's result (0 ok, 1 failed,
    2 timed out) and `<CHILD_THREAD_ID>` replaced by the child's id from the tool result (T3:
    `childThreadId`). An agent that cannot name the child's session drops both `--session-kind` and `--session`; leaving
@@ -211,14 +211,15 @@ shows up in the read-only check.
 
 ## Record a run
 
-`record` closes one member of a tool-delegated run. Here the child's work is simulated by writing
-the report by hand and the child's id filled in (`demo-thread`):
+`record` closes one member of a tool-delegated run. Here the child's final message is saved in a
+file and the child's id filled in (`demo-thread`):
 
 ```sh
 printf 'List the files.\n' > brief.md
 T3CODE_THREAD_ID=demo sstack-dispatch scout --brief brief.md --report scout.md > "${TMPDIR:-/tmp}/payload.json"   # exit 4
-printf 'README.md\n' > scout.md
-python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["calls"][0]["record"].replace("{exit}", "0").replace("'"'"'<CHILD_THREAD_ID>'"'"'", "demo-thread"))' "${TMPDIR:-/tmp}/payload.json" > "${TMPDIR:-/tmp}/record.sh"
+printf 'README.md\n' > "${TMPDIR:-/tmp}/child-message.txt"
+python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["calls"][0]["record"].replace("{exit}", "0").replace("'"'"'<CHILD_THREAD_ID>'"'"'", "demo-thread"), end="")' "${TMPDIR:-/tmp}/payload.json" > "${TMPDIR:-/tmp}/record.sh"
+printf ' --report-from "%s/child-message.txt"\n' "${TMPDIR:-/tmp}" >> "${TMPDIR:-/tmp}/record.sh"
 sh "${TMPDIR:-/tmp}/record.sh"
 tail -n 1 .sstack/runs/index.jsonl
 ```
@@ -233,6 +234,9 @@ Expected: `record` exits 0 and appends an index line:
 What `record` does, in order (under a lock on `<run_dir>/run.lock`):
 
 1. checks `--run-dir` is under `<repo>/.sstack/runs/` and `--member` is in its `run.json`, else exit 1;
+   `--report-from <file|->` reads a saved plain-text message, a JSON object with a `summary` string,
+   or a JSON list of text blocks (`-` reads stdin), and fills a missing or empty report. A non-empty
+   report is preserved; an unreadable source exits 1 before appending an index line;
 2. appends one line to `.sstack/runs/index.jsonl`;
 3. read-only role: compares the tree with `baseline.json`; changed paths go to `readonly_warning`
    and a `WARNING: read-only role changed the working tree:` block appended to the report (it warns,
