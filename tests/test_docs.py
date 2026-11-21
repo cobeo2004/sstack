@@ -121,7 +121,7 @@ def help_text(cmd: str, sub: str | None) -> str:
     key = (cmd, sub)
     if key not in _HELP:
         with tempfile.TemporaryDirectory() as h:  # never read the real ~/.sstack
-            env = {**os.environ, "HOME": h, "SSTACK_HOME": h}
+            env = {**os.environ, "HOME": h, "USERPROFILE": h, "SSTACK_HOME": h}
             run = lambda *a: subprocess.run([str(REPO / "bin" / cmd), *a, "--help"], capture_output=True,
                                             text=True, timeout=30, env=env, stdin=subprocess.DEVNULL).stdout
             if sub == "*":
@@ -201,8 +201,9 @@ class Sandbox:
         drop = ADE_ENV + ("SSTACK_HOME", "TMPDIR")
         self.env = {k: v for k, v in os.environ.items() if k not in drop and not k.startswith("T3CODE_")}
         path = [p for p in os.environ["PATH"].split(os.pathsep) if p and not (Path(p) / "sstack-dispatch").exists()]
-        self.env.update(HOME=str(self.home), T3CODE_CLI_PATH=str(base / "no-t3"),
-                        GIT_CONFIG_GLOBAL=str(base / "gitconfig"), PATH=os.pathsep.join([str(fakes)] + path))
+        self.env.update(HOME=str(self.home), USERPROFILE=str(self.home),
+                        T3CODE_CLI_PATH=str(base / "no-t3"), GIT_CONFIG_GLOBAL=str(base / "gitconfig"),
+                        PATH=os.pathsep.join([str(fakes)] + path))
         g = ["git", "-C", str(self.repo)]
         subprocess.run(["git", "init", "-q", str(self.repo)], check=True)
         subprocess.run(g + ["-c", "user.name=d", "-c", "user.email=d@d", "commit", "-q", "--allow-empty",

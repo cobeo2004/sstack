@@ -311,7 +311,7 @@ class ListingTests(VariantBase):
 
     def config_cli(self, *args) -> str:
         env = {k: v for k, v in os.environ.items() if not k.startswith("SSTACK_")}
-        env["HOME"] = str(self.home)
+        env["HOME"] = env["USERPROFILE"] = str(self.home)
         r = subprocess.run([PY, str(REPO / "bin/sstack-config"), *args], cwd=str(self.root), env=env,
                            capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stderr)

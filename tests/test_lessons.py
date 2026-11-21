@@ -97,7 +97,7 @@ FAKE_SCOUT = (f'[harness.fake]\nheadless_readonly = ["{sys.executable}", "{REPO}
 class ReflectHookTests(TempEnv):
     def hook(self, payload, *args, env=None):
         e = {k: v for k, v in os.environ.items() if not k.startswith(("T3CODE", "SSTACK_"))}
-        e.update(HOME=str(self.home), **(env or {}))
+        e.update(HOME=str(self.home), USERPROFILE=str(self.home), **(env or {}))
         return subprocess.run([sys.executable, str(REPO / "bin/sstack-reflect-hook"), *args],
                               input=json.dumps(payload), capture_output=True, text=True, env=e, timeout=60)
 

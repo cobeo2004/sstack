@@ -56,7 +56,8 @@ class ResolveTests(WorkflowBase):
 
 class GateLineTests(WorkflowBase):
     def wf(self, *args, cwd=None, **env):
-        e = {k: v for k, v in dict(NO_T3, HOME=str(self.home)).items() if not k.startswith("SSTACK_U")}
+        e = {k: v for k, v in dict(NO_T3, HOME=str(self.home), USERPROFILE=str(self.home)).items()
+             if not k.startswith("SSTACK_U")}
         r = subprocess.run([sys.executable, str(WF), *args], cwd=cwd or self.root, env={**e, **env},
                            capture_output=True, text=True)
         return r.returncode, r.stdout, r.stderr

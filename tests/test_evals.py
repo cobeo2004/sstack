@@ -18,7 +18,7 @@ class EvalScaffoldTests(unittest.TestCase):
             with self.subTest(case.name), tempfile.TemporaryDirectory() as home:
                 cwd = Path(home) / "cwd"
                 cwd.mkdir()
-                env = {"PATH": os.environ["PATH"], "HOME": home}
+                env = {"PATH": os.environ["PATH"], "HOME": home, "USERPROFILE": home}
                 r = subprocess.run(["bash", str(case / "fixture.sh")], cwd=cwd, env=env, capture_output=True, text=True)
                 self.assertEqual(r.returncode, 0, r.stderr)
                 run = cwd / ".sstack" / "runs" / "subtract-1"

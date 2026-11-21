@@ -5,6 +5,7 @@ REPO = Path(__file__).resolve().parent.parent
 FIXTURES = REPO / "tests" / "fixtures"
 EXAMPLE = FIXTURES / "config" / "example-equivalent" / "home"  # the old single-file example, split
 sys.path.insert(0, str(REPO / "lib"))
+import sstack_config
 # Tests point HOME at a temp dir, so the user's git identity is gone; CI hosts can't guess one.
 for _k, _v in (("GIT_AUTHOR_NAME", "t"), ("GIT_AUTHOR_EMAIL", "t@t"),
                ("GIT_COMMITTER_NAME", "t"), ("GIT_COMMITTER_EMAIL", "t@t")):
@@ -38,7 +39,7 @@ def split_toml(text: str) -> dict[str, str]:
 
 
 class TempEnv(unittest.TestCase):
-    """Temp HOME + temp git repo; restores HOME (and SSTACK_HOME) afterwards."""
+    """Temp HOME + temp git repo; restores HOME/USERPROFILE (and SSTACK_HOME) afterwards."""
 
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -48,8 +49,8 @@ class TempEnv(unittest.TestCase):
         self.home.mkdir()
         self.root.mkdir()
         subprocess.run(["git", "init", "-q", str(self.root)], check=True)
-        self._old = {k: os.environ.get(k) for k in ("HOME", "SSTACK_HOME", "PATH", "CLAUDECODE")}
-        os.environ["HOME"] = str(self.home)
+        self._old = {k: os.environ.get(k) for k in ("HOME", "USERPROFILE", "SSTACK_HOME", "PATH", "CLAUDECODE")}
+        os.environ["HOME"] = os.environ["USERPROFILE"] = str(self.home)
         # The template routes investigate and plan to claude; a stub keeps doctor's CLI check
         # independent of whether this host has claude installed.
         stub = base / "stub-bin" / "claude"
@@ -58,6 +59,8 @@ class TempEnv(unittest.TestCase):
         stub.chmod(0o755)
         os.environ["PATH"] = f"{stub.parent}{os.pathsep}{os.environ.get('PATH', '')}"
         os.environ.pop("SSTACK_HOME", None)
+        self.assertTrue(sstack_config.home_dir().resolve().is_relative_to(base),
+                        f"test HOME leaked to {sstack_config.home_dir()}")
         os.environ.pop("CLAUDECODE", None)  # the test host may be Claude Code: that is the session harness
         self.profile(self.home / ".sstack")  # as sstack-install does
 

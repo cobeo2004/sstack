@@ -1,6 +1,6 @@
 import os, shutil, subprocess, sys, tempfile
 from pathlib import Path
-from unittest import mock
+from unittest import mock, TestCase
 
 from helpers import TempEnv, REPO
 import sstack_config as C
@@ -74,7 +74,7 @@ class ConfigTests(TempEnv):
             C.load(self.root)
         self.assertIn("no sstack profile at", str(cm.exception))
         self.assertIn("sstack-config sync", str(cm.exception))
-        env = {**os.environ, "HOME": str(self.home)}
+        env = {**os.environ, "HOME": str(self.home), "USERPROFILE": str(self.home)}
         for cmd in (["sstack-config", "show"], ["sstack-dispatch", "routes"]):
             with self.subTest(cmd=cmd[0]):
                 r = subprocess.run([sys.executable, str(REPO / "bin" / cmd[0]), *cmd[1:]], cwd=self.root,
@@ -215,3 +215,16 @@ class ConfigTests(TempEnv):
         self.assertIsNone(a[2]["hook_path"])
         self.assertEqual((a[1]["auto"], a[2]["auto"]), (False, True))
         self.assertFalse(next(x for x in a if x["name"] == "cursor")["auto"])
+
+
+class TempEnvHomeIsolationTest(TestCase):
+    def test_setup_isolates_windows_profile_even_when_it_was_set_before(self):
+        env = TempEnv()
+        with tempfile.TemporaryDirectory() as other, \
+                mock.patch.dict(os.environ, {"HOME": other, "USERPROFILE": other}), \
+                mock.patch.object(Path, "home", classmethod(lambda cls: cls(os.environ["USERPROFILE"]))):
+            try:
+                env.setUp()
+                self.assertTrue(C.home_dir().resolve().is_relative_to(env.home.resolve()))
+            finally:
+                env.tearDown()

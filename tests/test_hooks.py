@@ -18,7 +18,7 @@ def payload(name: str, root: Path) -> str:
 class HookTests(TempEnv):
     def hook(self, event, harness, stdin, *extra, bin_=HOOK):
         e = {k: v for k, v in os.environ.items() if not k.startswith(("T3CODE", "SSTACK_"))}
-        e["HOME"] = str(self.home)
+        e["HOME"] = e["USERPROFILE"] = str(self.home)
         return subprocess.run([sys.executable, str(bin_), event, "--harness", harness, *extra],
                               input=stdin, capture_output=True, text=True, env=e, cwd=self.root, timeout=60)
 

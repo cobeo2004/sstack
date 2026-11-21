@@ -23,7 +23,7 @@ class ReflectDedupeTests(TempEnv):
 
     def hook(self, transcript: Path, session="s1", env=None):
         e = {k: v for k, v in os.environ.items() if not k.startswith(("T3CODE", "SSTACK_"))}
-        e["HOME"] = str(self.home)
+        e["HOME"] = e["USERPROFILE"] = str(self.home)
         e.update(env or {})
         payload = {"transcript_path": str(transcript), "cwd": str(self.root), "session_id": session,
                    "hook_event_name": "SessionEnd"}

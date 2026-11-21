@@ -16,7 +16,7 @@ NO_T3 = {k: v for k, v in os.environ.items()
 class DispatchBase(TempEnv):
     def run_main(self, *args, env=None):
         out, err = io.StringIO(), io.StringIO()
-        e = dict(NO_T3, HOME=str(self.home), **(env or {}))
+        e = dict(NO_T3, HOME=str(self.home), USERPROFILE=str(self.home), **(env or {}))
         with mock.patch.dict(os.environ, e, clear=True), \
              contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
             old = os.getcwd(); os.chdir(self.root)
@@ -426,7 +426,7 @@ class AnswerKeyShell(TempEnv):
     def test_plain_dispatch_in_t3_exits_4(self):
         import subprocess
         calls = self.root.parent / "calls.log"
-        env = {**NO_T3, "HOME": str(self.home), "SSTACK_HOME": str(self.profile(self.home / "example", FIXTURES / "config/example-equivalent/home")),
+        env = {**NO_T3, "HOME": str(self.home), "USERPROFILE": str(self.home), "SSTACK_HOME": str(self.profile(self.home / "example", FIXTURES / "config/example-equivalent/home")),
                "T3CODE_THREAD_ID": "x", "PATH": f"{FAKES}:{os.environ['PATH']}", "FAKE_CALLS_LOG": str(calls)}
         r = subprocess.run([str(REPO / "bin/sstack-dispatch"), "scout", "--brief", "b.md", "--report", "r.md"],
                            cwd=self.root, env=env, capture_output=True, text=True)
@@ -523,7 +523,7 @@ class FixB2Tests(FakeCliBase):
         self.report().parent.mkdir(exist_ok=True)
         self.report().write_text("PASS\n")
         argv = __import__("shlex").split(call["record"].replace("{exit}", "0").replace("'<CHILD_THREAD_ID>'", "thread-1"))
-        env = {**NO_T3, "HOME": str(self.home), **T3}
+        env = {**NO_T3, "HOME": str(self.home), "USERPROFILE": str(self.home), **T3}
         with open(Path(json.loads(out)["run_dir"]) / "run.lock", "a") as lk:
             fcntl.flock(lk, fcntl.LOCK_EX)
             p = subprocess.Popen([str(REPO / "bin/sstack-dispatch"), *argv[1:]], cwd=self.root, env=env,
@@ -757,7 +757,7 @@ class WriteLockTests(FakeCliBase):
         self.assertEqual(self.go("implement", "taskB", "--via", "local")[0], 5)
         r = subprocess.run([sys.executable, str(REPO / "bin/sstack-workflow"), "done", "implement", "--run",
                             str(self.root / ".sstack/runs/taskA")], cwd=self.root,
-                           env=dict(NO_T3, HOME=str(self.home)), capture_output=True, text=True)
+                           env=dict(NO_T3, HOME=str(self.home), USERPROFILE=str(self.home)), capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(self.holders(), [])
         self.assertEqual(self.go("implement", "taskB", "--via", "local")[0], 3)
@@ -765,7 +765,7 @@ class WriteLockTests(FakeCliBase):
     def test_simultaneous_dispatches_admit_exactly_one(self):
         import subprocess
         self.example()
-        env = dict(NO_T3, HOME=str(self.home))
+        env = dict(NO_T3, HOME=str(self.home), USERPROFILE=str(self.home))
         procs = [subprocess.Popen([str(REPO / "bin/sstack-dispatch"), "implement", "--via", "local", "--brief",
                                    self.brief(), "--report", str(self.rep(t))], cwd=self.root, env=env,
                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE) for t in ("taskA", "taskB")]
