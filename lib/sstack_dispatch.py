@@ -299,8 +299,8 @@ def run_member(argv: list[str], cwd: Path, brief: str, deadline: float, report: 
     with open(events or report, "w", encoding="utf-8") as out, open(err, "w", encoding="utf-8") as errf:
         try:
             # SSTACK_REFLECT=1: a child's own SessionEnd must not start another reflect pass
-            p = subprocess.Popen(argv, cwd=cwd, stdin=subprocess.PIPE, stdout=out, stderr=errf, text=True,
-                                 start_new_session=True, env={**os.environ, "SSTACK_REFLECT": "1"}, encoding="utf-8", errors="replace")
+            p = subprocess.Popen(A.resolve(argv), cwd=cwd, stdin=subprocess.PIPE, stdout=out, stderr=errf, text=True,
+                                 **A.NEW_GROUP, env={**os.environ, "SSTACK_REFLECT": "1"}, encoding="utf-8", errors="replace")
         except OSError as e:
             errf.write(f"cannot start {argv[0]}: {e}\n")
             return 1
@@ -457,11 +457,18 @@ def write_run(d: Path, run: dict) -> None:
     (d / "run.json").write_text(json.dumps(run, indent=2) + "\n", encoding="utf-8")
 
 
-def append_index(root: Path, line: dict) -> None:
-    p = root / ".sstack" / "runs" / "index.jsonl"
+def _append_line(p: Path, line: dict) -> None:
+    """One JSON line, appended under the file's lock: Windows emulates append mode as seek-to-end then
+    write, so concurrent panel members could tear each other's lines."""
     p.parent.mkdir(parents=True, exist_ok=True)
     with open(p, "a", encoding="utf-8") as f:
+        _flock(f)
+        f.seek(0, os.SEEK_END)
         f.write(json.dumps(line) + "\n")
+
+
+def append_index(root: Path, line: dict) -> None:
+    _append_line(root / ".sstack" / "runs" / "index.jsonl", line)
 
 
 def index_line(root: Path, run_dir: Path, run: dict, rec: dict) -> None:
@@ -485,14 +492,11 @@ def append_outcome(root: Path, run_dir: Path, report: Path, run: dict, member_ke
     h, _, m = member_key.partition("#")[0].partition("/")
     mine = member_key == (run.get("members") or [None])[0]  # run tier/entry describe the first member only
     parent, nested = _run_parent(root, report)
-    p = (parent.parent if nested else run_dir) / OUTCOMES
-    p.parent.mkdir(parents=True, exist_ok=True)
-    with open(p, "a", encoding="utf-8") as f:
-        f.write(json.dumps({"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "step": run.get("step"), "role": run["role"],
-                            "tier": run.get("tier") if mine else None,
-                            "entry": run.get("entry") if mine else None, "harness": h, "model": m,
-                            "exit": code, "escalated": bool(run.get("escalated")), "tokens": None,
-                            "cost": None}) + "\n")
+    _append_line((parent.parent if nested else run_dir) / OUTCOMES,
+                 {"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "step": run.get("step"), "role": run["role"],
+                  "tier": run.get("tier") if mine else None,
+                  "entry": run.get("entry") if mine else None, "harness": h, "model": m,
+                  "exit": code, "escalated": bool(run.get("escalated")), "tokens": None, "cost": None})
 
 
 def _plan_text(report) -> str:

@@ -138,7 +138,7 @@ def main() -> int:
     if os.environ.get("SSTACK_REFLECT"):
         return 0
     p = subprocess.Popen([sys.executable, __file__, "--foreground"], stdin=subprocess.PIPE,
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True, text=True, encoding="utf-8", errors="replace")
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **sstack_dispatch.A.NEW_GROUP, text=True, encoding="utf-8", errors="replace")
     p.stdin.write(raw)
     p.stdin.close()
     return 0

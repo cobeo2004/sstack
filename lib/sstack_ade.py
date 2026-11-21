@@ -3,8 +3,10 @@ and the hook lifecycle (detect / delegate / wait / collect / cancel)."""
 import json
 import os
 import re
+import shutil
 import signal
 import subprocess
+import sys
 import tempfile
 import time
 from collections.abc import Mapping
@@ -19,12 +21,67 @@ TASK = ("Read the brief at {brief} and do exactly what it says. Write your repor
         "If you cannot write files, return the full report as your final message.")
 
 
+_WINDOWS = os.name == "nt"
+# Popen kwargs that put the child in its own process group, so kill_group reaches its children too
+NEW_GROUP = ({"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP} if _WINDOWS
+             else {"start_new_session": True})
+NO_SH = "needs sh on PATH (install Git for Windows, or use WSL)"
+
+
+class ShMissing(OSError):
+    """No `sh` on PATH (Windows without Git for Windows); str() is the one line to print."""
+
+
+def sh() -> str:
+    """The shell for verify/check/run.sh: "sh" on POSIX, its full path on Windows; ShMissing if absent."""
+    found = shutil.which("sh")
+    if not found:
+        raise ShMissing(NO_SH)
+    return found if _WINDOWS else "sh"
+
+
+def resolve(argv: list[str]) -> list[str]:
+    """argv with a bare argv[0] found on PATH on Windows, where CreateProcess skips PATHEXT
+    (`codex` → codex.cmd); POSIX unchanged."""
+    found = _WINDOWS and argv and shutil.which(argv[0])
+    return [found, *argv[1:]] if found else argv
+
+
+def launch(path: Path | str) -> list[str]:
+    """argv prefix that executes `path`: itself on POSIX; on Windows (no shebangs) the interpreter
+    its shebang or suffix names."""
+    if not _WINDOWS:
+        return [str(path)]
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            first = f.readline()
+    except OSError:
+        first = ""
+    if first.startswith("#!"):
+        if "python" in first:
+            return [sys.executable, str(path)]
+        if re.search(r"\b(ba)?sh\b", first):
+            return [sh(), str(path)]
+    if str(path).endswith(".py"):
+        return [sys.executable, str(path)]
+    return [str(path)]
+
+
 class HookTimeout(Exception):
     """The dispatch deadline passed while a hook ran (its process group is killed)."""
 
 
 def kill_group(p: subprocess.Popen) -> None:
-    """SIGTERM then SIGKILL the child's whole process group (it was started with start_new_session)."""
+    """SIGTERM then SIGKILL the child's whole process group (it was started with NEW_GROUP);
+    on Windows, taskkill the child's process tree."""
+    if _WINDOWS:
+        subprocess.run(["taskkill", "/T", "/F", "/PID", str(p.pid)], capture_output=True)
+        try:
+            p.kill()
+        except OSError:
+            pass
+        p.wait()
+        return
     for sig in (signal.SIGTERM, signal.SIGKILL):
         try:
             os.killpg(p.pid, sig)
@@ -58,15 +115,17 @@ def _hook(path: Path | None, cap: str, stdin: dict, state: Path | None, env: Map
         return None
     e = {**env, **({"SSTACK_HOOK_STATE": str(state)} if state else {})}
     try:
-        p = subprocess.Popen([str(path), cap], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                             stderr=subprocess.PIPE, text=True, env=e, start_new_session=True, encoding="utf-8", errors="replace")
+        p = subprocess.Popen([*launch(path), cap], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE, text=True, env=e, **NEW_GROUP, encoding="utf-8", errors="replace")
     except OSError:
         return None
     try:
         out, err = p.communicate(json.dumps(stdin), timeout=timeout)
     except subprocess.TimeoutExpired:
         kill_group(p)
-        for f in (p.stdin, p.stdout, p.stderr):
+        # Windows: communicate's reader threads hold the pipes' locks until every writer exits, so
+        # close() would block on a grandchild taskkill missed; leave them to the threads
+        for f in (p.stdin, p.stdout, p.stderr) if not _WINDOWS else ():
             f.close()
         raise HookTimeout from None
     return subprocess.CompletedProcess(p.args, p.returncode, out, err)

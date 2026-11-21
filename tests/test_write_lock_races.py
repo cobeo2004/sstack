@@ -7,6 +7,19 @@ import sstack_dispatch as D
 
 
 class WriteLockRaceTests(TempEnv):
+    def test_concurrent_index_appends_keep_every_line_whole(self):
+        # panel members append from parallel threads; Windows' emulated append mode tore lines
+        big = "x" * 20000
+        ts = [threading.Thread(target=lambda n=n: [D.append_index(self.root, {"n": n, "pad": big}) for _ in range(20)])
+              for n in range(8)]
+        for t in ts:
+            t.start()
+        for t in ts:
+            t.join()
+        lines = (self.root / D.INDEX).read_text(encoding="utf-8").splitlines()
+        self.assertEqual(len(lines), 160)
+        self.assertTrue(all(__import__("json").loads(l)["pad"] == big for l in lines))
+
     def test_flock_windows_retries_after_oserror(self):
         f = mock.Mock()
         f.fileno.return_value = 7
