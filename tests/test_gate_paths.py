@@ -1,4 +1,5 @@
 """Review findings on sstack-gate: git-quoted file names and symlinked manifest paths."""
+from helpers import can_symlink, NO_SYMLINK
 import hashlib, os, unittest
 
 from test_gate import GateTests
@@ -17,6 +18,7 @@ class GatePathTests(GateTests):
         self.gated(self.gate("--run", str(run), "--pr"))
         self.expect(self.verdict(run, "1-pr.md"), "FAIL", "diagram")
 
+    @unittest.skipUnless(can_symlink(), NO_SYMLINK)
     def test_manifest_path_through_a_symlink_out_of_the_repo_fails(self):
         self.base(verify="true")
         outside = self.root.parent / "outside.txt"

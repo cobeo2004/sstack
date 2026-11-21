@@ -38,7 +38,7 @@ class Issue3ReflectPanel(TempEnv):
         agent.write_text("import sys; sys.stdin.read()\n"
                          "print('LESSON: repo | shared lesson | why')\n"
                          "print('LESSON: repo | only from ' + sys.argv[1] + ' | why')\n")
-        h = f'["{sys.executable}", "{agent}", "{{model}}"]'
+        h = f"['{sys.executable}', '{agent}', '{{model}}']"
         self.glob_cfg(f'[harness.fake]\nheadless = {h}\nheadless_readonly = {h}\n' + SCOUT_PANEL
                       + '[reflect]\nauto = true\n')
         env = {k: v for k, v in __import__("os").environ.items() if not k.startswith(("T3CODE", "SSTACK_"))}

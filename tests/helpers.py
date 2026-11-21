@@ -1,9 +1,16 @@
-import os, re, shutil, subprocess, sys, tempfile, unittest
+import functools, os, re, shutil, subprocess, sys, tempfile, unittest
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 FIXTURES = REPO / "tests" / "fixtures"
 EXAMPLE = FIXTURES / "config" / "example-equivalent" / "home"  # the old single-file example, split
+FAKES = REPO / "tests" / "fakes"
+if os.name == "nt":  # tests/fakes/* are git symlinks and Windows ignores shebangs: <name>.cmd wrappers
+    _FAKES = tempfile.TemporaryDirectory()  # ponytail: one per test process, removed at exit
+    FAKES = Path(_FAKES.name)
+    for _n in ("t3", "claude", "codex", "pi", "cursor-agent", "orca", "conductor"):
+        shutil.copy(REPO / "tests" / "fakes" / "fake_cli.py", FAKES / _n)  # fake_cli reads its name from argv[0]
+        (FAKES / f"{_n}.cmd").write_bytes(f'@"{sys.executable}" "%~dp0{_n}" %*\r\n'.encode())
 sys.path.insert(0, str(REPO / "lib"))
 import sstack_config
 # Tests point HOME at a temp dir, so the user's git identity is gone; CI hosts can't guess one.
@@ -38,6 +45,30 @@ def split_toml(text: str) -> dict[str, str]:
     return out
 
 
+@functools.cache
+def can_symlink() -> bool:
+    """Windows needs Developer Mode or admin for symlinks."""
+    with tempfile.TemporaryDirectory() as d:
+        try:
+            os.symlink(d, Path(d) / "l")
+            return True
+        except (OSError, NotImplementedError):
+            return False
+
+
+def link_or_copy(dest: Path, src: Path) -> None:
+    """A symlink standing in for a copy; a real copy where symlinks are unavailable."""
+    if can_symlink():
+        dest.symlink_to(src)
+    else:
+        skip = lambda d, names: [n for n in names if n in (".git", "__pycache__")
+                                 or (n == "runs" and Path(d).name == ".sstack")]
+        shutil.copytree(src, dest, ignore=skip)
+
+
+NO_SYMLINK = "symlinks need privilege on this host"
+
+
 class TempEnv(unittest.TestCase):
     """Temp HOME + temp git repo; restores HOME/USERPROFILE (and SSTACK_HOME) afterwards."""
 
@@ -53,9 +84,9 @@ class TempEnv(unittest.TestCase):
         os.environ["HOME"] = os.environ["USERPROFILE"] = str(self.home)
         # The template routes investigate and plan to claude; a stub keeps doctor's CLI check
         # independent of whether this host has claude installed.
-        stub = base / "stub-bin" / "claude"
+        stub = base / "stub-bin" / ("claude.cmd" if os.name == "nt" else "claude")
         stub.parent.mkdir()
-        stub.write_text("#!/bin/sh\nexit 0\n")
+        stub.write_text("@exit /b 0\n" if os.name == "nt" else "#!/bin/sh\nexit 0\n", encoding="utf-8")
         stub.chmod(0o755)
         os.environ["PATH"] = f"{stub.parent}{os.pathsep}{os.environ.get('PATH', '')}"
         os.environ.pop("SSTACK_HOME", None)
@@ -86,7 +117,7 @@ class TempEnv(unittest.TestCase):
     def write(self, rel_base: Path, rel: str, text: str) -> Path:
         p = rel_base / rel
         p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(text)
+        p.write_text(text, encoding="utf-8", newline="")  # no CRLF on Windows: tests hash and compare bytes
         return p
 
     def layer_cfg(self, layer: Path, text: str) -> Path:

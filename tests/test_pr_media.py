@@ -1,11 +1,14 @@
-import os, subprocess, sys
+import os, shutil, subprocess, sys, unittest
 from pathlib import Path
 
 from helpers import TempEnv, REPO
 
+# no ffmpeg on it; on POSIX `which git` can be a dir that holds ffmpeg too (Homebrew)
+BASE_PATH = str(Path(shutil.which("git")).parent) if os.name == "nt" else "/usr/bin:/bin"
+
 
 def git(cwd, *args):
-    return subprocess.run(["git", "-C", str(cwd), *args], check=True, capture_output=True, text=True).stdout
+    return subprocess.run(["git", "-C", str(cwd), *args], check=True, capture_output=True, text=True, encoding="utf-8").stdout
 
 
 class PrMediaTests(TempEnv):
@@ -23,9 +26,9 @@ class PrMediaTests(TempEnv):
 
     def publish(self, *args):
         env = dict(os.environ, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t",
-                   GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@t", PATH=os.environ.get("SSTACK_TEST_PATH", "/usr/bin:/bin"))  # no ffmpeg
+                   GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@t", PATH=os.environ.get("SSTACK_TEST_PATH", BASE_PATH))  # no ffmpeg
         r = subprocess.run([sys.executable, str(REPO / "bin/sstack-pr-media"), *args],
-                           cwd=self.root, env=env, capture_output=True, text=True)
+                           cwd=self.root, env=env, capture_output=True, text=True, encoding="utf-8")
         self.assertEqual(r.returncode, 0, r.stderr)
         return r.stdout
 
@@ -74,6 +77,7 @@ class PrMediaTests(TempEnv):
         out = self.publish("42", str(self.media / "after-sync.mmd"), "--repo", "me/app", "--dry-run")
         self.assertIn("<tr><td>—</td><td>\n\n```mermaid\nflowchart LR", out)
 
+    @unittest.skipIf(os.name == "nt", "fake gh is a sh script Windows cannot run as `gh`")
     def test_edit_body_appends_then_replaces(self):
         # fake gh: `pr view` prints the stored body, `pr edit --body-file -` stores stdin
         bin_dir = self.root.parent / "bin"; bin_dir.mkdir()
@@ -86,13 +90,13 @@ case "$2" in
 esac
 """)
         gh.chmod(0o755)
-        os.environ["SSTACK_TEST_PATH"] = f"{bin_dir}:/usr/bin:/bin"
+        os.environ["SSTACK_TEST_PATH"] = f"{bin_dir}{os.pathsep}{BASE_PATH}"
         try:
             self.publish("42", str(self.media / "after-home.png"), "--repo", "me/app", "--edit-body")
-            first = store.read_text()
+            first = store.read_text(encoding="utf-8")
             self.assertTrue(first.startswith("## Summary\nDoes a thing.\n\n<!-- sstack-media -->"))
             self.publish("42", str(self.media / "before-home.png"), "--repo", "me/app", "--edit-body")
-            second = store.read_text()
+            second = store.read_text(encoding="utf-8")
         finally:
             del os.environ["SSTACK_TEST_PATH"]
         self.assertEqual(second.count("<!-- sstack-media -->"), 1)

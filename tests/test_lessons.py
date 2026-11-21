@@ -90,7 +90,7 @@ class LessonTests(TempEnv):
 import json, subprocess, sys
 from helpers import REPO
 
-FAKE_SCOUT = (f'[harness.fake]\nheadless_readonly = ["{sys.executable}", "{REPO}/tests/fakes/fake_agent.py", "{{model}}"]\n'
+FAKE_SCOUT = (f"[harness.fake]\nheadless_readonly = ['{sys.executable}', '{REPO}/tests/fakes/fake_agent.py', '{{model}}']\n"
               '[role.scout]\nharness = "fake"\nmodel = "lesson"\n')
 
 
@@ -143,13 +143,18 @@ class ReflectHookTests(TempEnv):
     def panel_hook(self, agent_src):
         agent = self.home / "agent.py"
         agent.write_text("import sys; sys.stdin.read(); m = sys.argv[1]\n" + agent_src)
-        h = f'["{sys.executable}", "{agent}", "{{model}}"]'
+        h = f"['{sys.executable}', '{agent}', '{{model}}']"
         self.glob_cfg(f'[harness.fake]\nheadless_readonly = {h}\n'
                       '[role.scout]\npanel=[{harness="fake",model="good"},{harness="fake",model="bad"}]\n'
                       '[reflect]\nauto = true\n')
         r = self.hook(self.payload(), "--foreground")
         self.assertEqual(r.returncode, 0, r.stderr)
-        return (self.root / ".sstack/wiki/lessons.md").read_text()
+        lessons = self.root / ".sstack/wiki/lessons.md"
+        if not lessons.exists():  # say why: the hook swallows dispatch failures by design
+            runs = sorted((self.root / ".sstack/runs/reflect").glob("*/*"))
+            self.fail(f"no lessons.md\nstdout: {r.stdout}\nstderr: {r.stderr}\n" + "\n".join(
+                f"--- {p.name}\n{p.read_text(encoding='utf-8', errors='replace')[:1500]}" for p in runs if p.is_file()))
+        return lessons.read_text(encoding="utf-8")
 
     def test_reflect_hook_skips_failed_panel_member(self):
         text = self.panel_hook("print('LESSON: repo | from ' + m + ' | why')\nsys.exit(m == 'bad')\n")
@@ -191,7 +196,7 @@ class LessonScopeTests(TempEnv):
         return L.add(self.path(), text, None, **kw)
 
     def stored(self, lesson_id):
-        return next(i for i in L.parse(self.path().read_text())
+        return next(i for i in L.parse(self.path().read_text(encoding="utf-8"))
                     if isinstance(i, L.Lesson) and i.id == lesson_id)
 
     def test_add_stores_path_globs_and_commit(self):

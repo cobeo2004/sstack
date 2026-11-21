@@ -6,6 +6,7 @@ from unittest import mock
 
 from helpers import TempEnv, EXAMPLE, FIXTURES, REPO
 import sstack_config as C
+from sstack_ade import launch
 
 CONFIG_CASES = ["defaults-only", "home-override", "repo+local", "legacy-only", "legacy-local",
                 "mixed-legacy-split", "worktree-fallback", "worktree-local-fallback", "example-equivalent", "skills-keys"]
@@ -89,7 +90,7 @@ class AdeCases(TempEnv):
 
     def hook(self, d, cap, stdin, state, env=None):
         hook = next((d / "home/ades").glob("*.hook"))
-        return subprocess.run([str(hook), cap], input=json.dumps(stdin), capture_output=True, text=True,
+        return subprocess.run([*launch(hook), cap], input=json.dumps(stdin), capture_output=True, text=True,
                               cwd=self.root, env={**os.environ, "SSTACK_HOOK_STATE": str(state), **(env or {})},
                               timeout=10)
 
@@ -172,7 +173,7 @@ class PayloadAndRunCases(TempEnv):
                 base = json.loads((at(rd) / "baseline.json").read_text())
                 self.assertEqual(set(base), {"head", "status", "files"})
             if run["panel_report"]:
-                panel = at(run["panel_report"]).read_text()
+                panel = at(run["panel_report"]).read_text(encoding="utf-8")
                 self.assertTrue(panel.startswith("# review panel"))
                 self.assertEqual(len(PANEL_OK.findall(panel)), len(run["members"]))
 

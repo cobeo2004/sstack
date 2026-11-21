@@ -1,1 +1,1 @@
-@python "%~dp0sstack-gate" %*
+@setlocal & set NoDefaultCurrentDirectoryInExePath=1 & python "%~dp0sstack-gate" %*

@@ -1,1 +1,1 @@
-@python "%~dp0sstack-config" %*
+@setlocal & set NoDefaultCurrentDirectoryInExePath=1 & python "%~dp0sstack-config" %*

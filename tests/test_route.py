@@ -2,7 +2,7 @@ import json, sys
 from pathlib import Path
 
 from helpers import TempEnv, REPO
-from test_dispatch import DispatchBase, FAKE
+from test_dispatch import DispatchBase, FAKE, unq
 import sstack_route as R
 
 TIERS = FAKE + ('[tier.strong]\nharness="fake"\nmodel="strong"\n'
@@ -35,42 +35,42 @@ class RouteTests(DispatchBase):
         code, out, _ = self.dry("implement", "--files", "web/components/Nav.tsx")
         self.assertEqual(code, 0)
         self.assertIn("route: auto frontend → tier.standard", out)
-        self.assertIn("fake_agent.py standard", out)
+        self.assertIn("fake_agent.py standard", unq(out))
 
     def test_implement_no_files_uses_role_default(self):
         self.glob_cfg(TIERS + '[role.implement]\nharness="fake"\nmodel="default"\n')
         _, out, _ = self.dry("implement")
         self.assertIn("route: role default", out)
-        self.assertIn("fake_agent.py default", out)
+        self.assertIn("fake_agent.py default", unq(out))
 
     def test_hint_names_builtin_kind(self):
         self.glob_cfg(TIERS + '[role.implement]\nharness="fake"\nmodel="default"\n')
         _, out, _ = self.dry("implement", "--hint", "mechanical", "--files", "server/x.go")
-        self.assertIn("fake_agent.py cheap", out)
+        self.assertIn("fake_agent.py cheap", unq(out))
 
     def test_kinds_ignored_without_tiers(self):
         self.glob_cfg(FAKE + '[role.implement]\nharness="fake"\nmodel="default"\n')
         _, out, _ = self.dry("implement", "--files", "web/components/Nav.tsx")
-        self.assertIn("fake_agent.py default", out)
+        self.assertIn("fake_agent.py default", unq(out))
 
     def test_config_hint_by_paths_beats_builtin(self):
         self.glob_cfg(TIERS + '[role.implement]\nharness="fake"\nmodel="default"\n'
                       '[role.implement.hint.ui]\nwhen="our web app"\npaths=["web/*"]\nharness="fake"\nmodel="ui"\n')
         _, out, _ = self.dry("implement", "--files", "web/components/Nav.tsx")
         self.assertIn("route: hint ui (paths)", out)
-        self.assertIn("fake_agent.py ui", out)
+        self.assertIn("fake_agent.py ui", unq(out))
 
     def test_config_hint_by_name_and_tier(self):
         self.glob_cfg(TIERS + '[role.implement]\nharness="fake"\nmodel="default"\n'
                       '[role.implement.hint.risky]\ntier="strong"\n')
         _, out, _ = self.dry("implement", "--hint", "risky")
-        self.assertIn("fake_agent.py strong", out)
+        self.assertIn("fake_agent.py strong", unq(out))
 
     def test_unknown_hint_falls_back(self):
         self.glob_cfg(TIERS + '[role.implement]\nharness="fake"\nmodel="default"\n')
         code, out, _ = self.dry("implement", "--hint", "nope")
         self.assertEqual(code, 0)
-        self.assertIn("fake_agent.py default", out)
+        self.assertIn("fake_agent.py default", unq(out))
         self.assertIn("unknown hint 'nope'", out)
 
     PANEL = '[role.review]\npanel=[{harness="fake",model="p1"},{harness="fake",model="p2"}]\n'
@@ -109,8 +109,8 @@ class RouteTests(DispatchBase):
                       '[role.review]\nharness="fake"\nmodel="strong"\n'
                       'panel=[{harness="fake",model="p1"}]\n')
         _, out, _ = self.dry("review", "--files", "Makefile")  # no kind: implement uses its role default
-        self.assertIn("fake_agent.py p1", out)
-        self.assertNotIn("fake_agent.py strong", out)
+        self.assertIn("fake_agent.py p1", unq(out))
+        self.assertNotIn("fake_agent.py strong", unq(out))
 
     def test_failure_escalates_one_tier_once(self):
         self.glob_cfg(FAKE + '[tier.cheap]\nharness="fake"\nmodel="fail"\n'
@@ -161,7 +161,7 @@ class ReviewFixTests(DispatchBase):
         self.glob_cfg(FAKE + '[role.implement]\nharness="fake"\nmodel="same"\neffort="high"\n'
                       '[role.review]\nharness="fake"\nmodel="same"\neffort="low"\npanel=[{harness="fake",model="other"}]\n')
         _, out, _ = self.dry("review", "--files", "Makefile")
-        self.assertIn("fake_agent.py other", out)
+        self.assertIn("fake_agent.py other", unq(out))
 
     def test_escalation_skips_the_implementer(self):
         import sstack_config as C
@@ -191,12 +191,12 @@ class ReviewFixTests(DispatchBase):
         self.glob_cfg(self.CUSTOM)
         _, out, _ = self.dry("implement", "--files", "web/components/Nav.tsx")
         self.assertIn("route: auto frontend → tier.ui-fast", out)
-        self.assertIn("fake_agent.py uifast", out)
+        self.assertIn("fake_agent.py uifast", unq(out))
 
     def test_new_kind_name_via_hint(self):
         self.glob_cfg(self.CUSTOM)
         _, out, _ = self.dry("implement", "--hint", "data")
-        self.assertIn("fake_agent.py gpu", out)
+        self.assertIn("fake_agent.py gpu", unq(out))
 
     def test_custom_tier_order_escalates(self):
         import sstack_config as C
@@ -259,7 +259,7 @@ class CatalogueTests(DispatchBase):
         code, out, err = self.dry("scout")
         self.assertEqual(code, 0, err)
         self.assertIn("route: role tier.strong", out)
-        self.assertIn("fake_agent.py strong", out)
+        self.assertIn("fake_agent.py strong", unq(out))
 
     def test_role_tier_any_label_no_decider(self):
         from unittest import mock

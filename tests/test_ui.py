@@ -1,7 +1,8 @@
-import json, os, shutil, threading, urllib.error, urllib.parse, urllib.request
+import json, os, shutil, threading, unittest, urllib.error, urllib.parse, urllib.request
+from pathlib import Path
 from unittest import mock
 
-from helpers import FIXTURES, TempEnv
+from helpers import FIXTURES, TempEnv, can_symlink, NO_SYMLINK
 import sstack_ui as U
 
 REVIEW = 'mode = "single"\nharness = "codex"\nmodel = "gpt-6.1-sol"\n'
@@ -43,6 +44,7 @@ class ServerTests(TempEnv):
         q = f"?repo={urllib.parse.quote(str(self.root))}"
         return self.request("DELETE", path + q)
 
+    @unittest.skipUnless(can_symlink(), NO_SYMLINK)
     def test_symlinked_repo_layer_root_refused(self):
         outside = self.home / "outside"
         outside.mkdir()
@@ -158,7 +160,7 @@ class ServerTests(TempEnv):
         self.assertEqual(ade["delegate"], "tool delegate_task")
         self.assertEqual(ade["readonly"], "instructed")
         self.assertIn("tool:", ade["browser"])
-        self.assertTrue(ade["note"].endswith(".sstack/ades/t3.md"))
+        self.assertTrue(Path(ade["note"]).as_posix().endswith(".sstack/ades/t3.md"))
         with mock.patch.dict(os.environ, {"T3CODE_THREAD_ID": "x", "SSTACK_ADE": "none"}):
             self.assertIsNone(self.get(f"/api/ade?repo={self.root}")["name"])
 
@@ -245,6 +247,7 @@ class ServerTests(TempEnv):
         r = self.get(f"/api/wiki/page?repo={self.root}&name=a")
         self.assertEqual((r["name"], r["path"], r["text"]), ("a", str(d / "a.md"), (d / "a.md").read_text()))
 
+    @unittest.skipUnless(can_symlink(), NO_SYMLINK)
     def test_wiki_page_refusals(self):
         d = self.wiki_fixture()
         for name in ("../a", "%2E%2E%2Fa", "index", "nope"):
@@ -258,6 +261,7 @@ class ServerTests(TempEnv):
         self.wiki_400(f"/api/wiki/page?repo={self.root}&name=a")
         self.wiki_400(f"/api/wiki?repo={self.root}")
 
+    @unittest.skipUnless(can_symlink(), NO_SYMLINK)
     def test_wiki_refuses_a_symlinked_repo_sstack_dir(self):
         # review: `.sstack -> elsewhere` let the page endpoint read files outside the repo
         self.wiki_fixture()
@@ -267,6 +271,7 @@ class ServerTests(TempEnv):
         self.wiki_400(f"/api/wiki/page?repo={self.root}&name=a")
         self.wiki_400(f"/api/wiki?repo={self.root}")
 
+    @unittest.skipUnless(can_symlink(), NO_SYMLINK)
     def test_wiki_api_skips_a_symlinked_page(self):
         # review: /api/wiki parsed a symlinked page and returned the outside file's summary
         d = self.wiki_fixture()
@@ -296,6 +301,7 @@ class ServerTests(TempEnv):
 
     # --- round 1 review fixes -------------------------------------------------
 
+    @unittest.skipUnless(can_symlink(), NO_SYMLINK)
     def test_stale_tmp_symlink_cannot_redirect_a_save(self):
         # A planted `<file>.tmp` symlink used to be followed and then renamed into place,
         # which wrote the payload outside the repo and made the config a symlink.
@@ -309,6 +315,7 @@ class ServerTests(TempEnv):
         self.assertEqual((d / "review.toml").read_text(), REVIEW)
         self.assertFalse((d / "review.toml").is_symlink())
 
+    @unittest.skipUnless(can_symlink(), NO_SYMLINK)
     def test_a_symlinked_target_is_refused(self):
         outside = self.root.parent / "outside.toml"
         outside.write_text("keep me\n")
@@ -378,7 +385,7 @@ class ServerTests(TempEnv):
     def test_api_ade_carries_the_note_and_the_note_route_is_gone(self):
         with mock.patch.dict(os.environ, {"T3CODE_THREAD_ID": "x"}):
             ade = self.get(f"/api/ade?repo={self.root}")
-        self.assertTrue(ade["note"].endswith(".sstack/ades/t3.md"))
+        self.assertTrue(Path(ade["note"]).as_posix().endswith(".sstack/ades/t3.md"))
         self.assertTrue(ade["note_text"].startswith("# t3"))
         with self.assertRaises(urllib.error.HTTPError) as cm:
             self.get(f"/api/ade/note?repo={self.root}")

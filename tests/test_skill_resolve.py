@@ -81,28 +81,28 @@ class DispatchSkillTests(SkillBase):
     def test_headless_brief_stderr_index(self):
         code, _, err = self.go()
         self.assertEqual(code, 0, err)
-        text = self.report().read_text()
+        text = self.report().read_text(encoding="utf-8")
         self.assertIn("hello brief", text)
         self.assertIn("## Skills to use", text)
         self.assertIn(f"- `py-style`: {self.root / '.agents/skills/py-style/SKILL.md'}", text)
         self.assertIn("`ghost` not installed — carry on without it", text)
         self.assertIn("sstack-dispatch: skill ghost not found", err)
-        rec = json.loads((self.root / ".sstack/runs/index.jsonl").read_text().splitlines()[0])
+        rec = json.loads((self.root / ".sstack/runs/index.jsonl").read_text(encoding="utf-8").splitlines()[0])
         self.assertEqual(rec["skills"], ["tdd", "py-style", "docs/web.md"])  # react-way: fake has no claude dir
         self.assertEqual(rec["skills_missing"], ["ghost", "react-way"])
-        run = json.loads((self.root / rec["run_dir"] / "run.json").read_text())
+        run = json.loads((self.root / rec["run_dir"] / "run.json").read_text(encoding="utf-8"))
         self.assertEqual(run["brief"], f"{rec['run_dir']}/brief.skills.md")
-        self.assertIn("hello brief", (self.root / "b.md").read_text())
-        self.assertNotIn("Skills", (self.root / "b.md").read_text())  # the original brief is untouched
+        self.assertIn("hello brief", (self.root / "b.md").read_text(encoding="utf-8"))
+        self.assertNotIn("Skills", (self.root / "b.md").read_text(encoding="utf-8"))  # the original brief is untouched
 
     def test_no_skills_brief_untouched(self):
         self.glob_cfg(FAKE + '[role.implement]\nharness="fake"\nmodel="echo"\n')
         (self.root / ".sstack/project.toml").unlink()
         code, _, err = self.go()
         self.assertEqual(code, 0, err)
-        rec = json.loads((self.root / ".sstack/runs/index.jsonl").read_text().splitlines()[0])
+        rec = json.loads((self.root / ".sstack/runs/index.jsonl").read_text(encoding="utf-8").splitlines()[0])
         self.assertNotIn("skills", rec)
-        self.assertEqual(json.loads((self.root / rec["run_dir"] / "run.json").read_text())["brief"], "b.md")
+        self.assertEqual(json.loads((self.root / rec["run_dir"] / "run.json").read_text(encoding="utf-8"))["brief"], "b.md")
 
     def test_local_exit_3_prints_skills(self):
         code, out, _ = self.go("--via", "local")
@@ -123,12 +123,12 @@ class ToolSkillTests(FakeCliBase):
         p = json.loads(out)
         derived = Path(p["run_dir"]) / "brief.skills.md"
         self.assertIn(f"Read the brief at {derived} ", p["calls"][0]["args"]["task"])
-        self.assertIn(f"- `how`: {REPO / 'skills/how/SKILL.md'}", derived.read_text())
+        self.assertIn(f"- `how`: {REPO / 'skills/how/SKILL.md'}", derived.read_text(encoding="utf-8"))
         code, out2, err = self.record(p["calls"][0], 1, env=T3)
         self.assertEqual(code, 4, err)
-        esc = (Path(p["run_dir"]) / "brief.escalated.md").read_text()
+        esc = (Path(p["run_dir"]) / "brief.escalated.md").read_text(encoding="utf-8")
         self.assertIn("## Skills to use", esc)
-        rec = json.loads((self.root / ".sstack/runs/index.jsonl").read_text().splitlines()[0])
+        rec = json.loads((self.root / ".sstack/runs/index.jsonl").read_text(encoding="utf-8").splitlines()[0])
         self.assertEqual((rec["skills"], rec["skills_missing"]), (["how"], []))
 
 
