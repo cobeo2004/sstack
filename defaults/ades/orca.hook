@@ -11,7 +11,8 @@ from pathlib import Path
 cap, d = sys.argv[1], json.loads(sys.stdin.read() or "{}")
 state = Path(os.environ.get("SSTACK_HOOK_STATE", "."))
 # `--environment local`: this machine's Orca, whatever ORCA_ENVIRONMENT or a pairing code selects
-orca = lambda cmd, *a, **kw: subprocess.run(["orca", "orchestration", cmd, "--environment", "local", *a],
+# shutil.which: Windows' CreateProcess skips PATHEXT, so a bare "orca" misses orca.cmd
+orca = lambda cmd, *a, **kw: subprocess.run([shutil.which("orca") or "orca", "orchestration", cmd, "--environment", "local", *a],
                                             capture_output=True, text=True, **kw)
 
 

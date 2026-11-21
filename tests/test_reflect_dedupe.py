@@ -18,12 +18,12 @@ class ReflectDedupeTests(TempEnv):
             "m = re.search(r'^Transcript: (.+)$', b, re.M)\n"
             "(d / f'transcript-{n}.txt').write_text(pathlib.Path(m.group(1)).read_text())\n"
             f"print({out!r})\n{extra}import sys as _s; _s.exit({code})\n")
-        self.glob_cfg(f'[harness.fake]\nheadless_readonly = ["{sys.executable}", "{agent}", "{{model}}"]\n'
+        self.glob_cfg(f"[harness.fake]\nheadless_readonly = ['{sys.executable}', '{agent}', '{{model}}']\n"
                       '[role.scout]\nharness = "fake"\nmodel = "x"\n[reflect]\nauto = true\n')
 
     def hook(self, transcript: Path, session="s1", env=None):
         e = {k: v for k, v in os.environ.items() if not k.startswith(("T3CODE", "SSTACK_"))}
-        e["HOME"] = str(self.home)
+        e["HOME"] = e["USERPROFILE"] = str(self.home)
         e.update(env or {})
         payload = {"transcript_path": str(transcript), "cwd": str(self.root), "session_id": session,
                    "hook_event_name": "SessionEnd"}

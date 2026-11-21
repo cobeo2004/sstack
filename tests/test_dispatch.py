@@ -1,13 +1,15 @@
-import json, os, sys, io, time, contextlib
+import json, os, shlex, sys, io, time, contextlib, unittest
 from pathlib import Path
 from unittest import mock
 
-from helpers import TempEnv, REPO
+from helpers import TempEnv, REPO, FAKES
 from test_contracts import INDEX_KEYS
 import sstack_dispatch as D
 
-FAKE = f'[harness.fake]\nheadless = ["{sys.executable}", "{REPO}/tests/fakes/fake_agent.py", "{{model}}"]\n' \
-       f'headless_readonly = ["{sys.executable}", "{REPO}/tests/fakes/fake_agent.py", "{{model}}"]\n'
+FAKE = f"[harness.fake]\nheadless = ['{sys.executable}', '{REPO}/tests/fakes/fake_agent.py', '{{model}}']\n" \
+       f"headless_readonly = ['{sys.executable}', '{REPO}/tests/fakes/fake_agent.py', '{{model}}']\n"
+T3_CLI = str(FAKES / ("t3.cmd" if os.name == "nt" else "t3"))  # what a Windows user would point it at
+unq = lambda s: s.replace("'", "")  # Windows: shlex.quote quotes every backslash path in a printed command
 # no ADE markers from the session running the tests
 NO_T3 = {k: v for k, v in os.environ.items()
          if not k.startswith(("T3CODE", "SSTACK_", "ORCA_", "CONDUCTOR_", "FAKE_", "CLAUDECODE"))}
@@ -16,7 +18,7 @@ NO_T3 = {k: v for k, v in os.environ.items()
 class DispatchBase(TempEnv):
     def run_main(self, *args, env=None):
         out, err = io.StringIO(), io.StringIO()
-        e = dict(NO_T3, HOME=str(self.home), **(env or {}))
+        e = dict(NO_T3, HOME=str(self.home), USERPROFILE=str(self.home), **(env or {}))
         with mock.patch.dict(os.environ, e, clear=True), \
              contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
             old = os.getcwd(); os.chdir(self.root)
@@ -101,6 +103,8 @@ class DispatchTests(DispatchBase):
         code, _, _ = self.run_main("implement", "--brief", self.brief(), "--report", str(self.report()))
         self.assertEqual(code, 2)
         self.assertLess(time.monotonic() - t, 8)
+        if os.name == "nt":  # no process groups to probe: kill_group's taskkill /T is the Windows path
+            return
         pgid = int(self.report().read_text().split()[1])
         for _ in range(20):  # grandchild reaping by init is async
             try:
@@ -146,7 +150,6 @@ class DispatchTests(DispatchBase):
 
 
 FIXTURES = REPO / "tests" / "fixtures"
-FAKES = REPO / "tests" / "fakes"
 T3 = {"T3CODE_THREAD_ID": "x"}
 PANEL_OK = __import__("re").compile(r": exit 0 → (.+)$", __import__("re").M)  # bin/sstack-reflect-hook:21
 
@@ -159,7 +162,7 @@ class FakeCliBase(DispatchBase):
         self.calls = self.root.parent / "calls.log"
 
     def run_main(self, *args, env=None):
-        e = {"PATH": f"{FAKES}:{os.environ['PATH']}", "FAKE_CALLS_LOG": str(self.calls), **(env or {})}
+        e = {"PATH": f"{FAKES}{os.pathsep}{os.environ['PATH']}", "FAKE_CALLS_LOG": str(self.calls), **(env or {})}
         return super().run_main(*args, env=e)
 
     def log(self) -> str:
@@ -173,7 +176,8 @@ class FakeCliBase(DispatchBase):
         run_dir, rep = d["run_dir"], str(self.report())
         for real, ph in ((run_dir, "<RUN_DIR>"), (str(self.root / "b.md"), "<BRIEF>"), (rep, "<REPORT>"),
                          (rep[:-3], "<REPORT_BASE>")):
-            out = out.replace(real, ph)
+            for form in (shlex.quote(real), real):  # Windows: backslash paths are quoted, and JSON-escaped
+                out = out.replace(json.dumps(form)[1:-1], ph)
         return json.loads(out)
 
     def record(self, call: dict, code: int, *extra, env=None):
@@ -221,7 +225,7 @@ class ToolPayloadTests(FakeCliBase):
         self.assertEqual(code, 0, err)
         d = json.loads(out)
         self.assertEqual(d["calls"][0]["tool"], "delegate_task")
-        self.assertRegex(d["run_dir"], r"/\.sstack/runs/\d{8}-\d{4}-scout$")
+        self.assertRegex(Path(d["run_dir"]).as_posix(), r"/\.sstack/runs/\d{8}-\d{4}-scout$")
         self.assertFalse((self.root / ".sstack").exists())
 
     def test_ade_cursor_tool_readonly_arg(self):
@@ -385,7 +389,7 @@ class ViaTests(FakeCliBase):
     def test_ade_cli_starts_t3_thread(self):
         self.example()
         code, _, err = self.dispatch("implement", "--via", "ade-cli",
-                                     env={**T3, "T3CODE_CLI_PATH": str(FAKES / "t3")})
+                                     env={**T3, "T3CODE_CLI_PATH": T3_CLI})
         self.assertEqual(code, 0, err)
         self.assertEqual(self.report().read_text(), "REPORT t3\n")
         self.assertIn("t3 thread start --provider pi --model opencode-go/deepseek-v4.1-flash --title "
@@ -426,9 +430,9 @@ class AnswerKeyShell(TempEnv):
     def test_plain_dispatch_in_t3_exits_4(self):
         import subprocess
         calls = self.root.parent / "calls.log"
-        env = {**NO_T3, "HOME": str(self.home), "SSTACK_HOME": str(self.profile(self.home / "example", FIXTURES / "config/example-equivalent/home")),
-               "T3CODE_THREAD_ID": "x", "PATH": f"{FAKES}:{os.environ['PATH']}", "FAKE_CALLS_LOG": str(calls)}
-        r = subprocess.run([str(REPO / "bin/sstack-dispatch"), "scout", "--brief", "b.md", "--report", "r.md"],
+        env = {**NO_T3, "HOME": str(self.home), "USERPROFILE": str(self.home), "SSTACK_HOME": str(self.profile(self.home / "example", FIXTURES / "config/example-equivalent/home")),
+               "T3CODE_THREAD_ID": "x", "PATH": f"{FAKES}{os.pathsep}{os.environ['PATH']}", "FAKE_CALLS_LOG": str(calls)}
+        r = subprocess.run([sys.executable, str(REPO / "bin/sstack-dispatch"), "scout", "--brief", "b.md", "--report", "r.md"],
                            cwd=self.root, env=env, capture_output=True, text=True)
         self.assertEqual(r.returncode, 4, r.stderr)
         d = json.loads(r.stdout)
@@ -455,7 +459,7 @@ class FixB2Tests(FakeCliBase):
 
     def test_bad_delegate_kind_is_config_error(self):
         self.example()
-        env = {**T3, "T3CODE_CLI_PATH": str(FAKES / "t3")}
+        env = {**T3, "T3CODE_CLI_PATH": T3_CLI}
         for kind in ("Tool", "cli", "ade-cli", "headless", ""):
             with self.subTest(kind=kind):
                 self.t3_kind(kind)
@@ -469,7 +473,7 @@ class FixB2Tests(FakeCliBase):
     def test_t3_auto_never_execs_t3_cli(self):
         """Invariant: in T3 with via=auto, no delegate.kind makes dispatch run the t3 CLI."""
         self.example()
-        env = {**T3, "T3CODE_CLI_PATH": str(FAKES / "t3")}
+        env = {**T3, "T3CODE_CLI_PATH": T3_CLI}
         for kind in ("tool", "hook", "none", "Tool", "cli", "ade-cli"):
             with self.subTest(kind=kind):
                 self.t3_kind(kind)
@@ -516,17 +520,17 @@ class FixB2Tests(FakeCliBase):
         self.assertEqual(self.index()[-1]["readonly_warning"], [".sstack/runs/index.jsonl"])
 
     def test_record_holds_run_lock(self):
-        import fcntl, subprocess
+        import subprocess
         self.example()
         _, out, _ = self.dispatch("scout", env=T3)
         call = json.loads(out)["calls"][0]
         self.report().parent.mkdir(exist_ok=True)
         self.report().write_text("PASS\n")
         argv = __import__("shlex").split(call["record"].replace("{exit}", "0").replace("'<CHILD_THREAD_ID>'", "thread-1"))
-        env = {**NO_T3, "HOME": str(self.home), **T3}
+        env = {**NO_T3, "HOME": str(self.home), "USERPROFILE": str(self.home), **T3}
         with open(Path(json.loads(out)["run_dir"]) / "run.lock", "a") as lk:
-            fcntl.flock(lk, fcntl.LOCK_EX)
-            p = subprocess.Popen([str(REPO / "bin/sstack-dispatch"), *argv[1:]], cwd=self.root, env=env,
+            D._flock(lk)
+            p = subprocess.Popen([sys.executable, str(REPO / "bin/sstack-dispatch"), *argv[1:]], cwd=self.root, env=env,
                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             time.sleep(1)
             self.assertIsNone(p.poll(), "record ran without the run lock")
@@ -757,7 +761,7 @@ class WriteLockTests(FakeCliBase):
         self.assertEqual(self.go("implement", "taskB", "--via", "local")[0], 5)
         r = subprocess.run([sys.executable, str(REPO / "bin/sstack-workflow"), "done", "implement", "--run",
                             str(self.root / ".sstack/runs/taskA")], cwd=self.root,
-                           env=dict(NO_T3, HOME=str(self.home)), capture_output=True, text=True)
+                           env=dict(NO_T3, HOME=str(self.home), USERPROFILE=str(self.home)), capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(self.holders(), [])
         self.assertEqual(self.go("implement", "taskB", "--via", "local")[0], 3)
@@ -765,8 +769,8 @@ class WriteLockTests(FakeCliBase):
     def test_simultaneous_dispatches_admit_exactly_one(self):
         import subprocess
         self.example()
-        env = dict(NO_T3, HOME=str(self.home))
-        procs = [subprocess.Popen([str(REPO / "bin/sstack-dispatch"), "implement", "--via", "local", "--brief",
+        env = dict(NO_T3, HOME=str(self.home), USERPROFILE=str(self.home))
+        procs = [subprocess.Popen([sys.executable, str(REPO / "bin/sstack-dispatch"), "implement", "--via", "local", "--brief",
                                    self.brief(), "--report", str(self.rep(t))], cwd=self.root, env=env,
                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE) for t in ("taskA", "taskB")]
         codes = sorted(p.wait(timeout=30) for p in procs)
@@ -1008,8 +1012,8 @@ class DeciderTests(FakeCliBase):
                                        "--panel", "--dry-run")
         self.assertEqual(code, 0, err)
         self.assertEqual(out.count("headless:"), 1, out)
-        self.assertIn("fake_agent.py p2", out)
-        self.assertNotIn("fake_agent.py sonnet", out)
+        self.assertIn("fake_agent.py p2", unq(out))
+        self.assertNotIn("fake_agent.py sonnet", unq(out))
 
     def test_review_variant_avoids_the_decider_picked_implementer(self):
         self.setup_cfg()
@@ -1023,7 +1027,7 @@ class DeciderTests(FakeCliBase):
             code, out, err = self.run_main("review", "--brief", self.brief(), "--report", str(task / "review.md"),
                                            "--dry-run")
         self.assertEqual(code, 0, err)
-        self.assertNotIn("fake_agent.py sonnet", out)
+        self.assertNotIn("fake_agent.py sonnet", unq(out))
 
     def test_outcome_keeps_entry_with_a_variant(self):
         self.setup_cfg('[role.investigate]\ntier="any"\n')

@@ -36,7 +36,7 @@ class _Unsafe(Exception):
 
 def _parse(path: Path) -> dict:
     try:
-        return tomllib.loads(path.read_text())
+        return tomllib.loads(path.read_text(encoding="utf-8"))
     except tomllib.TOMLDecodeError as e:
         raise MigrationError(f"{path}: {e}") from None
 
@@ -172,7 +172,7 @@ def _split_legacy(path: Path, data: dict, layer: str) -> tuple[dict[str, str], l
         if rel is not None and text:
             files[rel] = files.get(rel, "") + text
 
-    for line in path.read_text().splitlines(keepends=True):
+    for line in path.read_text(encoding="utf-8").splitlines(keepends=True):
         hdr = _header(line) if ml is None and depth == 0 else None
         ml, depth = _scan(line, ml, depth)
         body = line.lstrip()
@@ -336,7 +336,7 @@ def _gitignore(repo_dir: Path, sources: list) -> tuple[Path, list[str]] | None:
         return None
     repo = repo_dir.parent
     gi = repo / ".gitignore"
-    have = set(gi.read_text().splitlines()) if gi.exists() else set()
+    have = set(gi.read_text(encoding="utf-8").splitlines()) if gi.exists() else set()
     missing = [rel for rel in GITIGNORE if rel not in have and not _ignored(repo, rel)]
     return (gi, missing) if missing else None
 
@@ -418,7 +418,7 @@ def _atomic_write(path: Path, text: str) -> None:
     mode = path.stat().st_mode & 0o777 if path.exists() else 0o644
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
     try:
-        with os.fdopen(fd, "w") as f:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(text)
         os.chmod(tmp, mode)
         os.replace(tmp, path)
@@ -428,14 +428,14 @@ def _atomic_write(path: Path, text: str) -> None:
 
 
 def _write(path: Path, text: str, log: list[tuple[Path, str | None]]) -> None:
-    old = path.read_text() if path.is_file() else None
+    old = path.read_text(encoding="utf-8") if path.is_file() else None
     _atomic_write(path, text)
     log.append((path, old))
 
 
 def _append(gi: tuple[Path, list[str]]) -> str:
     path, lines = gi
-    old = path.read_text() if path.exists() else ""
+    old = path.read_text(encoding="utf-8") if path.exists() else ""
     if old and not old.endswith("\n"):
         old += "\n"
     return old + "".join(f"{line}\n" for line in lines)
@@ -597,9 +597,9 @@ def _profile_plan(home: Path):
         return copies, [], None, None
     if C._is_legacy(cfg):
         raise C.ConfigError(f"legacy sstack config {cfg}: {C.MIGRATE}")
-    text = cfg.read_text()
+    text = cfg.read_text(encoding="utf-8")
     have = C._read(cfg)
-    tpl_text = (tpl / "config.toml").read_text()
+    tpl_text = (tpl / "config.toml").read_text(encoding="utf-8")
     tpl_data = tomllib.loads(tpl_text)
     missing = [k for k in _template_keys(tpl_text) if not _has_path(have, k[0])]
     if not missing:
@@ -666,7 +666,7 @@ def sync(home: Path, dry_run: bool = False) -> int:
 
 
 def _source_text(layer: str, path: Path) -> str:
-    text = path.read_text()
+    text = path.read_text(encoding="utf-8")
     if not text.endswith("\n"):
         text += "\n"
     return f"# {layer}: {path}\n{text}"

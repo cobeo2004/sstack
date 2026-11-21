@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import tomllib
+import unittest
 from pathlib import Path
 from unittest import mock
 
@@ -72,7 +73,7 @@ class ConfigCliTests(TempEnv):
 
     def run_cli(self, *args, cwd=None, code=0):
         """Run the CLI; returns stdout on success, stderr on failure."""
-        env = dict(os.environ, HOME=str(self.home))
+        env = dict(os.environ, HOME=str(self.home), USERPROFILE=str(self.home))
         env.pop("SSTACK_HOME", None)
         r = subprocess.run([sys.executable, str(CLI), *args], cwd=str(cwd or self.root),
                            env=env, capture_output=True, text=True)
@@ -188,6 +189,7 @@ max_parallel = 2
         self.assertFalse((cfg.parent / "roles").exists())
         self.assertFalse((cfg.parent / "harnesses").exists())
 
+    @unittest.skipIf(os.name == "nt", "chmod read-only bits don't stop writes on Windows")
     def test_write_failure_before_rename_rolls_back(self):
         cfg = self.write(self.home, ".sstack/config.toml", '[role.scout]\nharness = "claude"\n')
         roles = self.home / ".sstack/roles"
@@ -204,6 +206,7 @@ max_parallel = 2
         self.profile(self.home / ".sstack")  # migrate leaves the template to sync
         self.assertEqual(C.load(None)["role"]["scout"]["harness"], "claude")
 
+    @unittest.skipIf(os.name == "nt", "chmod read-only bits don't stop writes on Windows")
     def test_failure_after_rename_rolls_back(self):
         self.write(self.root, ".gitignore", "node_modules/\n")
         local = self.write(self.root, ".sstack/config.local.toml",
@@ -407,7 +410,7 @@ max_parallel = 2
     def test_home_equal_repo_migrates_config_local(self):
         shutil.copy(DATA / "global.toml", self.write(self.root, ".sstack/config.toml", ""))
         self.write(self.root, ".sstack/config.local.toml", '[role.implement]\nharness = "codex"\n')
-        env = dict(os.environ, HOME=str(self.home), SSTACK_HOME=str(self.root / ".sstack"))
+        env = dict(os.environ, HOME=str(self.home), USERPROFILE=str(self.home), SSTACK_HOME=str(self.root / ".sstack"))
         r = subprocess.run([sys.executable, str(CLI), "migrate"], cwd=str(self.root),
                            env=env, capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stderr)

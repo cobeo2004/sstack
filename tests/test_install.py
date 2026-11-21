@@ -1,7 +1,7 @@
-import os, shutil, subprocess, sys, tomllib
+import os, shutil, subprocess, sys, tomllib, unittest
 from pathlib import Path
 
-from helpers import TempEnv, REPO
+from helpers import TempEnv, REPO, can_symlink, link_or_copy, NO_SYMLINK
 
 MARK = "For engineering tasks, start with the sstack skill. <!-- sstack -->"
 
@@ -14,7 +14,7 @@ class InstallTests(TempEnv):
         (self.src / "bin").mkdir(parents=True)
         shutil.copy(REPO / "bin/sstack-install", self.src / "bin")
         for d in ("lib", "defaults"):
-            (self.src / d).symlink_to(REPO / d)
+            link_or_copy(self.src / d, REPO / d)
         for s in ("sstack", "work"):
             (self.src / "skills" / s).mkdir(parents=True)
             (self.src / "skills" / s / "SKILL.md").write_text(f"---\nname: {s}\n---\n")
@@ -26,7 +26,8 @@ class InstallTests(TempEnv):
 
     def install(self, *args):
         r = subprocess.run([sys.executable, str(self.src / "bin/sstack-install"), *args],
-                           env=dict(os.environ, HOME=str(self.home)), capture_output=True, text=True)
+                           env=dict(os.environ, HOME=str(self.home), USERPROFILE=str(self.home)),
+                           capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stderr)
         return r.stdout
 
@@ -98,6 +99,7 @@ class InstallTests(TempEnv):
         self.assertEqual((self.home / ".claude/CLAUDE.md").read_text(), f"# mine\n\n{MARK}\n")
         self.assertFalse((self.home / ".codex/AGENTS.md").exists())
 
+    @unittest.skipUnless(can_symlink(), NO_SYMLINK)
     def test_uninstall_removes_only_ours(self):
         foreign = self.root / "foreign"; foreign.mkdir()
         (self.home / ".claude/skills/other").symlink_to(foreign)

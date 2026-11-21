@@ -1,12 +1,11 @@
 """End to end through the bins: split config → T3 env → plain dispatch exits 4 (nothing started) →
 `record` → index line with "ade": "t3"."""
-import json, os, subprocess, sys, tempfile
+import json, os, shlex, subprocess, sys, tempfile
 from pathlib import Path
 
-from helpers import TempEnv, REPO
-from test_dispatch import NO_T3
+from helpers import TempEnv, REPO, FAKES
+from test_dispatch import NO_T3, T3_CLI
 
-FAKES = REPO / "tests" / "fakes"
 
 
 class IntegrationTests(TempEnv):
@@ -15,8 +14,9 @@ class IntegrationTests(TempEnv):
         self.assertTrue((self.home / ".sstack" / "roles" / "scout.toml").is_file())
         with tempfile.TemporaryDirectory() as t:
             log = Path(t) / "calls.log"
-            env = dict(NO_T3, HOME=str(self.home), T3CODE_THREAD_ID="x", T3CODE_CLI_PATH=str(FAKES / "t3"),
-                       FAKE_CALLS_LOG=str(log), PATH=f"{FAKES}:{REPO / 'bin'}:{os.environ['PATH']}")
+            env = dict(NO_T3, HOME=str(self.home), USERPROFILE=str(self.home), T3CODE_THREAD_ID="x",
+                       T3CODE_CLI_PATH=T3_CLI,
+                       FAKE_CALLS_LOG=str(log), PATH=os.pathsep.join([str(FAKES), str(REPO / 'bin'), os.environ['PATH']]))
             run = lambda *a: subprocess.run([sys.executable, str(REPO / "bin" / "sstack-dispatch"), *a],
                                             cwd=self.root, env=env, capture_output=True, text=True)
             (self.root / "b.md").write_text("look around\n")
@@ -26,7 +26,7 @@ class IntegrationTests(TempEnv):
             call = json.loads(r.stdout)["calls"][0]
             self.assertEqual((call["tool"], call["args"]["target"]["model"]), ("delegate_task", "claude-haiku-5-5"))
             (self.root / "r.md").write_text("REPORT\n")  # the delegate_task child's report
-            r = run(*call["record"].replace("{exit}", "0").replace("'<CHILD_THREAD_ID>'", "thread-1").split()[1:])
+            r = run(*shlex.split(call["record"].replace("{exit}", "0").replace("'<CHILD_THREAD_ID>'", "thread-1"))[1:])
             self.assertEqual(r.returncode, 0, r.stderr)
             self.assertFalse(log.exists())
         lines = (self.root / ".sstack" / "runs" / "index.jsonl").read_text().splitlines()

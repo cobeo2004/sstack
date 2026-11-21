@@ -90,14 +90,14 @@ class LessonTests(TempEnv):
 import json, subprocess, sys
 from helpers import REPO
 
-FAKE_SCOUT = (f'[harness.fake]\nheadless_readonly = ["{sys.executable}", "{REPO}/tests/fakes/fake_agent.py", "{{model}}"]\n'
+FAKE_SCOUT = (f"[harness.fake]\nheadless_readonly = ['{sys.executable}', '{REPO}/tests/fakes/fake_agent.py', '{{model}}']\n"
               '[role.scout]\nharness = "fake"\nmodel = "lesson"\n')
 
 
 class ReflectHookTests(TempEnv):
     def hook(self, payload, *args, env=None):
         e = {k: v for k, v in os.environ.items() if not k.startswith(("T3CODE", "SSTACK_"))}
-        e.update(HOME=str(self.home), **(env or {}))
+        e.update(HOME=str(self.home), USERPROFILE=str(self.home), **(env or {}))
         return subprocess.run([sys.executable, str(REPO / "bin/sstack-reflect-hook"), *args],
                               input=json.dumps(payload), capture_output=True, text=True, env=e, timeout=60)
 
@@ -143,7 +143,7 @@ class ReflectHookTests(TempEnv):
     def panel_hook(self, agent_src):
         agent = self.home / "agent.py"
         agent.write_text("import sys; sys.stdin.read(); m = sys.argv[1]\n" + agent_src)
-        h = f'["{sys.executable}", "{agent}", "{{model}}"]'
+        h = f"['{sys.executable}', '{agent}', '{{model}}']"
         self.glob_cfg(f'[harness.fake]\nheadless_readonly = {h}\n'
                       '[role.scout]\npanel=[{harness="fake",model="good"},{harness="fake",model="bad"}]\n'
                       '[reflect]\nauto = true\n')
@@ -191,7 +191,7 @@ class LessonScopeTests(TempEnv):
         return L.add(self.path(), text, None, **kw)
 
     def stored(self, lesson_id):
-        return next(i for i in L.parse(self.path().read_text())
+        return next(i for i in L.parse(self.path().read_text(encoding="utf-8"))
                     if isinstance(i, L.Lesson) and i.id == lesson_id)
 
     def test_add_stores_path_globs_and_commit(self):

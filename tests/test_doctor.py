@@ -1,13 +1,13 @@
-import json, os, subprocess, sys
+import json, os, shlex, subprocess, sys, unittest
 from pathlib import Path
 
-from helpers import TempEnv, REPO
+from helpers import TempEnv, REPO, can_symlink, NO_SYMLINK
 from test_dispatch import NO_T3
 import sstack_dispatch as D
 
 DOCTOR = REPO / "bin" / "sstack-doctor"
-FAKE = f'[harness.fake]\nheadless = ["{sys.executable}", "{REPO}/tests/fakes/fake_agent.py", "{{model}}"]\n' \
-       f'headless_readonly = ["{sys.executable}", "{REPO}/tests/fakes/fake_agent.py", "{{model}}"]\n'
+FAKE = f"[harness.fake]\nheadless = ['{sys.executable}', '{REPO}/tests/fakes/fake_agent.py', '{{model}}']\n" \
+       f"headless_readonly = ['{sys.executable}', '{REPO}/tests/fakes/fake_agent.py', '{{model}}']\n"
 
 
 def roles(scout="canary", implement="canary", review="canary-review"):  # review ≠ implement (review_not_implementer)
@@ -25,11 +25,12 @@ class DoctorBase(TempEnv):
                         "commit", "-qm", "init"], check=True)
 
     def doctor(self, *args, env=None):
-        e = dict(NO_T3, HOME=str(self.home), **(env or {}))
+        e = dict(NO_T3, HOME=str(self.home), USERPROFILE=str(self.home), **(env or {}))
         # `record` in payloads runs sstack-dispatch. PATH comes from os.environ now, not NO_T3's
         # import-time copy, so TempEnv's claude stub is on it (CI hosts have no claude).
-        e["PATH"] = f"{REPO / 'bin'}:{(env or {}).get('PATH', os.environ['PATH'])}"
-        r = subprocess.run([sys.executable, str(DOCTOR), *args], cwd=self.root, env=e, capture_output=True, text=True)
+        e["PATH"] = f"{REPO / 'bin'}{os.pathsep}{(env or {}).get('PATH', os.environ['PATH'])}"
+        r = subprocess.run([sys.executable, str(DOCTOR), *args], cwd=self.root, env=e, capture_output=True, text=True,
+                           encoding="utf-8")
         return r.returncode, r.stdout, r.stderr
 
     def index(self):
@@ -39,7 +40,10 @@ class DoctorBase(TempEnv):
 
     def assertCleaned(self):
         """Nothing left under .sstack/runs/ but the index."""
-        self.assertEqual([p.name for p in (self.root / ".sstack" / "runs").iterdir()], ["index.jsonl"])
+        left = [p.name for p in (self.root / ".sstack" / "runs").iterdir()]
+        if os.name == "nt":  # Windows won't delete an open file: lock_release leaves the mutex there
+            left = [n for n in left if n != f"{D.LOCK}.mutex"]
+        self.assertEqual(left, ["index.jsonl"])
 
 
 class StaticTests(DoctorBase):
@@ -60,7 +64,8 @@ class StaticTests(DoctorBase):
         cfg.write_text("".join(x for x in cfg.read_text().splitlines(keepends=True) if not x.startswith("stop_at")))
         code, out, _ = self.doctor()
         self.assertRegex(out, r"(?m)^WARN profile: drift: .*harnesses/pi\.toml.*overnight\.stop_at.*sstack-config sync")
-        subprocess.run([sys.executable, str(REPO / "bin/sstack-config"), "sync"], env=dict(os.environ, HOME=str(self.home)),
+        subprocess.run([sys.executable, str(REPO / "bin/sstack-config"), "sync"],
+                       env=dict(os.environ, HOME=str(self.home), USERPROFILE=str(self.home)),
                        check=True, capture_output=True)
         code, out, _ = self.doctor()
         self.assertRegex(out, r"(?m)^PASS profile: ")
@@ -112,6 +117,7 @@ class StaticTests(DoctorBase):
         self.assertEqual(code, 1)
         self.assertIn("FAIL active ADE: SSTACK_ADE=bogus", out)
 
+    @unittest.skipIf(os.name == "nt", "Windows has no execute bit: os.access(X_OK) is true for any file")
     def test_hook_not_executable(self):
         self.glob_cfg(roles())
         ad = self.home / ".sstack" / "ades"
@@ -225,6 +231,7 @@ class SmokeTests(DoctorBase):
         self.assertTrue((victim / "keep.txt").exists())
         self.assertTrue(d.exists())
 
+    @unittest.skipUnless(can_symlink(), NO_SYMLINK)
     def test_check_refuses_symlinked_run_dir(self):
         victim = self.home / "victim"
         victim.mkdir()
@@ -308,11 +315,11 @@ class SmokeTests(DoctorBase):
                 report.write_text(f"CANARY {token}\n")
                 if pl["role"] == "implement":
                     (d / "canary.txt").write_text(token + "\n")
-                cmd = c["record"].replace("{exit}", "0").replace("'<CHILD_THREAD_ID>'", "thread-1").split()[1:]
+                cmd = shlex.split(c["record"].replace("{exit}", "0").replace("'<CHILD_THREAD_ID>'", "thread-1"))[1:]
                 with self.subTest(role=pl["role"]):
-                    e = dict(NO_T3, HOME=str(self.home))
+                    e = dict(NO_T3, HOME=str(self.home), USERPROFILE=str(self.home))
                     r = subprocess.run([sys.executable, str(REPO / "bin" / "sstack-dispatch"), *cmd],
-                                       cwd=self.root, env=e, capture_output=True, text=True)
+                                       cwd=self.root, env=e, capture_output=True, text=True, encoding="utf-8")
                     self.assertEqual(r.returncode, 0, r.stderr)
         code, out, _ = self.doctor("--smoke", "--check", str(d), env=env)
         self.assertEqual(code, 0, out)

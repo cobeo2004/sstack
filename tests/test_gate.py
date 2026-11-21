@@ -90,7 +90,7 @@ class GateTests(TempEnv):
     def gate(self, *args):
         self.assertTrue(GATE.is_file(), f"{GATE} is missing: bin/sstack-gate is not built yet")
         env = {k: v for k, v in os.environ.items() if not k.startswith(("T3CODE", "SSTACK_"))}
-        env["HOME"] = str(self.home)
+        env["HOME"] = env["USERPROFILE"] = str(self.home)
         return subprocess.run([sys.executable, str(GATE), *args], cwd=str(self.root), env=env,
                               capture_output=True, text=True, timeout=180)
 

@@ -11,6 +11,8 @@ REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "lib"))
 import sstack_config as C  # noqa: E402
 import sstack_configcli as CC  # noqa: E402
+for _s in (sys.stdout, sys.stderr):
+    _s.reconfigure(encoding="utf-8", errors="replace")
 MARK = "For engineering tasks, start with the sstack skill. <!-- sstack -->"
 SKILL_DIRS = [".claude/skills", ".agents/skills", ".codex/skills", ".cursor/skills", ".pi/agent/skills"]
 INSTRUCTION_FILES = [".claude/CLAUDE.md", ".codex/AGENTS.md", ".pi/agent/AGENTS.md"]
@@ -73,7 +75,7 @@ def main() -> int:
         f = home / rel
         if not f.is_file():
             continue
-        text = f.read_text()
+        text = f.read_text(encoding="utf-8")
         if a.uninstall:
             if MARK in text:
                 say(f"remove sstack line from {f}")
@@ -81,11 +83,11 @@ def main() -> int:
                 new = "\n".join(kept)
                 while new.endswith("\n\n"):
                     new = new[:-1]
-                dry or f.write_text(new)
+                dry or f.write_text(new, encoding="utf-8")
         elif MARK not in text:
             say(f"add sstack line to {f}")
             sep = "" if text.endswith("\n\n") or not text else ("\n" if text.endswith("\n") else "\n\n")
-            dry or f.write_text(f"{text}{sep}{MARK}\n")
+            dry or f.write_text(f"{text}{sep}{MARK}\n", encoding="utf-8")
 
     code = 0
     if not a.uninstall:
