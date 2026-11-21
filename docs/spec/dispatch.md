@@ -283,8 +283,13 @@ waited re-opens the file now at that path and locks again.
 ## `record`
 
 ```
-sstack-dispatch record <role> --report <p> --member <harness>/<model>[#<stage>/<name>] --exit <n> --run-dir <d> [--session <id> --session-kind <kind>]
+sstack-dispatch record <role> --report <p> --member <harness>/<model>[#<stage>/<name>] --exit <n> --run-dir <d> [--report-from <file|->] [--session <id> --session-kind <kind>]
 ```
+
+`--report-from` reads a saved final message (or stdin for `-`) before recording. Plain text is
+copied as-is; a JSON object with a string `summary` supplies that string, and a JSON list of
+text blocks supplies their `text` values joined by newlines. It fills a missing or empty report
+and never overwrites a non-empty report. An unreadable source exits 1 without an index line.
 
 0. `--session` and `--session-kind` go together or not at all. The id is 1-200 chars of
    `[A-Za-z0-9._:%-]`; the kind is `claude`, `codex`, `t3-thread`, `pi` or `other`. Anything else,

@@ -603,6 +603,7 @@ def record(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(prog="sstack-dispatch record")
     ap.add_argument("role")
     ap.add_argument("--report", required=True)
+    ap.add_argument("--report-from", help="saved final message, or - for stdin")
     ap.add_argument("--member", required=True, help="<harness>/<model>")
     ap.add_argument("--exit", type=int, required=True)
     ap.add_argument("--run-dir", required=True)
@@ -640,6 +641,23 @@ def _record(a, root: Path, run_dir: Path) -> int:
               file=sys.stderr)
         return 1
     report = Path(a.report).resolve()
+    if a.report_from:
+        try:
+            source = sys.stdin.read() if a.report_from == "-" else Path(a.report_from).read_text()
+            try:
+                parsed = json.loads(source)
+            except ValueError:
+                parsed = None
+            if isinstance(parsed, dict) and isinstance(parsed.get("summary"), str):
+                source = parsed["summary"]
+            elif isinstance(parsed, list) and all(isinstance(b, dict) and isinstance(b.get("text"), str) for b in parsed):
+                source = "\n".join(b["text"] for b in parsed)
+            if not report.is_file() or report.stat().st_size == 0:
+                report.parent.mkdir(parents=True, exist_ok=True)
+                report.write_text(source)
+        except (OSError, UnicodeError) as e:
+            print(f"sstack-dispatch record: --report-from {a.report_from}: {e}", file=sys.stderr)
+            return 1
     code = a.exit if a.exit != 0 else (0 if report.is_file() and report.stat().st_size > 0 else 1)
     warning = readonly_check(root, run_dir, run, report) if run.get("readonly") else []
     index_line(root, run_dir, run, {"member": a.member, "exit": code, "report": report, "ade": run.get("ade"),

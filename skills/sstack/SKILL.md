@@ -136,10 +136,10 @@ Dispatch a role; never pick a model by hand.
        `max_parallel` at once; start the next as each one is recorded.
     2. **Wait** for each child's own completion signal. Never poll.
     3. **Collect**: a read-only child usually runs in a mode that can't write files.
-       If its report file is missing once it finishes, write the child's final
-       message there yourself.
+       Save its final message and pass `--report-from <saved-file>` to `record`
+       to fill a missing or empty report.
     4. **Record** each with the first exit that matches: `--exit 2` if the child
-       timed out, `--exit 1` if it failed or left no report, else `--exit 0`. Fill `<CHILD_THREAD_ID>` in the record command with the child's id from the delegate tool's result (`childThreadId`), or drop both `--session-kind` and `--session` (an unfilled placeholder makes `record` exit 1); a harness that is not T3 replaces or drops the two `--session-kind`/`--session` flags per its own session id and kind. A `record` that exits `4` prints the next tier's payload: same
+       timed out, `--exit 1` if it failed or left no report (a final message passed with `--report-from` is a report), else `--exit 0`. Fill `<CHILD_THREAD_ID>` in the record command with the child's id from the delegate tool's result (`childThreadId`), or drop both `--session-kind` and `--session` (an unfilled placeholder makes `record` exit 1); a harness that is not T3 replaces or drops the two `--session-kind`/`--session` flags per its own session id and kind. A `record` that exits `4` prints the next tier's payload: same
        procedure. Read each report and verify it: launch success is not task success.
   - `5` — `BUSY: <holder run> <files>; nothing started`: another run holds this
     checkout's write lock. Say you are waiting on that holder, wait for it to record

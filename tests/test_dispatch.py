@@ -176,11 +176,11 @@ class FakeCliBase(DispatchBase):
             out = out.replace(real, ph)
         return json.loads(out)
 
-    def record(self, call: dict, code: int, env=None):
+    def record(self, call: dict, code: int, *extra, env=None):
         import shlex
         argv = shlex.split(call["record"].replace("{exit}", str(code)).replace("'<CHILD_THREAD_ID>'", "thread-1"))
         self.assertEqual(argv[:2], ["sstack-dispatch", "record"])
-        return self.run_main(*argv[1:], env=env)
+        return self.run_main(*argv[1:], *extra, env=env)
 
 
 class ToolPayloadTests(FakeCliBase):
@@ -238,6 +238,50 @@ class RecordTests(FakeCliBase):
 
     def index(self) -> list[dict]:
         return [json.loads(l) for l in (self.root / ".sstack/runs/index.jsonl").read_text().splitlines()]
+
+    def test_record_report_from_file(self):
+        for source, expected in [("plain report\n", "plain report\n"),
+                                 ('{"summary": "X", "status": "done"}', "X"),
+                                 ('[{"type":"text","text":"a"},{"type":"text","text":"b"}]', "a\nb")]:
+            with self.subTest(source=source):
+                self.example()
+                saved = self.home / "saved.txt"
+                saved.write_text(source)
+                _, out, _ = self.dispatch("scout", env=T3)
+                call = json.loads(out)["calls"][0]
+                if self.report().exists():
+                    self.report().write_text("")
+                code, _, err = self.record(call, 0, "--report-from", str(saved), env=T3)
+                self.assertEqual(code, 0, err)
+                self.assertEqual(self.report().read_text(), expected)
+
+    def test_record_report_from_preserves_existing(self):
+        self.example()
+        saved = self.home / "saved.txt"
+        saved.write_text("replacement")
+        _, out, _ = self.dispatch("scout", env=T3)
+        self.report().parent.mkdir(exist_ok=True)
+        self.report().write_text("original")
+        code, _, err = self.record(json.loads(out)["calls"][0], 0, "--report-from", str(saved), env=T3)
+        self.assertEqual(code, 0, err)
+        self.assertEqual(self.report().read_text(), "original")
+
+    def test_record_report_from_stdin(self):
+        self.example()
+        _, out, _ = self.dispatch("scout", env=T3)
+        with mock.patch("sys.stdin", io.StringIO("from stdin")):
+            code, _, err = self.record(json.loads(out)["calls"][0], 0, "--report-from", "-", env=T3)
+        self.assertEqual(code, 0, err)
+        self.assertEqual(self.report().read_text(), "from stdin")
+
+    def test_record_report_from_missing_does_not_record(self):
+        self.example()
+        _, out, _ = self.dispatch("scout", env=T3)
+        code, _, err = self.record(json.loads(out)["calls"][0], 0, "--report-from",
+                                   str(self.home / "missing"), env=T3)
+        self.assertEqual(code, 1)
+        self.assertIn("missing", err)
+        self.assertFalse((self.root / ".sstack/runs/index.jsonl").exists())
 
     def test_record_writes_index_line(self):
         self.example()
