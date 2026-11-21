@@ -4,11 +4,26 @@ from unittest import mock
 
 from helpers import TempEnv, REPO
 import sstack_config as C
+import sstack_ade as A
 
 HARN = '[harness.pi]\nheadless=["pi"]\n[harness.codex]\nheadless=["codex"]\n'
 
 
 class ConfigTests(TempEnv):
+    def test_disabled_harness_is_absent_and_role_reports_it(self):
+        self.write(self.home, ".sstack/harnesses/pi.toml", "enabled = false\n")
+        self.write(self.root, ".sstack/roles/implement.toml", 'harness = "pi"\n')
+        cfg = C.load(self.root)
+        self.assertNotIn("pi", cfg["harness"])
+        with self.assertRaisesRegex(C.ConfigError, "unknown or disabled harness 'pi'"):
+            C.resolve(cfg, "implement")
+
+    def test_disabled_ade_masks_farther_layer_and_detection(self):
+        self.write(self.root, ".sstack/ades/orca.toml", "enabled = false\n")
+        self.assertNotIn("orca", [a["name"] for a in C.ades(self.root)])
+        active, _ = A.active(self.root, C.load(self.root), {"ORCA_AGENT_SESSION_ID": "test"})
+        self.assertIsNone(active)
+
     def test_empty_layer_dir_keeps_worktree_fallback(self):
         import subprocess
         self.glob_cfg(HARN)
@@ -73,7 +88,7 @@ class ConfigTests(TempEnv):
         self.assertNotIn("claude", cfg["harness"])
         with self.assertRaises(C.ConfigError) as cm:
             C.resolve(cfg, "scout")
-        self.assertIn("unknown harness 'claude'", str(cm.exception))
+        self.assertIn("unknown or disabled harness 'claude'", str(cm.exception))
         self.assertIn("sstack-config sync", str(cm.exception))
 
     def test_code_files_come_from_the_template_until_a_layer_has_one(self):

@@ -340,7 +340,7 @@ class ServerTests(TempEnv):
         with self.assertRaises(urllib.error.HTTPError) as cm:
             self.put("/api/config/local/roles/review", text)
         self.assertEqual(cm.exception.code, 400)
-        self.assertIn("unknown harness", cm.exception.read().decode())
+        self.assertIn("unknown or disabled harness", cm.exception.read().decode())
         self.assertFalse((self.root / ".sstack/local/roles/review.toml").exists())
 
     def test_ade_detect_and_delegate_must_be_tables(self):

@@ -32,6 +32,15 @@ class SyncTests(unittest.TestCase):
     def tearDown(self):
         self._tmp.cleanup()
 
+    def test_disabled_harness_does_not_drift_or_get_copied(self):
+        run_sync(self.home)
+        (self.home / "harnesses/pi.toml").write_text("enabled = false\n")
+        self.assertNotIn("pi", C.load(None, [("home", self.home)])["harness"])
+        self.assertEqual(M.drift(self.home), [])
+        code, out, _ = run_sync(self.home, dry_run=True)
+        self.assertEqual(code, 0)
+        self.assertNotIn("copy harnesses/pi.toml", out)
+
     def test_empty_home_gets_settings_not_code(self):
         code, out, _ = run_sync(self.home)
         self.assertEqual(code, 0)

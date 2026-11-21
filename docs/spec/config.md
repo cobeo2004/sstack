@@ -24,6 +24,10 @@ Owner: `lib/sstack_config.py`. Fixtures: `tests/fixtures/config/<case>/` (each w
 A file's top level is the table itself: `roles/implement.toml` holds `harness = "pi"`, not
 `[role.implement]`.
 
+In `harnesses/<name>.toml` or `ades/<name>.toml`, `enabled = false` removes that
+item from the effective configuration. The nearest file still masks farther files;
+keeping the file also prevents profile sync from restoring the template copy.
+
 `project.toml` keys are read by skills (template: `skills/setup/templates/project.toml`), except
 `check`, `verify` and `protected`: `check` is a fast file-scoped shell command with a `{path}`
 placeholder, run by `sstack-hook post-edit` on each edited file ([hooks.md](hooks.md)); `verify` and

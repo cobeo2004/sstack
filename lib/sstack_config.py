@@ -171,6 +171,8 @@ def load(root: Path | None, _ls: list | None = None) -> dict:
         if name == "repo" and isinstance(data.get("decider"), dict):  # the API key goes to this url
             data["decider"].pop("url", None)
         cfg = merge(cfg, data)
+    if "harness" in cfg:
+        cfg["harness"] = {k: v for k, v in cfg["harness"].items() if v.get("enabled") is not False}
     return cfg
 
 
@@ -241,6 +243,8 @@ def ades(root: Path | None, _ls: list | None = None) -> list[dict]:
                 continue
             seen.add(p.stem)
             toml = _read(p)
+            if toml.get("enabled") is False:
+                continue
             hook, note = (source(root, "ades", f"{p.stem}.{x}", ls) for x in ("hook", "md"))
             out.append({"name": p.stem, "layer": layer, "toml": toml,
                         "hook_path": hook[1] if hook else None, "note_path": note[1] if note else None,
@@ -306,7 +310,7 @@ def _member(cfg: dict, m: dict) -> dict | None:
     if not h or h == "local":
         return None
     if h not in cfg.get("harness", {}):
-        raise ConfigError(f"unknown harness {h!r} (add harnesses/{h}.toml or {SYNC})")
+        raise ConfigError(f"unknown or disabled harness {h!r} (add harnesses/{h}.toml or {SYNC})")
     return {"harness": h, "model": m.get("model"), "effort": m.get("effort")}
 
 

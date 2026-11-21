@@ -28,12 +28,12 @@ Every layer dir may hold any of these. A file's top level is the table itself:
 |---|---|---|
 | `config.toml` | `ade`, `[dispatch]`, `[rules]`, `[reflect]`, `[routing]`, `[overnight]` | key by key, nested tables too |
 | `project.toml` | repo facts: `verify`, `protected`, `[test.<surface>]`, `graph` (repo and local layers only) | replaced whole |
-| `harnesses/<name>.toml` | `headless`, `headless_readonly` argv templates; optional `session_kind` with `session_id_args` or `session_events_args` (built in for `claude` and `codex`: [spec](../spec/dispatch.md#headless-session-capture)); optional `[session]` ([ades.md](ades.md#session-harness-no-ade)) | replaced whole |
+| `harnesses/<name>.toml` | `headless`, `headless_readonly` argv templates; optional `session_kind` with `session_id_args` or `session_events_args` (built in for `claude` and `codex`: [spec](../spec/dispatch.md#headless-session-capture)); optional `[session]` ([ades.md](ades.md#session-harness-no-ade)); `enabled = false` disables the harness | replaced whole |
 | `roles/<role>.toml` | `harness`, `model`, `effort`, `mode`, `panel`, `[hint.<name>]` | replaced whole |
 | `roles/<stage>/<name>.toml` | a stage variant for `investigate`, `plan` or `review` ([below](#add-a-stage-variant)) | replaced whole |
 | `roles/<stage>/<name>.md` | that variant's lens | nearest layer per file |
 | `tiers/<tier>.toml` | `harness`, `model`, `effort` | replaced whole |
-| `ades/<name>.toml` | one ADE adapter ([ades.md](ades.md)) | replaced whole |
+| `ades/<name>.toml` | one ADE adapter ([ades.md](ades.md)); `enabled = false` disables the adapter | replaced whole |
 | `ades/<name>.hook`, `ades/<name>.md` | optional hook and agent note | nearest layer per file |
 | `steps/<name>/step.toml` | one workflow step: `after`, `role`, `gate`, `on_fail`, `max_loops`, `max_agents`, `min_score`, `enabled` ([workflow.md](workflow.md)) | key by key |
 | `steps/<name>/brief.md`, `steps/<name>/run.sh` | a step's brief (role step) or command (command step) | nearest layer per file |
