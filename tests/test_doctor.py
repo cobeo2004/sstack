@@ -25,7 +25,7 @@ class DoctorBase(TempEnv):
                         "commit", "-qm", "init"], check=True)
 
     def doctor(self, *args, env=None):
-        e = dict(NO_T3, HOME=str(self.home), **(env or {}))
+        e = dict(NO_T3, HOME=str(self.home), USERPROFILE=str(self.home), **(env or {}))
         # `record` in payloads runs sstack-dispatch. PATH comes from os.environ now, not NO_T3's
         # import-time copy, so TempEnv's claude stub is on it (CI hosts have no claude).
         e["PATH"] = f"{REPO / 'bin'}:{(env or {}).get('PATH', os.environ['PATH'])}"
@@ -60,7 +60,8 @@ class StaticTests(DoctorBase):
         cfg.write_text("".join(x for x in cfg.read_text().splitlines(keepends=True) if not x.startswith("stop_at")))
         code, out, _ = self.doctor()
         self.assertRegex(out, r"(?m)^WARN profile: drift: .*harnesses/pi\.toml.*overnight\.stop_at.*sstack-config sync")
-        subprocess.run([sys.executable, str(REPO / "bin/sstack-config"), "sync"], env=dict(os.environ, HOME=str(self.home)),
+        subprocess.run([sys.executable, str(REPO / "bin/sstack-config"), "sync"],
+                       env=dict(os.environ, HOME=str(self.home), USERPROFILE=str(self.home)),
                        check=True, capture_output=True)
         code, out, _ = self.doctor()
         self.assertRegex(out, r"(?m)^PASS profile: ")
@@ -310,7 +311,7 @@ class SmokeTests(DoctorBase):
                     (d / "canary.txt").write_text(token + "\n")
                 cmd = c["record"].replace("{exit}", "0").replace("'<CHILD_THREAD_ID>'", "thread-1").split()[1:]
                 with self.subTest(role=pl["role"]):
-                    e = dict(NO_T3, HOME=str(self.home))
+                    e = dict(NO_T3, HOME=str(self.home), USERPROFILE=str(self.home))
                     r = subprocess.run([sys.executable, str(REPO / "bin" / "sstack-dispatch"), *cmd],
                                        cwd=self.root, env=e, capture_output=True, text=True)
                     self.assertEqual(r.returncode, 0, r.stderr)

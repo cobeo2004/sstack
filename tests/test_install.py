@@ -26,7 +26,8 @@ class InstallTests(TempEnv):
 
     def install(self, *args):
         r = subprocess.run([sys.executable, str(self.src / "bin/sstack-install"), *args],
-                           env=dict(os.environ, HOME=str(self.home)), capture_output=True, text=True)
+                           env=dict(os.environ, HOME=str(self.home), USERPROFILE=str(self.home)),
+                           capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stderr)
         return r.stdout
 

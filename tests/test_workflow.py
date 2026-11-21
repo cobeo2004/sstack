@@ -17,7 +17,7 @@ class WorkflowBase(TempEnv):
         self.run_dir.mkdir(parents=True)
 
     def wf(self, *args, cwd=None):
-        e = dict(NO_T3, HOME=str(self.home))
+        e = dict(NO_T3, HOME=str(self.home), USERPROFILE=str(self.home))
         r = subprocess.run([sys.executable, str(WF), *args], cwd=cwd or self.root, env=e,
                            capture_output=True, text=True)
         return r.returncode, r.stdout, r.stderr

@@ -15,7 +15,8 @@ class IntegrationTests(TempEnv):
         self.assertTrue((self.home / ".sstack" / "roles" / "scout.toml").is_file())
         with tempfile.TemporaryDirectory() as t:
             log = Path(t) / "calls.log"
-            env = dict(NO_T3, HOME=str(self.home), T3CODE_THREAD_ID="x", T3CODE_CLI_PATH=str(FAKES / "t3"),
+            env = dict(NO_T3, HOME=str(self.home), USERPROFILE=str(self.home), T3CODE_THREAD_ID="x",
+                       T3CODE_CLI_PATH=str(FAKES / "t3"),
                        FAKE_CALLS_LOG=str(log), PATH=f"{FAKES}:{REPO / 'bin'}:{os.environ['PATH']}")
             run = lambda *a: subprocess.run([sys.executable, str(REPO / "bin" / "sstack-dispatch"), *a],
                                             cwd=self.root, env=env, capture_output=True, text=True)
