@@ -98,7 +98,7 @@ class NestedDispatchTests(FakeCliBase):
         code, out, err = self.run_main("scout", "--brief", self.brief(), "--report",
                                        str(self.runs() / "task-x" / "s.md"), "--route", env=T3)
         self.assertEqual(code, 0, err)
-        self.assertRegex(json.loads(out)["run_dir"], r"/\.sstack/runs/task-x/dispatch/\d{4}-scout$")
+        self.assertRegex(Path(json.loads(out)["run_dir"]).as_posix(), r"/\.sstack/runs/task-x/dispatch/\d{4}-scout$")
         self.assertFalse(self.runs().exists())
 
     def test_readonly_child_writing_inside_its_task_is_not_flagged(self):  # T1.i (R16)

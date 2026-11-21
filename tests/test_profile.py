@@ -2,12 +2,13 @@
 import contextlib
 import hashlib
 import io
+import os
 import tempfile
 import tomllib
 import unittest
 from pathlib import Path
 
-from helpers import REPO  # noqa: F401  (puts lib/ on sys.path)
+from helpers import REPO, can_symlink, NO_SYMLINK  # noqa: F401  (puts lib/ on sys.path)
 import sstack_config as C
 import sstack_configcli as M
 
@@ -90,6 +91,7 @@ class SyncTests(unittest.TestCase):
         want["dispatch"]["timeout_min"] = 99
         self.assertEqual(d, want)
 
+    @unittest.skipUnless(can_symlink(), NO_SYMLINK)
     def test_symlinked_config_is_written_through(self):
         run_sync(self.home)
         cfg, real = self.home / "config.toml", Path(self._tmp.name) / "dotfiles" / "config.toml"
@@ -103,6 +105,8 @@ class SyncTests(unittest.TestCase):
         self.assertTrue(cfg.is_symlink())
         self.assertEqual(tomllib.loads(real.read_text())["overnight"]["stop_at"], "")
 
+    @unittest.skipUnless(can_symlink(), NO_SYMLINK)
+    @unittest.skipIf(os.name == "nt", "chmod read-only bits don't stop writes on Windows")
     def test_unwritable_symlink_target_fails_cleanly(self):
         run_sync(self.home)
         ro = Path(self._tmp.name) / "ro"

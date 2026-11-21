@@ -4,7 +4,7 @@ import contextlib, io, json, os, runpy, shutil, subprocess, sys, time
 from unittest import mock
 from pathlib import Path
 
-from helpers import TempEnv, REPO, FIXTURES
+from helpers import TempEnv, REPO, FIXTURES, link_or_copy
 
 HOOK = REPO / "bin" / "sstack-hook"
 PAYLOADS = FIXTURES / "payloads"
@@ -12,7 +12,7 @@ T = "/home/transcripts/session.jsonl"
 
 
 def payload(name: str, root: Path) -> str:
-    return (PAYLOADS / f"hook-{name}.json").read_text().replace("/repo", str(root))
+    return (PAYLOADS / f"hook-{name}.json").read_text().replace("/repo", json.dumps(str(root))[1:-1])
 
 
 class HookTests(TempEnv):
@@ -123,7 +123,7 @@ class HookTests(TempEnv):
         src = self.home / "sstack"
         (src / "bin").mkdir(parents=True)
         shutil.copy(HOOK, src / "bin")
-        (src / "lib").symlink_to(REPO / "lib")
+        link_or_copy(src / "lib", REPO / "lib")
         got = self.home / "reflect-got.json"
         (src / "bin" / "sstack-reflect-hook").write_text(
             f"import sys, pathlib\npathlib.Path({str(got)!r}).write_text(sys.stdin.read())\n")

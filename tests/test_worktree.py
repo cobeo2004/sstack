@@ -1,7 +1,7 @@
-import os, subprocess
+import os, subprocess, sys, unittest
 from pathlib import Path
 
-from helpers import TempEnv, REPO
+from helpers import TempEnv, REPO, can_symlink, NO_SYMLINK
 
 BIN = REPO / "bin" / "sstack-worktree"
 
@@ -18,15 +18,17 @@ class WorktreeTests(TempEnv):
         self.write(self.root, "secret.key", "k\n")
         self.write(self.root, "node_modules/x.js", "x\n")
         self.write(self.root, "café.local", "c\n")
-        (self.root / "dead.local").symlink_to("/nonexistent")
+        if can_symlink():
+            (self.root / "dead.local").symlink_to("/nonexistent")
         self.write(self.root, "notes.md", "wip\n")
         self.write(self.root, ".worktreeinclude", ".env\n*.local\nnode_modules/\nnotes.md\n")
         self.wt = self.root.parent / "wt"
         g("worktree", "add", "-q", "-b", "feat", str(self.wt))
 
     def run_in(self, cwd, *args):
-        return subprocess.run([str(BIN), *args], cwd=cwd, capture_output=True, text=True)
+        return subprocess.run([sys.executable, str(BIN), *args], cwd=cwd, capture_output=True, text=True, encoding="utf-8")
 
+    @unittest.skipUnless(can_symlink(), NO_SYMLINK)
     def test_status_reports_missing_ignored(self):
         out = self.run_in(self.wt).stdout
         self.assertIn("linked: True", out)
@@ -44,16 +46,17 @@ class WorktreeTests(TempEnv):
         r = self.run_in(self.wt, "copy")
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("copied  .env", r.stdout)
-        self.assertEqual((self.wt / ".env").read_text(), "A=1\n")
-        self.assertEqual((self.wt / "café.local").read_text(), "c\n")
+        self.assertEqual((self.wt / ".env").read_text(encoding="utf-8"), "A=1\n")
+        self.assertEqual((self.wt / "café.local").read_text(encoding="utf-8"), "c\n")
         for absent in ("notes.md", "dead.local", "node_modules"):
             self.assertFalse(os.path.lexists(self.wt / absent), absent)
         self.assertFalse((self.wt / "secret.key").exists())
         (self.wt / ".env").write_text("LOCAL\n")
         self.assertIn("exists  .env", self.run_in(self.wt, "copy").stdout)
-        self.assertEqual((self.wt / ".env").read_text(), "LOCAL\n")
+        self.assertEqual((self.wt / ".env").read_text(encoding="utf-8"), "LOCAL\n")
         self.assertIn("copyable: none", self.run_in(self.wt).stdout)
 
+    @unittest.skipUnless(can_symlink(), NO_SYMLINK)
     def test_copy_refuses_symlinked_parent(self):
         self.write(self.root, "config/.env", "S=1\n")
         with open(self.root / ".worktreeinclude", "a") as f:

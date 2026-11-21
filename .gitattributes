@@ -1,0 +1,2 @@
+# Byte-exact checkouts: autocrlf on Windows would break fixture and shim comparisons.
+* -text

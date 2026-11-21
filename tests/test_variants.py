@@ -17,8 +17,8 @@ import sstack_dispatch as D
 
 PY = sys.executable
 FAKE_AGENT = REPO / "tests" / "fakes" / "fake_agent.py"
-FAKE = (f'[harness.fake]\nheadless = ["{PY}", "{FAKE_AGENT}", "{{model}}"]\n'
-        f'headless_readonly = ["{PY}", "{FAKE_AGENT}", "{{model}}"]\n')
+FAKE = (f"[harness.fake]\nheadless = ['{PY}', '{FAKE_AGENT}', '{{model}}']\n"
+        f"headless_readonly = ['{PY}', '{FAKE_AGENT}', '{{model}}']\n")
 REVIEW_SINGLE = '[role.review]\nharness="fake"\nmodel="echo"\nmode="single"\n'
 
 
@@ -111,8 +111,8 @@ class MemberRulesTests(VariantBase):
         self.assertEqual(self.last_run()[1]["members"], ["fake/echo", "fake/other#review/other"])
 
     def test_t3c_variant_members_run_read_only(self):
-        ro = (f'[harness.ro]\nheadless = ["{PY}", "-c", "print(\'WRITE\')"]\n'
-              f'headless_readonly = ["{PY}", "-c", "print(\'READONLY\')"]\n')
+        ro = (f'[harness.ro]\nheadless = [\'{PY}\', "-c", "print(\'WRITE\')"]\n'
+              f'headless_readonly = [\'{PY}\', "-c", "print(\'READONLY\')"]\n')
         self.glob_cfg(ro + FAKE + roles_base() + '[role.review]\nharness="ro"\nmode="single"\n')
         self.variant("review", "security", 'harness = "ro"\nmodel = "other"\n')
         code, _, err = self.go()
@@ -246,8 +246,8 @@ class ParallelTests(VariantBase):
         art.mkdir()
         script = art / "marker.py"
         script.write_text(SERIAL)
-        serial = (f'[harness.serial]\nheadless = ["{PY}", "{script}", "{art}", "{{model}}"]\n'
-                  f'headless_readonly = ["{PY}", "{script}", "{art}", "{{model}}"]\n')
+        serial = (f"[harness.serial]\nheadless = ['{PY}', '{script}', '{art}', '{{model}}']\n"
+                  f"headless_readonly = ['{PY}', '{script}', '{art}', '{{model}}']\n")
         self.glob_cfg(serial + '[role.implement]\nharness="serial"\nmodel="impl"\n'
                       '[role.review]\nharness="serial"\nmodel="a"\nmode="single"\n'
                       '[rules]\nmax_parallel = 1\n')
@@ -322,7 +322,7 @@ class ListingTests(VariantBase):
         self.variant_sec()
         out = self.config_cli("show", "roles/review/security")
         self.assertTrue(out.startswith("# repo: "), out)
-        self.assertIn("roles/review/security.toml", out.splitlines()[0])
+        self.assertIn("roles/review/security.toml", out.splitlines()[0].replace("\\", "/"))
         self.assertIn('harness = "fake"', out)
 
     def test_t3j_routes_lists_the_variant_with_when_and_layer(self):

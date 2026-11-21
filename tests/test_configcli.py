@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import tomllib
+import unittest
 from pathlib import Path
 from unittest import mock
 
@@ -188,6 +189,7 @@ max_parallel = 2
         self.assertFalse((cfg.parent / "roles").exists())
         self.assertFalse((cfg.parent / "harnesses").exists())
 
+    @unittest.skipIf(os.name == "nt", "chmod read-only bits don't stop writes on Windows")
     def test_write_failure_before_rename_rolls_back(self):
         cfg = self.write(self.home, ".sstack/config.toml", '[role.scout]\nharness = "claude"\n')
         roles = self.home / ".sstack/roles"
@@ -204,6 +206,7 @@ max_parallel = 2
         self.profile(self.home / ".sstack")  # migrate leaves the template to sync
         self.assertEqual(C.load(None)["role"]["scout"]["harness"], "claude")
 
+    @unittest.skipIf(os.name == "nt", "chmod read-only bits don't stop writes on Windows")
     def test_failure_after_rename_rolls_back(self):
         self.write(self.root, ".gitignore", "node_modules/\n")
         local = self.write(self.root, ".sstack/config.local.toml",

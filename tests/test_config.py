@@ -144,7 +144,7 @@ class ConfigTests(TempEnv):
         self.repo_cfg('[role.implement]\nharness = [')
         with self.assertRaises(C.ConfigError) as cm:
             C.load(self.root)
-        self.assertIn(".sstack/roles/implement.toml", str(cm.exception))
+        self.assertIn(str(Path(".sstack/roles/implement.toml")), str(cm.exception))
 
     def test_no_git_root_uses_home(self):
         self.glob_cfg('[reflect]\nauto=true\n')
