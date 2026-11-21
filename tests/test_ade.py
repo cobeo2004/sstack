@@ -154,10 +154,11 @@ class BuiltinHooks(FakeCliBase):
         self.assertEqual(code, 0, err)
         self.assertEqual(self.report().read_text(), "REPORT orca\n")
         log = self.log()
-        self.assertIn("orca orchestration task-create '--title=sstack implement' --prompt", log)
-        self.assertIn("orca orchestration worker-start --task task-1 --worktree new-child --agent pi "
-                      "--model opencode-go/deepseek-v4.1-flash", log)
-        self.assertIn("orca orchestration check --task task-1 --wait", log)
+        self.assertIn("orca orchestration worker-start --environment local --spec 'Read the brief", log)
+        self.assertIn("'--task-title=sstack implement' --worktree current --agent pi "
+                      "--model opencode-go/deepseek-v4.1-flash --json", log)
+        self.assertIn("orca orchestration worker-show --environment local --dispatch ctx-1 --json", log)
+        self.assertNotIn("task-create", log)
         self.assertNotIn("\npi ", log)  # no headless child
 
     def test_orca_scout_current_worktree(self):
@@ -165,11 +166,11 @@ class BuiltinHooks(FakeCliBase):
         self.assertEqual(self.dispatch("scout", env={"ORCA_AGENT_SESSION_ID": "s"})[0], 0)
         self.assertIn("--worktree current --agent claude --model haiku", self.log())
 
-    def test_orca_check_fails(self):
+    def test_orca_worker_fails(self):
         self.example()
-        code, _, _ = self.dispatch("scout", env={"ORCA_AGENT_SESSION_ID": "s", "FAKE_ORCA_CHECK": "1"})
+        code, _, _ = self.dispatch("scout", env={"ORCA_AGENT_SESSION_ID": "s", "FAKE_ORCA_STATE": "failed"})
         self.assertEqual(code, 1)
-        self.assertNotIn("task-cancel", self.log())
+        self.assertNotIn("worker-stop", self.log())
 
     def test_conductor_without_key_is_headless(self):
         self.example()
@@ -268,7 +269,7 @@ class HookDeadline(FakeCliBase):
         self.example()
         code, _, err = self.dispatch("scout", "--title=-x", env={"ORCA_AGENT_SESSION_ID": "s"})
         self.assertEqual(code, 0, err)
-        self.assertIn("task-create --title=-x --prompt", self.log())
+        self.assertIn("--task-title=-x --worktree", self.log())
 
 
 class RecheckB2(TempEnv):

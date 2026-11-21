@@ -4,11 +4,8 @@ Active when `ORCA_AGENT_SESSION_ID` is set.
 
 ## Delegation
 
-Unverified: the hook lifecycle below is tested on fakes only, until the
-`sstack-doctor --smoke` run.
-
-Dispatch runs the `orca.hook` lifecycle: task-create → worker-start,
-`check --wait`, then collect. The hook starts the child and returns its report;
+Dispatch runs the `orca.hook` lifecycle: `worker-start` (it creates the Run and
+Task) in this checkout, `worker-show` until the worker settles, then collect. The hook starts the child and returns its report;
 the agent does not call Orca directly. A hook failure falls back to headless
 dispatch with a note. A hook that hands back a tool payload exits `4`: follow
 [sstack § Delegation](../../skills/sstack/SKILL.md#delegation).
