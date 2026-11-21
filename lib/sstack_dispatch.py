@@ -2,7 +2,7 @@
 ADE (agent-tool payload, exit 4), its hook, its [cli], or the harness headless; `record` closes a
 tool-shaped run; `ade` prints the active adapter."""
 import argparse
-import fcntl
+import contextlib
 import hashlib
 import json
 import os
@@ -37,6 +37,7 @@ SESSION_PLACEHOLDER = "<CHILD_THREAD_ID>"  # payload()'s record command: the cal
 # harness file's own keys replace these, `[]` turns one off. In code like skill_dirs, so load() is unchanged.
 SESSION_ARGS = {"claude": {"session_kind": "claude", "session_id_args": ["--session-id", "{session_id}"]},
                 "codex": {"session_kind": "codex", "session_events_args": ["--json", "-o", "{report}"]}}
+_WINDOWS = os.name == "nt"
 
 
 def slug(model: str | None) -> str:
@@ -76,8 +77,9 @@ def isolates(ade: dict | None, members: list[dict] = ()) -> bool:
 
 
 def rel(root: Path, p) -> str:
+    """POSIX form, so it compares equal to the paths git prints on every OS."""
     p = Path(p).resolve()
-    return str(p.relative_to(root)) if p.is_relative_to(root) else str(p)
+    return (p.relative_to(root) if p.is_relative_to(root) else p).as_posix()
 
 
 # ---- write lock, one writer per checkout (docs/spec/dispatch.md) --------------------------------
@@ -89,8 +91,8 @@ def lock_owner(root: Path, report: Path) -> str:
     runs, parent = (root / RUNS).resolve(), report.resolve().parent
     if parent == runs or parent.is_relative_to(runs):
         parts = parent.relative_to(runs).parts
-        return rel(root, runs / parts[0]) if parts else rel(root, RUNS)
-    return rel(root, parent)
+        parent = runs / parts[0] if parts else root / RUNS
+    return Path(rel(root, parent)).as_posix()
 
 
 def lock_cap(step: dict | None) -> int:
@@ -112,6 +114,26 @@ def _lock_write(p: Path, data: dict) -> None:
     os.replace(tmp, p)
 
 
+LOCK_BYTE = 2**30  # locking beyond EOF is allowed on Windows
+
+
+def _flock(f):
+    """Hold f's exclusive lock: flock on POSIX, msvcrt.locking on Windows. msvcrt locks are mandatory,
+    so lock one byte far past any content: a read of the file (snapshot) never hits the locked range."""
+    if not _WINDOWS:
+        import fcntl
+        fcntl.flock(f, fcntl.LOCK_EX)
+        return
+    import msvcrt
+    f.seek(LOCK_BYTE)
+    while True:
+        try:
+            msvcrt.locking(f.fileno(), msvcrt.LK_LOCK, 1)
+            return
+        except OSError:  # LK_LOCK gives up after ~10s
+            continue
+
+
 def _mutex(root: Path):
     """`<runs>/implement.lock.mutex`, held for one short read-modify-write of the holder list: the
     same lock sstack_workflow.release() takes through lock_release(). Closing the file releases it."""
@@ -119,7 +141,7 @@ def _mutex(root: Path):
     p.parent.mkdir(parents=True, exist_ok=True)
     while True:
         f = open(p, "a")
-        fcntl.flock(f, fcntl.LOCK_EX)
+        _flock(f)
         try:  # release may have unlinked it while we waited: retry on the file now at that path
             if os.stat(p).st_ino == os.fstat(f.fileno()).st_ino:
                 return f
@@ -186,7 +208,8 @@ def lock_release(root: Path, owner: str) -> None:
             _lock_write(p, {**data, "holders": keep})
         else:
             p.unlink(missing_ok=True)
-            (root / RUNS / f"{LOCK}.mutex").unlink(missing_ok=True)  # _mutex re-checks the inode
+            with contextlib.suppress(PermissionError):  # Windows: m is still open
+                (root / RUNS / f"{LOCK}.mutex").unlink(missing_ok=True)  # _mutex re-checks the inode
     finally:
         m.close()
 
@@ -372,7 +395,7 @@ def readonly_check(root: Path, run_dir: Path, run: dict, report: Path) -> list[s
     # this run's dir and every other run dir under .sstack/runs/ are sstack's; index.jsonl is checked
     # append-only in tree_changes
     skip = [rel(root, run_dir) + "/"]
-    skip += [str(p.relative_to(root)) + "/" for p in (root / ".sstack" / "runs").glob("*/")]
+    skip += [p.relative_to(root).as_posix() + "/" for p in (root / ".sstack" / "runs").glob("*/")]
     skip += [rel(root, p) for r in reports for p in (r, Path(str(r) + ".err"), Path(str(r) + ".events.jsonl"))]
     changed = tree_changes(root, base, skip)
     if changed and report.exists():
@@ -626,7 +649,7 @@ def record(argv: list[str]) -> int:
         print(f"sstack-dispatch record: {e}", file=sys.stderr)
         return 1
     with lock:  # members of one run record concurrently: one read-modify-write of run.json at a time
-        fcntl.flock(lock, fcntl.LOCK_EX)
+        _flock(lock)
         return _record(a, root, run_dir)
 
 

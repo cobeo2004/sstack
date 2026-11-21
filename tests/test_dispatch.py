@@ -516,7 +516,7 @@ class FixB2Tests(FakeCliBase):
         self.assertEqual(self.index()[-1]["readonly_warning"], [".sstack/runs/index.jsonl"])
 
     def test_record_holds_run_lock(self):
-        import fcntl, subprocess
+        import subprocess
         self.example()
         _, out, _ = self.dispatch("scout", env=T3)
         call = json.loads(out)["calls"][0]
@@ -525,7 +525,7 @@ class FixB2Tests(FakeCliBase):
         argv = __import__("shlex").split(call["record"].replace("{exit}", "0").replace("'<CHILD_THREAD_ID>'", "thread-1"))
         env = {**NO_T3, "HOME": str(self.home), "USERPROFILE": str(self.home), **T3}
         with open(Path(json.loads(out)["run_dir"]) / "run.lock", "a") as lk:
-            fcntl.flock(lk, fcntl.LOCK_EX)
+            D._flock(lk)
             p = subprocess.Popen([str(REPO / "bin/sstack-dispatch"), *argv[1:]], cwd=self.root, env=env,
                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             time.sleep(1)

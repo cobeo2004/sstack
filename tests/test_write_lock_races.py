@@ -1,11 +1,24 @@
 """Write-lock regressions from the PR A review: mutex unlink race, panel release on the last record."""
-import contextlib, io, threading, time
+import contextlib, io, os, sys, threading, time, unittest
+from unittest import mock
 
 from helpers import TempEnv
 import sstack_dispatch as D
 
 
 class WriteLockRaceTests(TempEnv):
+    def test_flock_windows_retries_after_oserror(self):
+        f = mock.Mock()
+        f.fileno.return_value = 7
+        fake = mock.Mock()
+        fake.LK_LOCK = 2
+        fake.locking.side_effect = [OSError("busy"), None]
+        with mock.patch.object(D, "_WINDOWS", True), mock.patch.dict(sys.modules, {"msvcrt": fake}):
+            D._flock(f)
+        f.seek.assert_called_once_with(D.LOCK_BYTE)
+        self.assertEqual([c.args for c in fake.locking.call_args_list], [(7, 2, 1), (7, 2, 1)])
+
+    @unittest.skipIf(os.name == "nt", "Windows can't unlink an open file; lock_release leaves the mutex there")
     def test_unlinked_mutex_does_not_admit_two_holders(self):
         D.lock_acquire(self.root, "A", "A", "implement", ["x"], 1, False, 1800)
         held, got = [], []
