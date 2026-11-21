@@ -97,7 +97,7 @@ class StaticTests(DoctorBase):
         self.glob_cfg(roles() + '[role.plan]\nharness="nope"\n')
         code, out, _ = self.doctor()
         self.assertEqual(code, 1)
-        self.assertIn("FAIL roles resolve: unknown harness 'nope'", out)
+        self.assertIn("FAIL roles resolve: unknown or disabled harness 'nope'", out)
 
     def test_missing_cli(self):
         self.glob_cfg(roles() + '[harness.ghost]\nheadless=["no-such-cli-xyz"]\nheadless_readonly=["no-such-cli-xyz"]\n'

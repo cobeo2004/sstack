@@ -96,7 +96,7 @@ Expected output, exit 0:
 
 ```text
 # expect
-ConfigError: unknown harness 'nope' (add harnesses/nope.toml or run `sstack-config sync`)
+ConfigError: unknown or disabled harness 'nope' (add harnesses/nope.toml or run `sstack-config sync`)
 ok
 ```
 
