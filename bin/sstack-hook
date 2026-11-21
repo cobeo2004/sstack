@@ -14,6 +14,8 @@ REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "lib"))
 from sstack_ade import kill_group  # noqa: E402
 from sstack_config import ConfigError, git_root, home_dir, load, trusted  # noqa: E402
+for _s in (sys.stdout, sys.stderr):
+    _s.reconfigure(encoding="utf-8", errors="replace")
 
 HARNESSES = ("claude", "codex", "cursor", "pi")
 PATCH_FILE = re.compile(r"^\*\*\* (?:Add File|Update File|Move to): (.+?)\s*$", re.M)
@@ -61,7 +63,7 @@ def post_edit(n: dict) -> int:
         for q in ('"{path}"', "'{path}'", "{path}"):
             cmd = cmd.replace(q, '"$1"')  # the path arrives as $1, never as shell text
         p = subprocess.Popen(["sh", "-c", cmd, "sstack-hook", rel], cwd=root, stdout=subprocess.PIPE,
-                             stderr=subprocess.PIPE, text=True, start_new_session=True)
+                             stderr=subprocess.PIPE, text=True, start_new_session=True, encoding="utf-8", errors="replace")
         try:
             so, se = p.communicate(timeout=TIMEOUT)
             out = "" if p.returncode == 0 else f"{so}{se}"
@@ -81,7 +83,7 @@ def session_end(n: dict, p: dict) -> int:
     payload = {"cwd": n["cwd"], "session_id": p.get("session_id") or n["transcript"],
                "transcript_path": n["transcript"]}
     subprocess.run([sys.executable, str(REPO / "bin" / "sstack-reflect-hook")], input=json.dumps(payload),
-                   text=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)  # it detaches at once
+                   text=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, encoding="utf-8", errors="replace")  # it detaches at once
     return 0
 
 

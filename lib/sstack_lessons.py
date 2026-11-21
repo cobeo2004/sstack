@@ -59,7 +59,7 @@ def lessons_path(scope: str, root: Path | None) -> Path:
 
 
 def _read(path: Path) -> list:
-    return parse(path.read_text()) if path.exists() else parse("# Lessons\n\n")
+    return parse(path.read_text(encoding="utf-8")) if path.exists() else parse("# Lessons\n\n")
 
 
 def _target(path: Path) -> Path:
@@ -75,7 +75,7 @@ def _write(path: Path, items: list) -> None:
     if target != path and target.exists():
         target = path  # never clobber the wiki copy; lint warns about the pair
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(render(items))
+    target.write_text(render(items), encoding="utf-8")
     if target != path:
         path.unlink(missing_ok=True)  # items were read from it, so no line is lost
 

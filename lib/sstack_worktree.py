@@ -11,7 +11,7 @@ from pathlib import Path
 
 def git(cwd, *args, check=True, stdin=None) -> str:
     return subprocess.run(["git", "-C", str(cwd), *args], capture_output=True, text=True,
-                          check=check, input=stdin).stdout.strip()
+                          check=check, input=stdin, encoding="utf-8", errors="replace").stdout.strip()
 
 
 def zlist(cwd, *args) -> list[str]:

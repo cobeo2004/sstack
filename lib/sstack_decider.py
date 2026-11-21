@@ -44,7 +44,7 @@ def _key(name: str) -> str | None:
     if os.environ.get(name):
         return os.environ[name]
     try:
-        text = (C.home_dir() / ".env").read_text()
+        text = (C.home_dir() / ".env").read_text(encoding="utf-8")
     except OSError:
         return None
     for line in text.splitlines():
@@ -128,7 +128,7 @@ def _llm(cfg: dict, member: dict, payload: dict, timeout: float) -> dict:
     import sstack_ade as A  # lazy: only the llm decider needs the templater
     argv = A.fill(cfg["harness"][member["harness"]]["headless_readonly"],
                   {"model": member["model"], "effort": member["effort"], "title": "sstack decider"})
-    r = subprocess.run(argv, input=_prompt(payload), capture_output=True, text=True, timeout=timeout)
+    r = subprocess.run(argv, input=_prompt(payload), capture_output=True, text=True, timeout=timeout, encoding="utf-8", errors="replace")
     if r.returncode != 0:
         raise RuntimeError(f"{argv[0]} exit {r.returncode}")
     return _last_json(r.stdout)

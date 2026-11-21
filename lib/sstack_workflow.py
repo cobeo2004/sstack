@@ -117,7 +117,7 @@ def score(rows: list[dict]) -> tuple[int | None, int, list[str]]:
 def _write_json(p: Path, data) -> None:
     p.parent.mkdir(parents=True, exist_ok=True)
     tmp = p.with_name(p.name + ".tmp")
-    tmp.write_text(json.dumps(data, indent=2) + "\n")
+    tmp.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
     os.replace(tmp, p)
 
 
@@ -125,7 +125,7 @@ def read_state(run_dir: Path, chain: list[str]) -> dict:
     """<run>/workflow.json, or a fresh one at the first step. A run's place survives a re-read; a
     missing or corrupt file starts fresh rather than failing the step."""
     try:
-        st = json.loads((run_dir / "workflow.json").read_text())
+        st = json.loads((run_dir / "workflow.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
         st = {}
     if not isinstance(st, dict) or not isinstance(st.get("steps"), dict):
@@ -142,7 +142,7 @@ def write_state(run_dir: Path, st: dict) -> None:
 def progress(run_dir: Path, line: str) -> None:
     p = run_dir / "progress.md"
     p.parent.mkdir(parents=True, exist_ok=True)
-    with p.open("a") as f:
+    with p.open("a", encoding="utf-8") as f:
         f.write(line + "\n")
 
 
@@ -160,7 +160,7 @@ def release(root: Path, run_dir: Path) -> None:
 def outcome(run_dir: Path, step: str, gate: str, score) -> None:
     """A gate result line in <run>/outcomes.jsonl, beside dispatch's member lines."""
     run_dir.mkdir(parents=True, exist_ok=True)
-    with (run_dir / "outcomes.jsonl").open("a") as f:
+    with (run_dir / "outcomes.jsonl").open("a", encoding="utf-8") as f:
         f.write(json.dumps({"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "step": step, "gate": gate, "score": score}) + "\n")
 
 
@@ -214,13 +214,13 @@ def propose(root: Path, run_dir: Path, path: str | None) -> int:
     wf = resolved(root)
     if path:
         try:
-            p = json.loads(Path(path).read_text())
+            p = json.loads(Path(path).read_text(encoding="utf-8"))
         except (OSError, ValueError) as e:
             print(f"sstack-workflow: --json {path}: {e}", file=sys.stderr)
             return 1
     else:
         plan = run_dir / "plan.md"
-        p = DC.propose(C.load(root), plan.read_text(errors="replace") if plan.is_file() else "", wf["chain"])
+        p = DC.propose(C.load(root), plan.read_text(errors="replace", encoding="utf-8") if plan.is_file() else "", wf["chain"])
         if p is None:
             print("proposal: nothing proposed (decider off or no reply); the chain stays")
             return 0
@@ -263,7 +263,7 @@ def dispatched(root: Path, run_dir: Path, step: str, role: str) -> bool:
     def recorded(d: Path) -> bool:
         ss = next((p for p in d.parents if p.name == ".sstack"), None)
         try:
-            idx = (ss / "runs" / "index.jsonl").read_text().splitlines()
+            idx = (ss / "runs" / "index.jsonl").read_text(encoding="utf-8").splitlines()
             want = d.relative_to(ss.parent).as_posix()
             return any(json.loads(l).get("run_dir") == want for l in idx if l.strip())
         except (OSError, ValueError, AttributeError):
@@ -271,7 +271,7 @@ def dispatched(root: Path, run_dir: Path, step: str, role: str) -> bool:
 
     def ours(f: Path) -> bool:
         try:
-            run = json.loads(f.read_text())
+            run = json.loads(f.read_text(encoding="utf-8"))
             return isinstance(run, dict) and run.get("step") == step and recorded(f.parent)
         except (OSError, ValueError):
             return False
@@ -284,7 +284,7 @@ def dispatched(root: Path, run_dir: Path, step: str, role: str) -> bool:
         return True
     for f in (root.resolve() / ".sstack" / "runs").glob("*/run.json"):
         try:
-            base = json.loads(f.read_text()).get("report_base")
+            base = json.loads(f.read_text(encoding="utf-8")).get("report_base")
         except (OSError, ValueError, AttributeError):
             continue
         if isinstance(base, str) and ours(f) and under(base):
@@ -348,7 +348,7 @@ def advance(root: Path, run_dir: Path, wf: dict, step: str, failed: bool = False
     ok = not failed
     if findings:
         try:
-            rows = json.loads(Path(findings).read_text())
+            rows = json.loads(Path(findings).read_text(encoding="utf-8"))
         except (OSError, ValueError) as e:
             print(f"sstack-workflow: --findings {findings}: {e}", file=sys.stderr)
             return 1

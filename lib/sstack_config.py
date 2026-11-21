@@ -33,7 +33,7 @@ class ConfigError(Exception):
 
 def git_root(cwd: Path) -> Path | None:
     r = subprocess.run(["git", "-C", str(cwd), "rev-parse", "--show-toplevel"],
-                       capture_output=True, text=True)
+                       capture_output=True, text=True, encoding="utf-8", errors="replace")
     return Path(r.stdout.strip()) if r.returncode == 0 else None
 
 
@@ -86,7 +86,7 @@ def trusted(root: Path) -> bool:
     f = home_dir() / "repos.txt"
     entries = set()
     if f.is_file():
-        for line in f.read_text().splitlines():
+        for line in f.read_text(encoding="utf-8").splitlines():
             if line.strip():
                 entries.add(str(Path(line.strip()).expanduser().resolve()))
     return bool({str(root.resolve()), str(_primary(root).resolve())} & entries)
@@ -113,7 +113,7 @@ def merge(base: dict, over: dict, _path: tuple = ()) -> dict:
 
 def _read(path: Path) -> dict:
     try:
-        return tomllib.loads(path.read_text())
+        return tomllib.loads(path.read_text(encoding="utf-8"))
     except tomllib.TOMLDecodeError as e:
         raise ConfigError(f"{path}: {e}") from None
 
@@ -122,7 +122,7 @@ def _is_legacy(p: Path) -> bool:
     if p.name == "config.local.toml":
         return p.is_file()
     try:
-        return p.is_file() and bool(LEGACY_TABLES & tomllib.loads(p.read_text()).keys())
+        return p.is_file() and bool(LEGACY_TABLES & tomllib.loads(p.read_text(encoding="utf-8")).keys())
     except tomllib.TOMLDecodeError:
         return False
 
