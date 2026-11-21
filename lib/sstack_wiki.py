@@ -42,7 +42,7 @@ def head_commit(root: Path | None) -> str | None:
     if root is None:
         return None
     r = subprocess.run(["git", "-C", str(root), "rev-parse", "--short", "HEAD"],
-                       capture_output=True, text=True)
+                       capture_output=True, text=True, encoding="utf-8", errors="replace")
     return (r.stdout.strip() or None) if r.returncode == 0 else None
 
 
@@ -51,7 +51,7 @@ def changed_since(root: Path | None, commit: str) -> list[str] | None:
     if root is None:
         return None
     r = subprocess.run(["git", "-C", str(root), "diff", "--name-only", "-z", f"{commit}..HEAD"],
-                       capture_output=True, text=True)  # -z: literal names, no quoting of non-ASCII
+                       capture_output=True, text=True, encoding="utf-8", errors="replace")  # -z: literal names, no quoting of non-ASCII
     return [f for f in r.stdout.split("\0") if f] if r.returncode == 0 else None
 
 
@@ -94,7 +94,7 @@ class Page:
 def parse_page(path: Path) -> Page:
     """Frontmatter is `---` on line 1 up to the next `---` line, `key: value` per line. lessons.md
     has a fixed summary and its frontmatter is never parsed."""
-    text = path.read_text()
+    text = path.read_text(encoding="utf-8")
     rows = text.splitlines()
     page = Page(path.stem, path, "", [], None, False, len(rows), text)
     if page.lessons:
@@ -191,7 +191,7 @@ def lint(d: Path, scope: str, root: Path | None) -> tuple[list[str], list[str]]:
     index = d / "index.md"
     want = render_index(pages, stale_names(pages, root if scope == "repo" else None))
     if index.is_file():
-        have = index.read_text()
+        have = index.read_text(encoding="utf-8")
         if _STALE.sub("", have) != _STALE.sub("", want):
             errors.append("index.md: out of sync; run sstack-wiki index")
         elif have != want:
@@ -235,7 +235,7 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         pages = load(d)
         stale_set = stale_names(pages, sroot)
-        (d / "index.md").write_text(render_index(pages, stale_set))
+        (d / "index.md").write_text(render_index(pages, stale_set), encoding="utf-8")
         print(f"wrote {d}/index.md ({len(pages)} pages, {len(stale_set)} stale)")
     elif a.cmd == "backlinks":
         name = a.page[:-3] if a.page.endswith(".md") else a.page

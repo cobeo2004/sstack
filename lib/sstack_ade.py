@@ -59,7 +59,7 @@ def _hook(path: Path | None, cap: str, stdin: dict, state: Path | None, env: Map
     e = {**env, **({"SSTACK_HOOK_STATE": str(state)} if state else {})}
     try:
         p = subprocess.Popen([str(path), cap], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                             stderr=subprocess.PIPE, text=True, env=e, start_new_session=True)
+                             stderr=subprocess.PIPE, text=True, env=e, start_new_session=True, encoding="utf-8", errors="replace")
     except OSError:
         return None
     try:
@@ -289,5 +289,5 @@ def run_async(a: dict, job: str, state: Path, env: Mapping[str, str], deadline: 
     if r is None or r.returncode != 0 or not r.stdout:
         return 1
     report.parent.mkdir(parents=True, exist_ok=True)
-    report.write_text(r.stdout)
+    report.write_text(r.stdout, encoding="utf-8")
     return 0

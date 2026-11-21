@@ -68,7 +68,7 @@ def classify(files: list[str]) -> str | None:
 def changed(root: Path, base: str = "HEAD") -> tuple[list[str], int]:
     """Files changed against base (plus untracked) and the number of changed lines."""
     def git(*a):
-        r = subprocess.run(["git", "-C", str(root), *a], capture_output=True, text=True)
+        r = subprocess.run(["git", "-C", str(root), *a], capture_output=True, text=True, encoding="utf-8", errors="replace")
         return r.stdout.splitlines() if r.returncode == 0 else []
     untracked = [f for f in git("ls-files", "--others", "--exclude-standard")
                  if not any(p.startswith(".") for p in Path(f).parts[:-1])]  # tool state, not work

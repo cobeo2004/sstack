@@ -36,7 +36,7 @@ class SetupError(Exception):
 
 
 def _git(root: Path, *args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True)
+    return subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True, encoding="utf-8", errors="replace")
 
 
 def _sha256(path: Path) -> str:
@@ -55,7 +55,7 @@ def _base_config(root: Path) -> tuple[str, str, str]:
         return shown.stdout, f"base {base} {PROJECT}", base
     path = root / PROJECT
     if path.is_file():
-        return path.read_text(), f"working tree {PROJECT} (base {base} has none)", base
+        return path.read_text(encoding="utf-8"), f"working tree {PROJECT} (base {base} has none)", base
     return "", f"none (base {base} and working tree have no {PROJECT})", base
 
 
@@ -84,7 +84,7 @@ def _policy(root: Path, base: str) -> tuple[dict, str]:
                     text = ""
                     label = f"ignored .sstack/config.toml (tracked in HEAD, absent from base {base})"
                 elif path.is_file():
-                    text = path.read_text()
+                    text = path.read_text(encoding="utf-8")
                     label = f"working tree {path} (base {base} has none)"
                 else:
                     text = ""
@@ -93,7 +93,7 @@ def _policy(root: Path, base: str) -> tuple[dict, str]:
             text, label = "", "ignored .sstack/local (tracked in git or a symlink, so not machine-only)"
         else:
             path = d / "config.toml"
-            text = path.read_text() if path.is_file() else ""
+            text = path.read_text(encoding="utf-8") if path.is_file() else ""
             label = str(path) if path.is_file() else f"none ({name})"
         labels.append(label)
         if not text.strip():
@@ -135,7 +135,7 @@ def fingerprint(root: Path, rev: str | None = None) -> str | None:
                 if subprocess.run(["git", "-C", str(root), *args], env=env, capture_output=True).returncode:
                     return None
             tree = subprocess.run(["git", "-C", str(root), "write-tree"], env=env, capture_output=True,
-                                  text=True).stdout.strip()
+                                  text=True, encoding="utf-8", errors="replace").stdout.strip()
         finally:
             tmp.unlink(missing_ok=True)
     diff = _git(root, "diff-tree", "-p", "--no-renames", mb, tree)
@@ -149,7 +149,7 @@ def _pr(pr: str) -> dict:
     """Read one PR with `gh`. Missing gh, a failed call or bad JSON is a setup error (exit 2)."""
     try:
         r = subprocess.run(["gh", "pr", "view", str(pr), "--json", MERGE_FIELDS],
-                           capture_output=True, text=True)
+                           capture_output=True, text=True, encoding="utf-8", errors="replace")
     except OSError as e:
         raise SetupError(f"gh pr view {pr}: {e}") from None
     if r.returncode:
@@ -232,7 +232,7 @@ def _manifest(run: Path, root: Path) -> tuple[list[str], str]:
         return [], "nothing to check"
     errors = []
     checked = 0
-    for n, raw in enumerate(manifest.read_text().splitlines(), 1):
+    for n, raw in enumerate(manifest.read_text(encoding="utf-8").splitlines(), 1):
         line = raw.strip()
         if not line or line.startswith("#"):
             continue
@@ -268,7 +268,7 @@ def _run_verify(root: Path, commands: list[str]) -> tuple[bool, str, list[str], 
         chunks.append(f"$ {cmd}\n")
         try:
             p = subprocess.Popen(["sh", "-c", cmd], cwd=root, stdout=subprocess.PIPE,
-                                 stderr=subprocess.PIPE, text=True, start_new_session=True)
+                                 stderr=subprocess.PIPE, text=True, start_new_session=True, encoding="utf-8", errors="replace")
         except OSError as e:
             chunks.append(f"[could not start: {e}]\n")
             return (False, f"FAIL command {n} (could not start)",
@@ -297,7 +297,7 @@ def _run_verify(root: Path, commands: list[str]) -> tuple[bool, str, list[str], 
 
 
 def _reason(path: Path) -> str:
-    return " ".join(path.read_text().split()) if path.is_file() else ""
+    return " ".join(path.read_text(encoding="utf-8").split()) if path.is_file() else ""
 
 
 def _ci(rollup) -> str:
@@ -332,7 +332,7 @@ def _merge_reasons(root: Path, policy: dict, run: Path, pr_json: dict, default_b
         reasons.append("gate: no --pr verdict")
     else:
         latest = max(verdicts, key=lambda x: x[0])[1]
-        text = latest.read_text()
+        text = latest.read_text(encoding="utf-8")
         if not text.startswith("GATE: PASS"):
             reasons.append(f"gate: {latest.name} is not PASS")
         m = re.search(r"^- Head: (\S+)( \(dirty\))?$", text, re.M)
@@ -343,7 +343,7 @@ def _merge_reasons(root: Path, policy: dict, run: Path, pr_json: dict, default_b
 
     status = score = reviewed = None
     try:
-        state = json.loads((run / "workflow.json").read_text())
+        state = json.loads((run / "workflow.json").read_text(encoding="utf-8"))
         entry = state["steps"]["review"]
         status, score, reviewed = entry.get("status"), entry.get("score"), entry.get("patch")
     except (OSError, ValueError, KeyError, TypeError):
@@ -391,7 +391,7 @@ def _merge_reasons(root: Path, policy: dict, run: Path, pr_json: dict, default_b
         reasons.append("draft: PR is a draft")
 
     assumptions = run / "assumptions.md"
-    if (assumptions.is_file() and assumptions.read_text().strip()
+    if (assumptions.is_file() and assumptions.read_text(encoding="utf-8").strip()
             and not policy.get("merge_with_assumptions")):
         reasons.append("assumptions: run has decided assumptions")
 
@@ -507,8 +507,8 @@ def _write(run: Path, pr: bool, verdict: str, log: str) -> None:
     gate.mkdir(parents=True, exist_ok=True)
     n = _next(gate)
     stem = f"{n}{'-pr' if pr else ''}"
-    (gate / f"{stem}.md").write_text(verdict)
-    (gate / f"{stem}.log").write_text(log)
+    (gate / f"{stem}.md").write_text(verdict, encoding="utf-8")
+    (gate / f"{stem}.log").write_text(log, encoding="utf-8")
 
 
 def _evaluate(run: Path | None, pr: bool) -> tuple[int, str, str]:
@@ -550,7 +550,7 @@ def _merge_verdict(policy: dict, label: str, pr_json: dict, default_branch: str,
                    reasons: list[str], run: Path) -> str:
     first = "MERGE" if not reasons else "HOLD: " + "; ".join(reasons)
     try:
-        state = json.loads((run / "workflow.json").read_text())
+        state = json.loads((run / "workflow.json").read_text(encoding="utf-8"))
         score = state["steps"]["review"].get("score")
     except (OSError, ValueError, KeyError, TypeError):
         score = None
@@ -568,7 +568,7 @@ def _merge_verdict(policy: dict, label: str, pr_json: dict, default_branch: str,
 def _write_merge(run: Path, verdict: str) -> None:
     gate = run / "gate"
     gate.mkdir(parents=True, exist_ok=True)
-    (gate / f"{_next(gate)}-merge.md").write_text(verdict)
+    (gate / f"{_next(gate)}-merge.md").write_text(verdict, encoding="utf-8")
 
 
 def _evaluate_merge(pr: str, run: Path) -> tuple[int, str]:

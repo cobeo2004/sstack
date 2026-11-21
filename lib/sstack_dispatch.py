@@ -102,7 +102,7 @@ def lock_cap(step: dict | None) -> int:
 
 def _lock_read(p: Path) -> dict:
     try:
-        data = json.loads(p.read_text())
+        data = json.loads(p.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {"holders": []}
     return data if isinstance(data, dict) and isinstance(data.get("holders"), list) else {"holders": []}
@@ -110,7 +110,7 @@ def _lock_read(p: Path) -> dict:
 
 def _lock_write(p: Path, data: dict) -> None:
     tmp = p.with_name(p.name + ".tmp")
-    tmp.write_text(json.dumps(data, indent=2) + "\n")
+    tmp.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
     os.replace(tmp, p)
 
 
@@ -140,7 +140,7 @@ def _mutex(root: Path):
     p = root / RUNS / f"{LOCK}.mutex"
     p.parent.mkdir(parents=True, exist_ok=True)
     while True:
-        f = open(p, "a")
+        f = open(p, "a", encoding="utf-8")
         _flock(f)
         try:  # release may have unlinked it while we waited: retry on the file now at that path
             if os.stat(p).st_ino == os.fstat(f.fileno()).st_ino:
@@ -270,7 +270,7 @@ def session_of(sx: dict | None) -> dict | None:
     if not sx or "session" in sx:
         return sx and sx["session"]
     try:
-        lines = sx["events"].read_text(errors="replace").splitlines()
+        lines = sx["events"].read_text(errors="replace", encoding="utf-8").splitlines()
     except OSError:
         return None
     for l in lines:
@@ -295,12 +295,12 @@ def run_member(argv: list[str], cwd: Path, brief: str, deadline: float, report: 
     report.parent.mkdir(parents=True, exist_ok=True)
     err = report.with_name(report.name + ".err")
     if events:
-        report.write_text("")  # no stale report counts as the child's
-    with open(events or report, "w") as out, open(err, "w") as errf:
+        report.write_text("", encoding="utf-8")  # no stale report counts as the child's
+    with open(events or report, "w", encoding="utf-8") as out, open(err, "w", encoding="utf-8") as errf:
         try:
             # SSTACK_REFLECT=1: a child's own SessionEnd must not start another reflect pass
             p = subprocess.Popen(argv, cwd=cwd, stdin=subprocess.PIPE, stdout=out, stderr=errf, text=True,
-                                 start_new_session=True, env={**os.environ, "SSTACK_REFLECT": "1"})
+                                 start_new_session=True, env={**os.environ, "SSTACK_REFLECT": "1"}, encoding="utf-8", errors="replace")
         except OSError as e:
             errf.write(f"cannot start {argv[0]}: {e}\n")
             return 1
@@ -314,7 +314,7 @@ def run_member(argv: list[str], cwd: Path, brief: str, deadline: float, report: 
     if p.returncode != 0:
         return 1
     if events and report.stat().st_size == 0 and not any(
-            l.startswith("{") for l in events.read_text(errors="replace").splitlines()):
+            l.startswith("{") for l in events.read_text(errors="replace", encoding="utf-8").splitlines()):
         events.replace(report)  # a CLI that ignored --json and -o: its stdout is the report, as without them
     return 0 if report.stat().st_size > 0 else 1
 
@@ -322,7 +322,7 @@ def run_member(argv: list[str], cwd: Path, brief: str, deadline: float, report: 
 # ---- run dir, read-only baseline, index ------------------------------------------------------
 
 def _git(root: Path, *a) -> str | None:
-    r = subprocess.run(["git", "-C", str(root), *a], capture_output=True, text=True)
+    r = subprocess.run(["git", "-C", str(root), *a], capture_output=True, text=True, encoding="utf-8", errors="replace")
     return r.stdout if r.returncode == 0 else None
 
 
@@ -380,7 +380,7 @@ def tree_changes(root: Path, base: dict, skip: list[str]) -> list[str]:
 def readonly_check(root: Path, run_dir: Path, run: dict, report: Path) -> list[str]:
     """The baseline check (docs/spec/dispatch.md): warn in the report, never fail."""
     try:
-        base = json.loads((run_dir / "baseline.json").read_text())
+        base = json.loads((run_dir / "baseline.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return []
     rb, n = run["report_base"], len(run["members"])
@@ -399,7 +399,7 @@ def readonly_check(root: Path, run_dir: Path, run: dict, report: Path) -> list[s
     skip += [rel(root, p) for r in reports for p in (r, Path(str(r) + ".err"), Path(str(r) + ".events.jsonl"))]
     changed = tree_changes(root, base, skip)
     if changed and report.exists():
-        with open(report, "a") as f:
+        with open(report, "a", encoding="utf-8") as f:
             f.write(WARNING + "\n".join(changed) + "\n")
     return changed
 
@@ -449,18 +449,18 @@ def new_run(root: Path, role: str, members: list[dict], report: Path, readonly: 
            "readonly": readonly, **extra}
     write_run(d, run)
     if readonly:
-        (d / "baseline.json").write_text(json.dumps(snapshot(root), indent=2) + "\n")
+        (d / "baseline.json").write_text(json.dumps(snapshot(root), indent=2) + "\n", encoding="utf-8")
     return d
 
 
 def write_run(d: Path, run: dict) -> None:
-    (d / "run.json").write_text(json.dumps(run, indent=2) + "\n")
+    (d / "run.json").write_text(json.dumps(run, indent=2) + "\n", encoding="utf-8")
 
 
 def append_index(root: Path, line: dict) -> None:
     p = root / ".sstack" / "runs" / "index.jsonl"
     p.parent.mkdir(parents=True, exist_ok=True)
-    with open(p, "a") as f:
+    with open(p, "a", encoding="utf-8") as f:
         f.write(json.dumps(line) + "\n")
 
 
@@ -487,7 +487,7 @@ def append_outcome(root: Path, run_dir: Path, report: Path, run: dict, member_ke
     parent, nested = _run_parent(root, report)
     p = (parent.parent if nested else run_dir) / OUTCOMES
     p.parent.mkdir(parents=True, exist_ok=True)
-    with open(p, "a") as f:
+    with open(p, "a", encoding="utf-8") as f:
         f.write(json.dumps({"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "step": run.get("step"), "role": run["role"],
                             "tier": run.get("tier") if mine else None,
                             "entry": run.get("entry") if mine else None, "harness": h, "model": m,
@@ -498,14 +498,14 @@ def append_outcome(root: Path, run_dir: Path, report: Path, run: dict, member_ke
 def _plan_text(report) -> str:
     """The task run's plan: plan.md beside the report, else ""."""
     p = Path(report).resolve().parent / "plan.md" if report else None
-    return p.read_text(errors="replace") if p and p.is_file() else ""
+    return p.read_text(errors="replace", encoding="utf-8") if p and p.is_file() else ""
 
 
 def _latest(root: Path, run_dir: Path) -> dict:
     """The latest index line per member key from this run dir."""
     rd, latest = rel(root, run_dir), {}
     p = root / ".sstack" / "runs" / "index.jsonl"
-    for l in p.read_text().splitlines() if p.exists() else []:
+    for l in p.read_text(encoding="utf-8").splitlines() if p.exists() else []:
         try:
             rec = json.loads(l)
         except ValueError:
@@ -528,7 +528,7 @@ def panel_index(root: Path, run_dir: Path, run: dict) -> int | None:
     for m in run["members"]:
         r = latest[m]
         out.append(f"- {m}: exit {r['exit']} → {r['report'] if r['exit'] == 0 else 'gap (no report)'}")
-    (root / run["panel_report"]).write_text("\n".join(out) + "\n")
+    (root / run["panel_report"]).write_text("\n".join(out) + "\n", encoding="utf-8")
     run["panel_written"] = True
     write_run(run_dir, run)
     return 0 if any(latest[m]["exit"] == 0 for m in run["members"]) else 1
@@ -570,7 +570,7 @@ def _implementer(root: Path, cfg: dict, report, hint, files=()) -> dict | None:
     where, best = Path(report).resolve().parent, None
     for f in _run_parent(root, Path(report))[0].glob("*/run.json"):
         try:
-            run = json.loads(f.read_text())
+            run = json.loads(f.read_text(encoding="utf-8"))
             if run.get("role") == "implement" and (root / run["report_base"]).resolve().parent == where and \
                     (best is None or run.get("started_at", 0) > best.get("started_at", 0)):
                 best = run
@@ -591,7 +591,7 @@ def _escalate(root: Path, run_dir: Path, run: dict, failed: dict, report: Path, 
         return None
     avoid = _implementer(root, cfg, report, run.get("hint")) if run["role"] == "review" else None
     bp = root / run["brief"] if run.get("brief") else None
-    brief = bp.read_text() if bp and bp.is_file() else ""
+    brief = bp.read_text(encoding="utf-8") if bp and bp.is_file() else ""
     plan = _plan_text(report)
     # the one decider call per escalation: a re-pick within the next tier only (first entry when off);
     # none for a security change
@@ -644,7 +644,7 @@ def record(argv: list[str]) -> int:
         return 1
     root = ss.parent
     try:
-        lock = open(run_dir / "run.lock", "a")
+        lock = open(run_dir / "run.lock", "a", encoding="utf-8")
     except OSError as e:
         print(f"sstack-dispatch record: {e}", file=sys.stderr)
         return 1
@@ -655,7 +655,7 @@ def record(argv: list[str]) -> int:
 
 def _record(a, root: Path, run_dir: Path) -> int:
     try:
-        run = json.loads((run_dir / "run.json").read_text())
+        run = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
     except (OSError, ValueError) as e:
         print(f"sstack-dispatch record: {run_dir}/run.json: {e}", file=sys.stderr)
         return 1
@@ -666,7 +666,7 @@ def _record(a, root: Path, run_dir: Path) -> int:
     report = Path(a.report).resolve()
     if a.report_from:
         try:
-            source = sys.stdin.read() if a.report_from == "-" else Path(a.report_from).read_text()
+            source = sys.stdin.read() if a.report_from == "-" else Path(a.report_from).read_text(encoding="utf-8")
             try:
                 parsed = json.loads(source)
             except ValueError:
@@ -677,7 +677,7 @@ def _record(a, root: Path, run_dir: Path) -> int:
                 source = "\n".join(b["text"] for b in parsed)
             if not report.is_file() or report.stat().st_size == 0:
                 report.parent.mkdir(parents=True, exist_ok=True)
-                report.write_text(source)
+                report.write_text(source, encoding="utf-8")
         except (OSError, UnicodeError) as e:
             print(f"sstack-dispatch record: --report-from {a.report_from}: {e}", file=sys.stderr)
             return 1
@@ -701,7 +701,7 @@ def _record(a, root: Path, run_dir: Path) -> int:
             up = None
         if up:
             brief = run_dir / "brief.escalated.md"
-            brief.write_text(up[1])
+            brief.write_text(up[1], encoding="utf-8")
             run["brief"] = rel(root, brief)
             write_run(run_dir, run)
             print(json.dumps(payload(ade, run["role"], [up[0]], str(run_dir),
@@ -781,7 +781,7 @@ def main(argv: list[str] | None = None) -> int:
         elif route.startswith("tier any") and (dvia := decider(cfg)["via"]) != "heuristic":
             if a.route or a.dry_run:  # never a model or network call from a preview
                 notes.append(f"would ask decider ({dvia})")
-            elif (hit := DC.decide(cfg, Path(a.brief).read_text(errors="replace"), a.step, _plan_text(a.report), files)):
+            elif (hit := DC.decide(cfg, Path(a.brief).read_text(errors="replace", encoding="utf-8"), a.step, _plan_text(a.report), files)):
                 member, route = hit, f"decider {hit['tier']}/{hit['id']} ({hit['confidence']:g})"
             else:
                 route += " (decider fallback)"
@@ -878,25 +878,25 @@ def main(argv: list[str] | None = None) -> int:
                        "no_escalate": a.no_escalate, "step": a.step, "max_agents": cap, "files": files,
                        **({"tier": members[0]["tier"], "entry": members[0]["id"]}
                           if members[0].get("tier") else {})})
-    run = json.loads((run_dir / "run.json").read_text())
+    run = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
     if found or missing:  # a derived brief, like brief.escalated.md; escalation reuses run["brief"]
         for n in missing:
             print(f"sstack-dispatch: skill {n} not found", file=sys.stderr)
         brief_p = run_dir / "brief.skills.md"
-        brief_p.write_text((root / run["brief"]).read_text() + S.section(found, missing))
+        brief_p.write_text((root / run["brief"]).read_text(encoding="utf-8") + S.section(found, missing), encoding="utf-8")
         run.update(brief=rel(root, brief_p), skills=[n for n, _ in found], skills_missing=missing)
         write_run(run_dir, run)
     briefs = {}  # member key → a variant's own brief: the run's brief + its skills + its lens
     for vid, v in vs.items():
         vms = [m for m in members if m.get("variant") == vid]
-        text = brief_p.read_text()
+        text = brief_p.read_text(encoding="utf-8")
         if v["spec"].get("skills"):
             vf, vmiss = S.resolve(cfg, root, a.role, None, files, [m["harness"] for m in vms], v["spec"]["skills"])
             text += S.section(vf, vmiss)
         if v["lens_path"]:
-            text += f"\n\n## Lens: {vid}\n\n{v['lens_path'].read_text()}"
+            text += f"\n\n## Lens: {vid}\n\n{v['lens_path'].read_text(encoding='utf-8')}"
         bp = run_dir / f"brief.variant-{v['name']}.md"
-        bp.write_text(text)
+        bp.write_text(text, encoding="utf-8")
         briefs.update({key(m): bp for m in vms})
     report.parent.mkdir(parents=True, exist_ok=True)  # ADE children write the report themselves
     if shape == "tool":
@@ -904,7 +904,7 @@ def main(argv: list[str] | None = None) -> int:
                          indent=2))
         return 4
 
-    brief = brief_p.read_text()
+    brief = brief_p.read_text(encoding="utf-8")
 
     def finish(code: int) -> int:
         """Headless, hook and ade-cli work ended here: nothing outlives it, so free the checkout."""
@@ -977,7 +977,7 @@ def main(argv: list[str] | None = None) -> int:
         return finish(go(up[0], up[1]))
 
     with ThreadPoolExecutor(cap) as ex:  # variants count against the same cap
-        codes = list(ex.map(lambda m: go(m, briefs[key(m)].read_text() if key(m) in briefs else brief), members))
+        codes = list(ex.map(lambda m: go(m, briefs[key(m)].read_text(encoding="utf-8") if key(m) in briefs else brief), members))
     defaults = [i for i, m in enumerate(members) if not m.get("variant")]
     if len(defaults) == 1 and codes[defaults[0]] != 0:  # variants alongside: the default still escalates
         i = defaults[0]
@@ -1017,7 +1017,7 @@ def _add_variants(cfg, root, a, members, files, rules):
 def _panel_size(report) -> int | None:
     """`proposal.panel_size` from the task run's workflow.json beside the report (sstack-workflow propose)."""
     try:
-        n = json.loads((Path(report).resolve().parent / "workflow.json").read_text())["proposal"]["panel_size"]
+        n = json.loads((Path(report).resolve().parent / "workflow.json").read_text(encoding="utf-8"))["proposal"]["panel_size"]
     except (OSError, ValueError, KeyError, TypeError):
         return None
     return n if type(n) is int and n > 0 else None

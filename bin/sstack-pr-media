@@ -22,6 +22,8 @@ import sys
 import tempfile
 from urllib.parse import quote
 from pathlib import Path
+for _s in (sys.stdout, sys.stderr):
+    _s.reconfigure(encoding="utf-8", errors="replace")
 
 IMAGES = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
 VIDEOS = {".mp4", ".mov", ".webm"}
@@ -30,7 +32,7 @@ MEDIA_END = "<!-- /sstack-media -->"
 
 
 def git(*args, cwd=None, check=True):
-    return subprocess.run(["git", *args], cwd=cwd, check=check, capture_output=True, text=True)
+    return subprocess.run(["git", *args], cwd=cwd, check=check, capture_output=True, text=True, encoding="utf-8", errors="replace")
 
 
 def repo_slug() -> str:
@@ -100,7 +102,7 @@ def edit_pr_body(pr: str, repo: str | None, section: str) -> None:
     repo_args = ["-R", repo] if repo else []
     view = ["gh", "pr", "view", pr, *repo_args, "--json", "body", "-q", ".body"]
     try:
-        current = subprocess.run(view, capture_output=True, text=True)
+        current = subprocess.run(view, capture_output=True, text=True, encoding="utf-8", errors="replace")
     except OSError as e:
         sys.exit(f"sstack-pr-media: {e}\n\n{section}")
     if current.returncode:
@@ -108,7 +110,7 @@ def edit_pr_body(pr: str, repo: str | None, section: str) -> None:
     body = replace_section(current.stdout, section)
     edit = ["gh", "pr", "edit", pr, *repo_args, "--body-file", "-"]
     try:
-        result = subprocess.run(edit, input=body, capture_output=True, text=True)
+        result = subprocess.run(edit, input=body, capture_output=True, text=True, encoding="utf-8", errors="replace")
     except OSError as e:
         sys.exit(f"sstack-pr-media: {e}\n\n{section}")
     if result.returncode:
@@ -128,7 +130,7 @@ def main() -> int:
     missing = [str(f) for f in a.files if not f.is_file()]
     if missing:
         sys.exit(f"sstack-pr-media: no such file: {', '.join(missing)}")
-    diagrams = {f.name: f.read_text() for f in a.files if f.suffix.lower() == ".mmd"}
+    diagrams = {f.name: f.read_text(encoding="utf-8") for f in a.files if f.suffix.lower() == ".mmd"}
     files = [f for f in a.files if f.suffix.lower() != ".mmd"]
     for f in list(files):
         if f.suffix.lower() in VIDEOS and (g := gif_of(f)):

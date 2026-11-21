@@ -164,7 +164,7 @@ def _session(root):
                 bad.append(f"{h}: session.{t} needs name and an args table")
     if bad:
         raise ConfigError("; ".join(bad))
-    tpl = {p.stem for p in (TEMPLATE / "harnesses").glob("*.toml") if "session" in tomllib.loads(p.read_text())}
+    tpl = {p.stem for p in (TEMPLATE / "harnesses").glob("*.toml") if "session" in tomllib.loads(p.read_text(encoding="utf-8"))}
     if lost := sorted(t for t in tpl if t in cfg["harness"] and t not in have):
         raise Warn(f"harnesses/{', '.join(lost)}.toml has no [session]: that session dispatches headless. "
                    f"Copy the table from the template ({TEMPLATE / 'harnesses'})")
@@ -198,7 +198,7 @@ def _pointers(_root):
         try:
             if not f.is_file():
                 continue
-            lines = f.read_text(errors="replace").splitlines()
+            lines = f.read_text(errors="replace", encoding="utf-8").splitlines()
         except OSError as e:
             problems.append(f"{rel} unreadable ({e.strerror})")
             continue
@@ -356,7 +356,7 @@ def _brief(d: Path, role: str, token: str) -> str:
 
 
 def _dispatch(root: Path, *args) -> subprocess.CompletedProcess:
-    return subprocess.run([sys.executable, str(DISPATCH), *args], cwd=root, capture_output=True, text=True)
+    return subprocess.run([sys.executable, str(DISPATCH), *args], cwd=root, capture_output=True, text=True, encoding="utf-8", errors="replace")
 
 
 def _owned(root: Path, x) -> Path | None:
@@ -376,7 +376,7 @@ def _run_owned(d: Path, x) -> Path | None:
 def _from_smoke(root: Path, d: Path, x: Path) -> bool:
     """x is a dispatch run dir whose report lives in this smoke dir d (run.json report_base)."""
     try:
-        base = json.loads((x / "run.json").read_text())["report_base"]
+        base = json.loads((x / "run.json").read_text(encoding="utf-8"))["report_base"]
     except (OSError, ValueError, KeyError, TypeError):
         return False
     return (root / base).resolve().parent == d.resolve()
@@ -418,7 +418,7 @@ def smoke(root: Path) -> int:
         payloads = []
         for role in sorted(cfg.get("role", {})):
             brief, report = d / f"{role}.brief.md", d / f"{role}.md"
-            brief.write_text(_brief(d, role, token))
+            brief.write_text(_brief(d, role, token), encoding="utf-8")
             args = [role, "--brief", str(brief), "--report", str(report), "--title", TITLE, "--no-escalate"]
             args += ["--panel"] if role == "review" else []
             r = _dispatch(root, *args, "--route")
@@ -442,7 +442,7 @@ def smoke(root: Path) -> int:
                                          if _mine(root, d, l) and "run_dir" in l} - set(state["run_dirs"]))
             if r.returncode not in (0, 1, 2):
                 state["errors"].append(f"{role}: sstack-dispatch exit {r.returncode}: {r.stderr.strip()}")
-        (d / "smoke.json").write_text(json.dumps(state, indent=2) + "\n")
+        (d / "smoke.json").write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
         if payloads:
             print(json.dumps({"smoke_run_dir": str(d), "payloads": payloads,
                               "next": f"make every call and its `record`, then: sstack-doctor --smoke --check {d}"},
@@ -457,7 +457,7 @@ def smoke(root: Path) -> int:
 def _lines(root: Path) -> list[dict]:
     p = root / D.INDEX
     out = []
-    for l in p.read_text().splitlines() if p.is_file() else []:
+    for l in p.read_text(encoding="utf-8").splitlines() if p.is_file() else []:
         try:
             out.append(json.loads(l))
         except ValueError:
@@ -475,7 +475,7 @@ def check(root: Path, d: Path) -> int:
         print(f"FAIL check: {d} is not a {root / RUNS / 'doctor'}/smoke-<YYYYMMDD-HHMM> dir")
         return 1
     d = owned
-    state = json.loads((d / "smoke.json").read_text())
+    state = json.loads((d / "smoke.json").read_text(encoding="utf-8"))
     ok = True
     try:
         token = state["token"]
@@ -494,10 +494,10 @@ def check(root: Path, d: Path) -> int:
                        and l.get("variant") == um["variant"]
                        and (root / l["report"]).resolve() == rp]
                 why = ("no index line" if not hit else f"exit {hit[-1].get('exit')}" if hit[-1].get("exit") != 0 else
-                       f"no `CANARY {token}` line in {rp}" if not (rp.is_file() and want.search(rp.read_text())) else
+                       f"no `CANARY {token}` line in {rp}" if not (rp.is_file() and want.search(rp.read_text(encoding="utf-8"))) else
                        f"readonly_warning {hit[-1]['readonly_warning']}" if hit[-1].get("readonly_warning") else None)
                 cf = d / "canary.txt"
-                if not why and role not in READONLY_ROLES and not (cf.is_file() and cf.read_text().strip() == token):
+                if not why and role not in READONLY_ROLES and not (cf.is_file() and cf.read_text(encoding="utf-8").strip() == token):
                     why = f"{cf.name} missing or wrong"
                 print(f"{'FAIL' if why else 'PASS'} {role} {m}" + (f": {why}" if why else ""))
                 ok = ok and not why
@@ -527,7 +527,7 @@ def prune(root: Path, days: int, yes: bool) -> int:
         progress = p / "progress.md"
         if progress.is_file():
             try:
-                if not any(line.startswith("done:") for line in progress.read_text().splitlines()):
+                if not any(line.startswith("done:") for line in progress.read_text(encoding="utf-8").splitlines()):
                     continue
             except OSError:
                 continue

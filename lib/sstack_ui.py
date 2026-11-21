@@ -89,7 +89,7 @@ def _file_payload(root: Path | None, layer: str, kind: str, name: str) -> dict:
     p = _config_path(root, layer, kind, name)
     exists = p.is_file()
     return {"layer": layer, "kind": kind, "name": name, "path": str(p),
-            "text": p.read_text() if exists else "", "exists": exists}
+            "text": p.read_text(encoding="utf-8") if exists else "", "exists": exists}
 
 
 def _refuse_symlink(p: Path, base: Path) -> None:
@@ -110,7 +110,7 @@ def _atomic_write(p: Path, base: Path, text: str) -> None:
     fd, name = tempfile.mkstemp(dir=p.parent, prefix=p.name + ".", suffix=".tmp")
     tmp = Path(name)
     try:
-        with os.fdopen(fd, "w") as f:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(text)
             f.flush()
             os.fsync(f.fileno())
@@ -165,7 +165,7 @@ def _stage_and_validate(root: Path | None, base: Path, p: Path, text: str | None
             target.unlink(missing_ok=True)
         else:
             target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text(text)
+            target.write_text(text, encoding="utf-8")
         _validate(root, _staged(root, base, staged))
 
 
@@ -232,7 +232,7 @@ def _ade(root: Path | None) -> dict:
     """The `sstack-dispatch ade` JSON plus the note text, from the same code dispatch uses."""
     d = A.describe(*A.active(root, load(root), os.environ))
     note = Path(d["note"]) if d["note"] else None
-    return {**d, "note_text": note.read_text()[:200_000] if note and note.is_file() else None}
+    return {**d, "note_text": note.read_text(encoding="utf-8")[:200_000] if note and note.is_file() else None}
 
 
 def _run_groups(root: Path | None) -> list[dict]:
@@ -243,7 +243,7 @@ def _run_groups(root: Path | None) -> list[dict]:
         return []
     groups: dict[str, dict] = {}
     order: list[str] = []
-    for line in p.read_text().splitlines():
+    for line in p.read_text(encoding="utf-8").splitlines():
         try:
             rec = json.loads(line)
         except json.JSONDecodeError:
@@ -272,7 +272,7 @@ def _run_groups(root: Path | None) -> list[dict]:
             rp = Path(g["run_dir"])
             rp = rp if rp.is_absolute() else root / rp
             try:
-                g["run"] = json.loads((rp / "run.json").read_text())
+                g["run"] = json.loads((rp / "run.json").read_text(encoding="utf-8"))
             except (OSError, json.JSONDecodeError):
                 pass
         out.append(g)
@@ -300,7 +300,7 @@ def _task_workflow(root: Path, task: str) -> dict | None:
     d = Path(task)
     d = d if d.is_absolute() else root / d
     try:
-        state = json.loads((d / "workflow.json").read_text())
+        state = json.loads((d / "workflow.json").read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return None
     return state if isinstance(state, dict) else None
@@ -312,7 +312,7 @@ def _lessons(root: Path | None) -> list[dict]:
     for scope, r in scopes:
         p = L.lessons_path(scope, r)
         if p.exists():
-            for l in L.parse(p.read_text()):
+            for l in L.parse(p.read_text(encoding="utf-8")):
                 if isinstance(l, L.Lesson):
                     out.append({"scope": scope, "id": l.id, "status": l.status, "seen": l.seen,
                                 "text": l.text, **l.fields})
@@ -324,7 +324,7 @@ def _graph(root: Path | None) -> dict:
         return {"available": False}
     if not (root / ".code-review-graph").exists():
         return {"available": True, "built": False, "status": "No graph yet."}  # status would create one
-    r = subprocess.run(["code-review-graph", "status"], cwd=root, capture_output=True, text=True, timeout=60)
+    r = subprocess.run(["code-review-graph", "status"], cwd=root, capture_output=True, text=True, timeout=60, encoding="utf-8", errors="replace")
     return {"available": True, "status": (r.stdout + r.stderr).strip(),
             "built": (root / ".code-review-graph").exists()}
 
@@ -365,7 +365,7 @@ def _wiki_page(q) -> dict:
         raise ValueError(f"no page {name!r} in {d}")
     p = pages[name].path
     _refuse_symlink(p, d)
-    return {"name": name, "path": str(p), "text": p.read_text()}
+    return {"name": name, "path": str(p), "text": p.read_text(encoding="utf-8")}
 
 
 def _lesson_action(b, action):
@@ -383,13 +383,13 @@ def _rebuild(b):
     if not shutil.which("code-review-graph"):
         return {"ok": False, "error": "code-review-graph not installed"}
     sub = "update" if (root / ".code-review-graph").exists() else "build"
-    r = subprocess.run(["code-review-graph", sub], cwd=root, capture_output=True, text=True, timeout=600)
+    r = subprocess.run(["code-review-graph", sub], cwd=root, capture_output=True, text=True, timeout=600, encoding="utf-8", errors="replace")
     return {"ok": r.returncode == 0, "output": (r.stdout + r.stderr)[-4000:]}
 
 
 def _repos():
     f = home_dir() / "repos.txt"
-    lines = f.read_text().splitlines() if f.exists() else []
+    lines = f.read_text(encoding="utf-8").splitlines() if f.exists() else []
     return {"repos": [l.strip() for l in dict.fromkeys(lines) if l.strip() and Path(l.strip()).is_dir()]}
 
 
@@ -483,7 +483,7 @@ def make_server(port: int, token: str) -> ThreadingHTTPServer:
         def _get(self, q):
             u = urlparse(self.path)
             if u.path in ("/", "/index.html"):
-                html = (REPO / "ui" / "index.html").read_text().replace("__TOKEN__", quote(token, safe=""))
+                html = (REPO / "ui" / "index.html").read_text(encoding="utf-8").replace("__TOKEN__", quote(token, safe=""))
                 return self._send(200, html.encode(), "text/html; charset=utf-8")
             if u.path.startswith("/ui/"):
                 return self._static(u.path)
