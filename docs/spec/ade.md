@@ -133,6 +133,6 @@ and exits 2.
 | name | detect | delegate | auto |
 |---|---|---|---|
 | t3 | `T3CODE_THREAD_ID` | tool `delegate_task`, plan mode when read-only | yes |
-| orca | `ORCA_AGENT_SESSION_ID` | hook (task-create → worker-start, check --wait, collect) | yes |
+| orca | `ORCA_AGENT_SESSION_ID` | hook (worker-start, worker-show until settled, collect) | yes |
 | conductor | `CONDUCTOR_SESSION_ID` | hook (CLI/API; no `CONDUCTOR_API_KEY` → none + note) | yes |
 | cursor | — | tool `Task` (`readonly: true`) | no: set `ade = "cursor"` |

@@ -2,8 +2,9 @@
 """Stand-in for external CLIs, symlinked by name: t3 claude codex pi cursor-agent orca conductor.
 Every call appends `<name> <args>` to $FAKE_CALLS_LOG (default: calls.log beside the link).
 Harness CLIs and t3 print `REPORT <name>`. orca/conductor: the create call writes `REPORT <name>`
-to the report path named in the prompt (the child "finishes" at once); FAKE_ORCA_CHECK sets
-`check --wait`'s exit, FAKE_CONDUCTOR_STATUS the workspace status (default idle)."""
+to the report path named in the prompt (the child "finishes" at once); FAKE_ORCA_STATE sets
+`worker-show`'s worker state (default succeeded; "running" = not settled), FAKE_CONDUCTOR_STATUS
+the workspace status (default idle)."""
 import json, os, re, shlex, sys
 from pathlib import Path
 
@@ -25,11 +26,14 @@ def opt(flag: str) -> str:
 
 if name == "orca":
     sub = args[1] if len(args) > 1 else ""
-    if sub == "task-create":
-        child_report(opt("--prompt"))
-        print(json.dumps({"id": "task-1"}))
-    elif sub == "check":
-        sys.exit(int(os.environ.get("FAKE_ORCA_CHECK", "0")))
+    if sub == "worker-start":
+        child_report(opt("--spec"))
+        print(json.dumps({"ok": True, "result": {"dispatchId": "ctx-1", "taskId": "task-1", "state": "ready"}}))
+    elif sub == "worker-show":
+        state = os.environ.get("FAKE_ORCA_STATE", "succeeded")
+        stage = "running" if state == "running" else "settled"
+        print(json.dumps({"ok": True, "result": {"dispatchId": "ctx-1", "state": state, "stage": stage,
+                                                 "liveness": "live"}}))
 elif name == "conductor":
     sub = " ".join(args[:2])
     if sub == "workspace create":

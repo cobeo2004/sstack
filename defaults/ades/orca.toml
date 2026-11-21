@@ -1,4 +1,4 @@
-# Orca. Delegation is async (task-create → worker-start, check --wait, collect): orca.hook.
+# Orca. Delegation is async (worker-start, worker-show until settled, collect): orca.hook.
 auto = true
 
 [detect]
