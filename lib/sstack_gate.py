@@ -9,12 +9,12 @@ import json
 import os
 import re
 import shlex
-import signal
 import subprocess
 import sys
 import tomllib
 from pathlib import Path
 
+from sstack_ade import NEW_GROUP, kill_group, resolve, sh
 from sstack_config import git_root, home_dir, layers, merge, trusted
 from sstack_route import _kind
 from sstack_worktree import base_ref
@@ -148,7 +148,7 @@ def fingerprint(root: Path, rev: str | None = None) -> str | None:
 def _pr(pr: str) -> dict:
     """Read one PR with `gh`. Missing gh, a failed call or bad JSON is a setup error (exit 2)."""
     try:
-        r = subprocess.run(["gh", "pr", "view", str(pr), "--json", MERGE_FIELDS],
+        r = subprocess.run(resolve(["gh", "pr", "view", str(pr), "--json", MERGE_FIELDS]),
                            capture_output=True, text=True, encoding="utf-8", errors="replace")
     except OSError as e:
         raise SetupError(f"gh pr view {pr}: {e}") from None
@@ -267,8 +267,8 @@ def _run_verify(root: Path, commands: list[str]) -> tuple[bool, str, list[str], 
     for n, cmd in enumerate(commands, 1):
         chunks.append(f"$ {cmd}\n")
         try:
-            p = subprocess.Popen(["sh", "-c", cmd], cwd=root, stdout=subprocess.PIPE,
-                                 stderr=subprocess.PIPE, text=True, start_new_session=True, encoding="utf-8", errors="replace")
+            p = subprocess.Popen([sh(), "-c", cmd], cwd=root, stdout=subprocess.PIPE,
+                                 stderr=subprocess.PIPE, text=True, **NEW_GROUP, encoding="utf-8", errors="replace")
         except OSError as e:
             chunks.append(f"[could not start: {e}]\n")
             return (False, f"FAIL command {n} (could not start)",
@@ -278,10 +278,7 @@ def _run_verify(root: Path, commands: list[str]) -> tuple[bool, str, list[str], 
             out, err = p.communicate(timeout=TIMEOUT)
         except subprocess.TimeoutExpired:
             timed_out = True
-            try:
-                os.killpg(p.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
+            kill_group(p)
             out, err = p.communicate()
         chunks += [x if not x or x.endswith("\n") else x + "\n" for x in (out, err)]
         if timed_out:

@@ -10,6 +10,7 @@ import sys
 import time
 from pathlib import Path
 
+import sstack_ade as A
 import sstack_config as C
 import sstack_route as R
 
@@ -467,10 +468,11 @@ def cmd_run(root: Path, run_dir: Path, step: str) -> int:
         return 1
     env = {**os.environ, "SSTACK_RUN": str(run_dir), "SSTACK_ROOT": str(root), "SSTACK_HOME_DIR": str(REPO)}
     try:
-        code = subprocess.run([path], cwd=root, env=env).returncode
-    except PermissionError:
-        code = subprocess.run(["sh", path], cwd=root, env=env).returncode
-    except OSError as e:
+        try:
+            code = subprocess.run(A.launch(path), cwd=root, env=env).returncode
+        except PermissionError:
+            code = subprocess.run([A.sh(), path], cwd=root, env=env).returncode
+    except OSError as e:  # ShMissing included
         print(f"sstack-workflow: {path}: {e}", file=sys.stderr)
         return 1
     return advance(root, run_dir, wf, step, failed=code != 0)

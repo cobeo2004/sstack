@@ -10,7 +10,7 @@ from pathlib import Path
 
 cap, d = sys.argv[1], json.loads(sys.stdin.read() or "{}")
 state = Path(os.environ.get("SSTACK_HOOK_STATE", "."))
-cond = lambda *a, **kw: subprocess.run(["conductor", *a], capture_output=True, text=True, **kw)
+cond = lambda *a, **kw: subprocess.run([shutil.which("conductor") or "conductor", *a], capture_output=True, text=True, **kw)
 none = lambda note: print(json.dumps({"action": "none", "note": note}))
 
 if cap == "detect":

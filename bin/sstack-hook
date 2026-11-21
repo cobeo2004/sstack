@@ -12,7 +12,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "lib"))
-from sstack_ade import kill_group  # noqa: E402
+from sstack_ade import NEW_GROUP, ShMissing, kill_group, sh  # noqa: E402
 from sstack_config import ConfigError, git_root, home_dir, load, trusted  # noqa: E402
 for _s in (sys.stdout, sys.stderr):
     _s.reconfigure(encoding="utf-8", errors="replace")
@@ -62,8 +62,13 @@ def post_edit(n: dict) -> int:
         cmd = check
         for q in ('"{path}"', "'{path}'", "{path}"):
             cmd = cmd.replace(q, '"$1"')  # the path arrives as $1, never as shell text
-        p = subprocess.Popen(["sh", "-c", cmd, "sstack-hook", rel], cwd=root, stdout=subprocess.PIPE,
-                             stderr=subprocess.PIPE, text=True, start_new_session=True, encoding="utf-8", errors="replace")
+        try:
+            p = subprocess.Popen([sh(), "-c", cmd, "sstack-hook", rel], cwd=root, stdout=subprocess.PIPE,
+                                 stderr=subprocess.PIPE, text=True, **NEW_GROUP, encoding="utf-8", errors="replace")
+        except ShMissing as e:
+            print(f"sstack-hook: check failed: {rel}\n{e}", file=sys.stderr)
+            failed = True
+            continue
         try:
             so, se = p.communicate(timeout=TIMEOUT)
             out = "" if p.returncode == 0 else f"{so}{se}"

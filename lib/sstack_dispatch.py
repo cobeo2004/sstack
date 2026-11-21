@@ -299,8 +299,8 @@ def run_member(argv: list[str], cwd: Path, brief: str, deadline: float, report: 
     with open(events or report, "w", encoding="utf-8") as out, open(err, "w", encoding="utf-8") as errf:
         try:
             # SSTACK_REFLECT=1: a child's own SessionEnd must not start another reflect pass
-            p = subprocess.Popen(argv, cwd=cwd, stdin=subprocess.PIPE, stdout=out, stderr=errf, text=True,
-                                 start_new_session=True, env={**os.environ, "SSTACK_REFLECT": "1"}, encoding="utf-8", errors="replace")
+            p = subprocess.Popen(A.resolve(argv), cwd=cwd, stdin=subprocess.PIPE, stdout=out, stderr=errf, text=True,
+                                 **A.NEW_GROUP, env={**os.environ, "SSTACK_REFLECT": "1"}, encoding="utf-8", errors="replace")
         except OSError as e:
             errf.write(f"cannot start {argv[0]}: {e}\n")
             return 1
