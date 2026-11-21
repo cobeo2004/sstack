@@ -1,5 +1,5 @@
 """The eval suite's scaffolds (evals/, run by `claude plugin eval`): each builds its fixture without a model."""
-import json, os, re, subprocess, sys, tempfile, unittest
+import json, os, re, shutil, subprocess, sys, tempfile, unittest
 from pathlib import Path
 
 from helpers import REPO
@@ -13,6 +13,8 @@ class EvalScaffoldTests(unittest.TestCase):
     def test_there_are_cases(self):
         self.assertGreaterEqual(len(CASES), 5)
 
+    @unittest.skipIf(os.name == "nt" or not shutil.which("bash"),
+                     "the scaffolds are POSIX bash: python3 aliases and ln -s")
     def test_each_scaffold_builds_its_fixture(self):
         for case in CASES:
             with self.subTest(case.name), tempfile.TemporaryDirectory() as home:

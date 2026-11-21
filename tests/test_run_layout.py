@@ -98,7 +98,7 @@ class NestedDispatchTests(FakeCliBase):
         code, out, err = self.run_main("scout", "--brief", self.brief(), "--report",
                                        str(self.runs() / "task-x" / "s.md"), "--route", env=T3)
         self.assertEqual(code, 0, err)
-        self.assertRegex(json.loads(out)["run_dir"], r"/\.sstack/runs/task-x/dispatch/\d{4}-scout$")
+        self.assertRegex(Path(json.loads(out)["run_dir"]).as_posix(), r"/\.sstack/runs/task-x/dispatch/\d{4}-scout$")
         self.assertFalse(self.runs().exists())
 
     def test_readonly_child_writing_inside_its_task_is_not_flagged(self):  # T1.i (R16)
@@ -143,7 +143,8 @@ class SmokeHomeTests(DoctorBase):
         code, out, err = self.doctor("--smoke")
         self.assertEqual(code, 0, out + err)
         runs = self.root / ".sstack/runs"
-        self.assertEqual(entries(runs), {"index.jsonl"})
+        self.assertEqual(entries(runs) - {"implement.lock.mutex"} if os.name == "nt" else entries(runs),
+                         {"index.jsonl"})  # Windows keeps the mutex: an open file cannot be unlinked
         reports = [json.loads(l)["report"] for l in self.index()]
         self.assertTrue(reports)
         for r in reports:

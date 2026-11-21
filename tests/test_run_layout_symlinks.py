@@ -1,5 +1,6 @@
 """Review findings on the nested run layout: symlinks never carry a run or a cleanup outside
 .sstack/runs/, and the reflect state migration keeps every session's offset."""
+from helpers import can_symlink, NO_SYMLINK
 import json, os, tempfile, unittest
 from pathlib import Path
 
@@ -11,6 +12,7 @@ import sstack_doctor as Doc
 
 
 class DispatchSymlinkTests(FakeCliBase):
+    @unittest.skipUnless(can_symlink(), NO_SYMLINK)
     def test_symlinked_dispatch_dir_stays_flat(self):
         self.example()
         outside = Path(tempfile.mkdtemp())
@@ -25,6 +27,7 @@ class DispatchSymlinkTests(FakeCliBase):
 
 
 class DoctorSymlinkTests(DoctorBase):
+    @unittest.skipUnless(can_symlink(), NO_SYMLINK)
     def test_cleanup_refuses_a_symlinked_doctor_dir(self):
         outside = self.home / "outside"
         victim = outside / "smoke-20260101-1200"
@@ -37,6 +40,7 @@ class DoctorSymlinkTests(DoctorBase):
         self.assertFalse(Doc._cleanup(self.root, runs / "doctor/smoke-20260101-1200", []))
         self.assertTrue((victim / "keep.txt").exists())
 
+    @unittest.skipUnless(can_symlink(), NO_SYMLINK)
     def test_prune_refuses_a_symlinked_runs_dir(self):
         outside = self.home / "outside"
         victim = outside / "old-folder"

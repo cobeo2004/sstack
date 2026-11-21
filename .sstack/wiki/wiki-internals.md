@@ -1,7 +1,7 @@
 ---
 summary: How sstack_wiki, sstack_lessons and the dashboard share the wiki folder, and why lessons resolve differently
 paths: lib/sstack_wiki.py, lib/sstack_lessons.py, lib/sstack_skills.py, lib/sstack_ui.py, ui/pages/wiki.js
-updated: 8f32a81
+updated: 1792bda
 ---
 # Wiki internals
 

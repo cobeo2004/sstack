@@ -1,6 +1,6 @@
 """ADE layer (docs/spec/ade.md): detection checks and hook lifecycles from tests/fixtures/ades/,
 the `ade` subcommand, and the built-in orca/conductor hooks against fake CLIs."""
-import json, os, shutil, time
+import json, os, shutil, time, unittest
 from pathlib import Path
 
 from helpers import TempEnv, FIXTURES, REPO
@@ -9,6 +9,8 @@ import sstack_ade as A
 import sstack_config as C
 
 ADES = FIXTURES / "ades"
+# a hook that hangs 3s+3s must stop well before 6s; Git Bash starts slowly on Windows
+BUDGET = 5.0 if os.name == "nt" else 2.5
 WHY_FORMAT = ("env ", "SSTACK_ADE=", "ade = ", "no adapter detected")  # whys that are sstack's own text
 
 
@@ -230,7 +232,9 @@ class HookDeadline(FakeCliBase):
         self.hook('  delegate) cat >/dev/null; echo $$ > "$S/pgid"; sleep 3; sleep 3 ;;', timeout_min=0.005)
         code, err, state, secs = self.go()
         self.assertEqual(code, 2, err)
-        self.assertLess(secs, 2.5)
+        self.assertLess(secs, BUDGET)
+        if os.name == "nt":  # no process groups to probe; the budget shows the sleeps didn't run out
+            return
         pgid = int((state / "pgid").read_text())
         for _ in range(20):
             try:
@@ -247,7 +251,7 @@ class HookDeadline(FakeCliBase):
         code, err, state, secs = self.go()
         self.assertEqual(code, 2, err)
         self.assertTrue((state / "cancelled").is_file())
-        self.assertLess(secs, 2.5)
+        self.assertLess(secs, BUDGET)
 
     def test_missing_wait_hook_is_failure_not_loop(self):
         self.hook('  delegate) cat >/dev/null; chmod -x "$0"; echo \'{"action": "async", "id": "j"}\' ;;',
@@ -276,6 +280,7 @@ class RecheckB2(TempEnv):
     """B2 re-check (sonnet): process-group SIGKILL, worktree rename parse, index truncation when
     .sstack/runs/ is gitignored, tool adapter without a name."""
 
+    @unittest.skipIf(os.name == "nt", "sh job control and POSIX pids; Windows uses taskkill /T")
     def test_kill_group_kills_term_ignoring_grandchild(self):
         import signal, subprocess
         pidf = self.home / "pid"

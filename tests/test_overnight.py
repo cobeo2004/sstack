@@ -1,10 +1,10 @@
 """Answer key for the overnight skill (.sstack/runs/overnight-skill-*/decisions.md R3-R5):
 `sstack-gate --merge` and the doctor's [overnight] check. Written before either exists."""
-import json, os, subprocess, sys
+import json, os, subprocess, sys, unittest
 from pathlib import Path
 
 import test_doctor
-from helpers import REPO, TempEnv
+from helpers import REPO, TempEnv, can_symlink, NO_SYMLINK
 
 GATE = REPO / "bin" / "sstack-gate"
 WORKFLOW = REPO / "bin" / "sstack-workflow"
@@ -26,9 +26,13 @@ class MergeTests(TempEnv):
         self.git("config", "user.name", "Gate Test")
         self.bin = self.root.parent / "fakebin"
         self.bin.mkdir()
-        gh = self.bin / "gh"
-        gh.write_text('#!/bin/sh\necho "$*" >> "$FAKE_GH_LOG"\ncat "$FAKE_GH_JSON"\n')
+        gh = self.bin / "gh"  # Python, so Windows can run it too (through gh.cmd)
+        gh.write_text(f"#!{sys.executable}\nimport os, sys\n"
+                      "open(os.environ['FAKE_GH_LOG'], 'a', encoding='utf-8').write(' '.join(sys.argv[1:]) + '\\n')\n"
+                      "sys.stdout.write(open(os.environ['FAKE_GH_JSON'], encoding='utf-8').read())\n", encoding="utf-8")
         gh.chmod(0o755)
+        if os.name == "nt":
+            (self.bin / "gh.cmd").write_bytes(f'@"{sys.executable}" "%~dp0gh" %*\r\n'.encode())
         self.run = self.root.parent / "run"
         self.run.mkdir()
 
@@ -89,7 +93,7 @@ class MergeTests(TempEnv):
         self.write(self.root.parent, "pr.json", json.dumps({**PR, "headRefOid": self.head, **over}))
 
     def merge(self, *extra):
-        env = dict(os.environ, PATH=f"{self.bin}:{os.environ['PATH']}",
+        env = dict(os.environ, PATH=f"{self.bin}{os.pathsep}{os.environ['PATH']}",
                    FAKE_GH_JSON=str(self.root.parent / "pr.json"),
                    FAKE_GH_LOG=str(self.root.parent / "gh.log"))
         r = subprocess.run([sys.executable, str(GATE), "--merge", "7", "--run", str(self.run), *extra],
@@ -274,6 +278,7 @@ class MergeTests(TempEnv):
         self.gate_verdict(n=2)
         self.assertMerge()
 
+    @unittest.skipUnless(can_symlink(), NO_SYMLINK)
     def test_branch_tracked_local_symlink_ignored(self):
         self.setup_branch(policy='[overnight]\nmerge = "never"\n')
         self.write(self.root, "bp/config.toml", POLICY)
@@ -292,7 +297,7 @@ class MergeTests(TempEnv):
 
     def test_merge_needs_run(self):
         self.setup_branch()
-        env = dict(os.environ, PATH=f"{self.bin}:{os.environ['PATH']}")
+        env = dict(os.environ, PATH=f"{self.bin}{os.pathsep}{os.environ['PATH']}")
         r = subprocess.run([sys.executable, str(GATE), "--merge", "7"], cwd=self.root, env=env,
                            capture_output=True, text=True)
         self.assertEqual(r.returncode, 2, r.stdout + r.stderr)

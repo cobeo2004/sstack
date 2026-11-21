@@ -45,7 +45,10 @@ class WindowsPaths(TempEnv):
             if f.is_file() and not f.suffix:
                 shim = f.with_name(f.name + ".cmd")
                 self.assertTrue(shim.is_file(), f"{shim.name} missing")
-                self.assertEqual(shim.read_bytes(), f'@python "%~dp0{f.name}" %*\r\n'.encode())
+                # cmd.exe would find a bare `python` in the current directory before PATH: a checkout's
+                # python.cmd would run before sstack's trust checks
+                self.assertEqual(shim.read_bytes(), ("@setlocal & set NoDefaultCurrentDirectoryInExePath=1 & "
+                                                     f'python "%~dp0{f.name}" %*\r\n').encode())
 
     def test_lock_owner_is_posix_and_matches_release(self):
         import sstack_dispatch as D

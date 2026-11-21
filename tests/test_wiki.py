@@ -1,4 +1,4 @@
-import contextlib, io, os, shutil, subprocess
+import contextlib, io, os, shutil, subprocess, sys
 
 from helpers import REPO, TempEnv
 import sstack_wiki as W
@@ -7,7 +7,7 @@ import sstack_wiki as W
 class WikiBase(TempEnv):
     def git(self, *a, cwd=None):
         return subprocess.run(["git", "-C", str(cwd or self.root), *a],
-                              capture_output=True, text=True, check=True).stdout.strip()
+                              capture_output=True, text=True, encoding="utf-8", check=True).stdout.strip()
 
     def commit(self, msg="i"):
         self.git("add", "-A")
@@ -126,7 +126,7 @@ class WikiCLI(WikiBase):
         code, out, _ = self.cli("index")
         self.assertEqual(code, 0)
         self.assertEqual(out, f"wrote {self.d}/index.md (3 pages, 0 stale)\n")
-        self.assertEqual((self.d / "index.md").read_text(), INDEX_HEAD +
+        self.assertEqual((self.d / "index.md").read_text(encoding="utf-8"), INDEX_HEAD +
                          "- [a](a.md) — Page a\n- [b](b.md) — Page b\n"
                          f"- [lessons](lessons.md) — {W.LESSONS_SUMMARY}\n")
 
@@ -134,7 +134,7 @@ class WikiCLI(WikiBase):
         for p in self.d.glob("*.md"):
             p.unlink()
         self.cli("index")
-        self.assertEqual((self.d / "index.md").read_text(), INDEX_HEAD)
+        self.assertEqual((self.d / "index.md").read_text(encoding="utf-8"), INDEX_HEAD)
 
     def test_index_marks_stale(self):
         self.write(self.root, "src/a.py", "1\n")
@@ -144,7 +144,7 @@ class WikiCLI(WikiBase):
         self.commit("c2")
         code, out, _ = self.cli("index")
         self.assertIn("(4 pages, 1 stale)", out)
-        self.assertIn("- [s](s.md) — Pinned [stale]\n", (self.d / "index.md").read_text())
+        self.assertIn("- [s](s.md) — Pinned [stale]\n", (self.d / "index.md").read_text(encoding="utf-8"))
 
     def test_index_no_wiki(self):
         shutil.rmtree(self.d)
@@ -238,11 +238,11 @@ class WikiCLI(WikiBase):
         self.page("g", "x\n", summary="Global", d=sh / "wiki")
         code, out, _ = self.cli("index", "--scope", "global")
         self.assertEqual(code, 0)
-        self.assertIn("- [g](g.md) — Global\n", (sh / "wiki/index.md").read_text())
+        self.assertIn("- [g](g.md) — Global\n", (sh / "wiki/index.md").read_text(encoding="utf-8"))
 
     def test_wrapper_runs(self):
         self.cli("index")
-        r = subprocess.run([str(REPO / "bin/sstack-wiki"), "lint"], cwd=self.root, capture_output=True, text=True)
+        r = subprocess.run([sys.executable, str(REPO / "bin/sstack-wiki"), "lint"], cwd=self.root, capture_output=True, text=True, encoding="utf-8")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 
 

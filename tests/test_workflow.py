@@ -1,5 +1,5 @@
 """Answer key for step folders and `sstack-workflow` (decisions R1–R7, R8, R20; docs/spec/workflow.md)."""
-import json, os, subprocess, sys
+import json, os, shlex, subprocess, sys
 from pathlib import Path
 
 from helpers import TempEnv, REPO, FIXTURES
@@ -80,7 +80,7 @@ class ResolveTests(WorkflowBase):
         self.assertEqual((s["implement"]["role"], s["implement"]["gate"], s["implement"]["max_agents"]),
                          ("implement", False, 1))
         self.assertEqual((s["gate"]["kind"], s["gate"]["on_fail"], s["gate"]["max_agents"]), ("command", "implement", 0))
-        self.assertTrue(s["gate"]["run"].endswith("defaults/steps/gate/run.sh"))
+        self.assertTrue(Path(s["gate"]["run"]).as_posix().endswith("defaults/steps/gate/run.sh"))
         self.assertEqual((s["review"]["role"], s["review"]["on_fail"], s["review"]["min_score"], s["review"]["gate"],
                           s["review"]["max_agents"]), ("review", "implement", 5, True, 2))
         self.assertEqual((s["pr"]["kind"], s["pr"]["gate"]), ("inline", True))
@@ -274,7 +274,7 @@ class RunTests(WorkflowBase):
 
     def test_command_runs_from_the_repo_root(self):
         self.step(self.repo(), "dmm", 'after = "implement"\n',
-                  run_sh='#!/bin/sh\npwd > "$SSTACK_RUN/cwd.txt"\n')
+                  run_sh=f'#!/bin/sh\npwd {"-W " if os.name == "nt" else ""}> "$SSTACK_RUN/cwd.txt"\n')  # -W: Git Bash's C:/ form
         sub = self.root / "a" / "b"
         sub.mkdir(parents=True)
         code, _, err = self.wf("run", "dmm", "--run", str(self.run_dir), cwd=sub)
@@ -355,7 +355,7 @@ class DispatchCheckTests(WorkflowBase):
         self.assertIn("do: sstack-dispatch plan --step plan", out)
         self.record_dispatch("implement")
         _, out, _ = self.done("implement")
-        self.assertIn(f"do: sstack-workflow run gate --run {self.run_dir}", out)
+        self.assertIn(f"do: sstack-workflow run gate --run {shlex.quote(str(self.run_dir))}", out)
         _, out, _ = self.done("gate")
         self.assertIn("do: sstack-dispatch review --step review", out)
 

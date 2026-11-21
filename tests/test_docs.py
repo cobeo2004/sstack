@@ -3,10 +3,10 @@ in a scratch HOME and git repo with fake harness CLIs first on PATH, SSTACK_HOME
 sstack's bin/ on PATH only if the page's setup block puts it there. A line holding `# needs:` is not
 run; a trailing `# exit N` sets the expected exit code (default 0); a ```text block that follows and
 starts with `# expect` lists stdout lines that must appear, in order."""
-import os, re, subprocess, tempfile, unittest
+import os, re, subprocess, sys, tempfile, unittest
 from pathlib import Path
 
-from helpers import REPO
+from helpers import REPO, link_or_copy
 from test_skills import strip_code
 
 GUIDE = REPO / "docs" / "guide"
@@ -122,7 +122,7 @@ def help_text(cmd: str, sub: str | None) -> str:
     if key not in _HELP:
         with tempfile.TemporaryDirectory() as h:  # never read the real ~/.sstack
             env = {**os.environ, "HOME": h, "USERPROFILE": h, "SSTACK_HOME": h}
-            run = lambda *a: subprocess.run([str(REPO / "bin" / cmd), *a, "--help"], capture_output=True,
+            run = lambda *a: subprocess.run([sys.executable, str(REPO / "bin" / cmd), *a, "--help"], capture_output=True,
                                             text=True, timeout=30, env=env, stdin=subprocess.DEVNULL).stdout
             if sub == "*":
                 _HELP[key] = help_text(cmd, None) + "".join(help_text(cmd, s) for s in subcommands(cmd))
@@ -194,10 +194,12 @@ class Sandbox:
         self.home, self.repo, fakes = base / "home", base / "repo", base / "fakebin"
         for d in (self.home, self.repo, fakes):
             d.mkdir()
-        (self.home / "sstack").symlink_to(REPO)  # stands in for the `git clone` line (# needs: network)
+        link_or_copy(self.home / "sstack", REPO)  # stands in for the `git clone` line (# needs: network)
         for name in ("pi", "claude", "codex", "cursor-agent"):
             (fakes / name).write_text(FAKE)
             (fakes / name).chmod(0o755)
+            if os.name == "nt":  # Windows ignores shebangs
+                (fakes / f"{name}.cmd").write_bytes(f'@"{sys.executable}" "%~dp0{name}" %*\r\n'.encode())
         drop = ADE_ENV + ("SSTACK_HOME", "TMPDIR")
         self.env = {k: v for k, v in os.environ.items() if k not in drop and not k.startswith("T3CODE_")}
         path = [p for p in os.environ["PATH"].split(os.pathsep) if p and not (Path(p) / "sstack-dispatch").exists()]
@@ -277,6 +279,7 @@ class DocsLint(unittest.TestCase):
                         "flag on a continuation line")
 
 
+@unittest.skipIf(os.name == "nt", "runs the docs' sh blocks in a POSIX sandbox")
 class DocsRun(unittest.TestCase):
     def test_sh_blocks_run(self):
         for p in pages():

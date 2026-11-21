@@ -42,7 +42,7 @@ class SkillLint(unittest.TestCase):
     def test_frontmatter(self):
         self.assertTrue(skill_files())
         for f in skill_files():
-            fm = frontmatter(f.read_text())
+            fm = frontmatter(f.read_text(encoding="utf-8"))
             self.assertIsNotNone(fm, f)
             self.assertEqual(fm.get("name"), f.parent.name, f)
             self.assertGreater(len(fm.get("description", "")), 20, f)
@@ -50,22 +50,22 @@ class SkillLint(unittest.TestCase):
     def test_length_caps(self):
         for f in skill_files():
             cap = 200 if f.parent.name == "sstack" else 150
-            self.assertLessEqual(len(f.read_text().splitlines()), cap, f)
+            self.assertLessEqual(len(f.read_text(encoding="utf-8").splitlines()), cap, f)
         for f in (SKILLS / "sstack" / "principles").glob("*.md"):
-            self.assertLessEqual(len(f.read_text().splitlines()), 30, f)
+            self.assertLessEqual(len(f.read_text(encoding="utf-8").splitlines()), 30, f)
         for f in ADES.glob("*.md"):
-            self.assertLessEqual(len(f.read_text().splitlines()), 120, f)
+            self.assertLessEqual(len(f.read_text(encoding="utf-8").splitlines()), 120, f)
 
     def test_testing_surfaces_wired(self):
-        t = (SKILLS / "work" / "testing.md").read_text()
+        t = (SKILLS / "work" / "testing.md").read_text(encoding="utf-8")
         for surface in ("## Code", "## Browser", "## Mobile"):
             self.assertIn(surface, t)
         for f in (SKILLS / "work" / "SKILL.md", SKILLS / "setup" / "SKILL.md"):
-            self.assertIn("testing.md", f.read_text(), f)
+            self.assertIn("testing.md", f.read_text(encoding="utf-8"), f)
         self.assertIn("active ADE's note", t)
         self.assertFalse((SKILLS / "sstack" / "harness-notes" / "ade.md").exists())
         for f in (SKILLS / "sstack" / "harness-notes").glob("*.md"):
-            text = f.read_text()
+            text = f.read_text(encoding="utf-8")
             for verb in ("| drive a browser |", "| drive a device |"):
                 self.assertIn(verb, text, f"{f}: {verb}")
             self.assertIn("the active ADE's note", text, f)
@@ -74,7 +74,7 @@ class SkillLint(unittest.TestCase):
         for f in SKILLS.rglob("*.md"):
             if "harness-notes" in f.parts:
                 continue
-            text = f.read_text()
+            text = f.read_text(encoding="utf-8")
             for tok in FORBIDDEN:
                 self.assertNotIn(tok, text, f"{f}: {tok}")
 
@@ -87,7 +87,7 @@ class SkillLint(unittest.TestCase):
             self.assertRegex(text, ADE_ONLY)
 
     def test_router_owns_dispatch(self):
-        router = ROUTER.read_text()
+        router = ROUTER.read_text(encoding="utf-8")
         self.assertIn("sstack-dispatch ade", router)
         delegation = router.split("## Delegation", 1)[1].split("\n## ", 1)[0]
         self.assertIn("`record`", delegation)
@@ -95,20 +95,20 @@ class SkillLint(unittest.TestCase):
         for f in SKILLS.rglob("*.md"):
             if f == ROUTER:
                 continue
-            self.assertNotIn("sstack-dispatch", f.read_text(), f)
+            self.assertNotIn("sstack-dispatch", f.read_text(encoding="utf-8"), f)
 
     def test_ade_notes(self):
         for toml in ADES.glob("*.toml"):
             note = toml.with_suffix(".md")
             self.assertTrue(note.exists(), f"missing note for {toml.name}")
-            text = note.read_text()
+            text = note.read_text(encoding="utf-8")
             self.assertNotIn("PLACEHOLDER", text, note)
             for heading in ("## Delegation", "## Browser", "## Device", "## Capture"):
                 self.assertIn(heading, text, note)
 
     def test_relative_links_resolve(self):
         for f in list(SKILLS.rglob("*.md")) + list(ADES.glob("*.md")):
-            for target in re.findall(r"\]\(([^)\s]+)\)", strip_code(f.read_text())):
+            for target in re.findall(r"\]\(([^)\s]+)\)", strip_code(f.read_text(encoding="utf-8"))):
                 if re.match(r"[a-z]+:", target) or target.startswith("#"):
                     continue
                 path = target.split("#")[0]
@@ -120,7 +120,7 @@ class SkillLint(unittest.TestCase):
     def test_work_traceability_reference(self):
         trace = SKILLS / "work" / "traceability.md"
         self.assertTrue(trace.exists(), trace)
-        self.assertIn("traceability.md", (SKILLS / "work" / "SKILL.md").read_text())
+        self.assertIn("traceability.md", (SKILLS / "work" / "SKILL.md").read_text(encoding="utf-8"))
 
 HOOK_ROWS = ["| post-edit hook |", "| end-of-session hook |"]  # one per sstack hook (docs/spec/hooks.md)
 
@@ -128,7 +128,7 @@ HOOK_ROWS = ["| post-edit hook |", "| end-of-session hook |"]  # one per sstack 
 class HookRows(unittest.TestCase):
     def test_every_harness_note_has_every_hook_row(self):
         for f in (SKILLS / "sstack" / "harness-notes").glob("*.md"):
-            text = f.read_text()
+            text = f.read_text(encoding="utf-8")
             for row in HOOK_ROWS:
                 self.assertIn(row, text, f"{f}: add a row (snippet, or `none: <reason>`)")
 
@@ -137,19 +137,19 @@ class WorkflowSkillText(unittest.TestCase):
     """Answer key: skill text follows the step folders (decisions R4, R8, R16, R17)."""
 
     def test_work_keeps_playbook_overrides_and_routes_through_steps(self):
-        work = (SKILLS / "work" / "SKILL.md").read_text()
+        work = (SKILLS / "work" / "SKILL.md").read_text(encoding="utf-8")
         self.assertIn("## Repo playbook overrides", work)
         self.assertIn("steps.md", work)
-        steps = (SKILLS / "work" / "steps.md").read_text()
+        steps = (SKILLS / "work" / "steps.md").read_text(encoding="utf-8")
         for needle in ("sstack-workflow", "exit 5", "run gate", "findings.json", "STOP", "GATE"):
             self.assertIn(needle, steps, needle)
         self.assertNotIn("Phase 0", work + steps)
 
     def test_review_scores_on_the_rubric(self):
-        review = (SKILLS / "review" / "SKILL.md").read_text()
+        review = (SKILLS / "review" / "SKILL.md").read_text(encoding="utf-8")
         self.assertIn("min_score", review)
         self.assertIn("findings.json", review)
-        lenses = (SKILLS / "review" / "references" / "lenses.md").read_text()
+        lenses = (SKILLS / "review" / "references" / "lenses.md").read_text(encoding="utf-8")
         self.assertRegex(lenses, r"1[–-]10")
         for anchor in ("10", "7", "5", "4"):
             self.assertIn(anchor, lenses)
