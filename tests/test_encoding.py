@@ -40,7 +40,7 @@ class EncodingTests(TempEnv):
     def test_lib_and_bin_text_io_is_explicit_utf8(self):
         failures = []
         files = [*sorted((REPO / "lib").glob("*.py")),
-                 *sorted(p for p in (REPO / "bin").iterdir() if p.is_file())]
+                 *sorted(p for p in (REPO / "bin").iterdir() if p.is_file() and p.suffix != ".cmd")]
         for path in files:
             tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
             for node in ast.walk(tree):

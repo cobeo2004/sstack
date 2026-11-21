@@ -51,6 +51,11 @@ A skill already installed under the same name is renamed to `<name>.bak`, never 
 `sstack-install --uninstall` removes only sstack's own symlinks and the marked line. Restart your
 agent afterwards so it loads the skills.
 
+On Windows, put `<sstack>\bin` on PATH and run the commands through the `bin\*.cmd` shims, or as
+`python bin\sstack-…`; Windows ignores the shebang. Gate `verify` commands, the post-edit `check`
+and `run.sh` steps run under `sh`, which Git for Windows provides. Without `sh` on PATH they fail with
+"needs sh on PATH" (WSL works too).
+
 ## Install as a plugin
 
 Instead of the clone and `sstack-install`, Claude Code, Codex, pi and Gemini CLI can install sstack
