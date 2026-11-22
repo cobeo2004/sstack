@@ -3,6 +3,8 @@
 line to global agent instructions, create the ~/.sstack/ profile from <sstack>/defaults (never
 overwriting a file). --dry-run, --uninstall."""
 import argparse
+import os
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -34,8 +36,49 @@ HOOKS = {  # skill dir that marks the harness → its snippet; keep in step with
 }
 
 
+def junction(p: Path) -> bool:
+    try:
+        return getattr(os.lstat(p), "st_reparse_tag", 0) == 0xA0000003
+    except FileNotFoundError:
+        return False
+
+
 def ours(p: Path) -> bool:
-    return p.is_symlink() and p.resolve().is_relative_to(REPO.resolve())
+    if p.is_symlink() or junction(p):
+        return Path(os.path.realpath(p)).is_relative_to(REPO.resolve())
+    marker = p / ".sstack-copy"
+    if p.is_dir() and marker.is_file():
+        return Path(marker.read_text(encoding="utf-8")).resolve().is_relative_to(REPO.resolve())
+    return False
+
+
+def remove(p: Path) -> None:
+    if p.is_symlink():
+        p.unlink()
+    elif junction(p):
+        os.rmdir(p)
+    else:
+        shutil.rmtree(p)
+
+
+def link(dest: Path, src: Path) -> None:
+    try:
+        dest.symlink_to(src)
+    except OSError as e:
+        if getattr(e, "winerror", None) != 1314:
+            raise
+        try:
+            import _winapi
+            _winapi.CreateJunction(str(src), str(dest))
+        except (ImportError, OSError):
+            # CreateJunction can fail after creating a junction or empty directory.
+            if junction(dest):
+                return
+            if dest.is_dir():
+                dest.rmdir()
+            shutil.copytree(src, dest)
+            (dest / ".sstack-copy").write_text(str(src), encoding="utf-8")
+            print(f"{dest} is a copy; rerun sstack-install after updating sstack to refresh it")
 
 
 def main() -> int:
@@ -54,13 +97,19 @@ def main() -> int:
             for p in sorted(t.iterdir()):
                 if ours(p):
                     say(f"remove {p}")
-                    dry or p.unlink()
+                    dry or remove(p)
                 elif ".bak" in p.name:
                     print(f"backup left in place: {p}")
             continue
         for s in skills:
             dest = t / s.name
             if ours(dest):
+                if dest.is_symlink() or junction(dest):
+                    continue
+                say(f"refresh copy {dest}")
+                if not dry:
+                    remove(dest)
+                    link(dest, s)
                 continue
             if dest.exists() or dest.is_symlink():
                 bak = t / f"{s.name}.bak"
@@ -69,7 +118,7 @@ def main() -> int:
                 say(f"back up {dest} -> {bak.name}")
                 dry or dest.rename(bak)
             say(f"link {dest} -> {s}")
-            dry or dest.symlink_to(s)
+            dry or link(dest, s)
 
     for rel in INSTRUCTION_FILES:
         f = home / rel
