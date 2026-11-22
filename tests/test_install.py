@@ -31,6 +31,53 @@ class InstallTests(TempEnv):
         self.assertEqual(r.returncode, 0, r.stderr)
         return r.stdout
 
+    def install_without_symlink_privilege(self, *args, extra_prelude=""):
+        prelude = """import os, runpy, sys
+class NoPrivilege(OSError):
+    winerror = 1314
+def fail(*args, **kwargs):
+    raise NoPrivilege('symlink privilege required')
+os.symlink = fail
+""" + extra_prelude + """
+sys.argv = sys.argv[1:]
+runpy.run_path(sys.argv[0], run_name='__main__')
+"""
+        r = subprocess.run([sys.executable, "-c", prelude, str(self.src / "bin/sstack-install"), *args],
+                           env=dict(os.environ, HOME=str(self.home), USERPROFILE=str(self.home)),
+                           capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return r.stdout
+
+    def test_install_without_symlink_privilege(self):
+        self.install_without_symlink_privilege()
+        skill = self.home / ".claude/skills/sstack"
+        self.assertTrue(skill.is_dir())
+        self.assertFalse(skill.is_symlink())
+        self.assertEqual((skill / "SKILL.md").read_text(), (self.src / "skills/sstack/SKILL.md").read_text())
+        self.assertEqual((self.home / ".claude/skills/work.bak/SKILL.md").read_text(), "old work")
+        self.install_without_symlink_privilege()
+        self.assertEqual(sorted(p.name for p in skill.parent.iterdir()), ["sstack", "work", "work.bak"])
+        self.install_without_symlink_privilege("--uninstall")
+        self.assertEqual(sorted(p.name for p in skill.parent.iterdir()), ["work.bak"])
+
+    def test_failed_junction_with_directory_falls_back_to_copy(self):
+        prelude = """import types
+try:
+    import _winapi  # Windows: patch the real module, subprocess needs the rest of it
+except ImportError:
+    _winapi = sys.modules['_winapi'] = types.ModuleType('_winapi')
+def fail_junction(src, dst):
+    os.mkdir(dst)
+    raise OSError('junction failed')
+_winapi.CreateJunction = fail_junction
+"""
+        self.install_without_symlink_privilege(extra_prelude=prelude)
+        skill = self.home / ".claude/skills/sstack"
+        self.assertTrue((skill / ".sstack-copy").is_file())
+        self.assertEqual((skill / "SKILL.md").read_text(), (self.src / "skills/sstack/SKILL.md").read_text())
+        self.install_without_symlink_privilege("--uninstall", extra_prelude=prelude)
+        self.assertEqual(sorted(p.name for p in skill.parent.iterdir()), ["work.bak"])
+
     def snapshot(self):
         return sorted((str(p.relative_to(self.home)), p.is_symlink()) for p in self.home.rglob("*"))
 

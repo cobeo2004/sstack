@@ -1,7 +1,7 @@
 ---
 summary: What keeps sstack running on native Windows (locks, processes, launchers, encoding) and the test-suite traps behind it
-paths: lib/sstack_ade.py, lib/sstack_dispatch.py, lib/sstack_gate.py, lib/sstack_workflow.py
-updated: 1792bda
+paths: bin/sstack-install, lib/sstack_ade.py, lib/sstack_dispatch.py, lib/sstack_gate.py, lib/sstack_workflow.py
+updated: 216ca74
 ---
 # Windows portability
 
@@ -31,6 +31,14 @@ The windows-latest CI job is the only Windows proof; a Mac or Linux run can't sh
   `python`: cmd.exe otherwise runs a `python.cmd` from the current directory first, so an untrusted
   checkout could run code before sstack's trust checks apply.
 
+- `sstack-install` links skills with a symlink, and on WinError 1314 (no Developer Mode, not admin)
+  falls back to a junction (`_winapi.CreateJunction`), then to a copy marked `.sstack-copy` that a
+  rerun refreshes. CPython 3.11's `CreateJunction` makes the directory before the reparse point and
+  never removes it on failure, and it reads `GetLastError()` at cleanup after a privilege call that
+  leaves 1300 for non-admins, so it can raise after linking. `link()` keeps an existing junction and
+  `rmdir`s an empty leftover before copying. `Path.is_junction` is 3.12+; `ours()` reads
+  `os.lstat().st_reparse_tag`.
+
 ## Repo and tests
 - `.gitattributes` is `* -text`: Windows checkouts default to autocrlf and would rewrite
   byte-compared fixtures. `bin/*.cmd` are stored with CRLF. A local `core.autocrlf=input` had
@@ -43,6 +51,13 @@ The windows-latest CI job is the only Windows proof; a Mac or Linux run can't sh
   default is CRLF and cp1252. A printed command shlex-quotes backslash paths: parse it with `shlex.split`.
 - Symlink tests skip through `can_symlink()`, and `link_or_copy` copies where a symlink stood in
   for a copy. Run bin/ scripts in tests as `[sys.executable, path]`.
+- The CI runner is admin, so symlinks work there. `test_install` covers the unprivileged path by
+  running the installer through a `python -c` prelude that makes `os.symlink` raise winerror 1314.
+  To fake `_winapi`, patch `CreateJunction` on the real module: replacing the module breaks
+  `subprocess`, which imports it on Windows.
+- Don't build a minimal PATH from `which("git")` on Windows: it can be `Git\mingw64\bin`, where git
+  crashes without its helpers (0xC0000005). `test_pr_media` keeps PATH and hides ffmpeg by patching
+  `shutil.which` in a prelude; filtering out ffmpeg's dir drops git too where they share one (Scoop shims).
 
 ## Running the suite inside an Orca session
 `ORCA_AGENT_SESSION_ID` leaks into two `test_ui` ADE-detection tests. Run with

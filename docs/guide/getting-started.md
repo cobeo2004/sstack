@@ -26,7 +26,8 @@ sstack-install
 Expected: the dry run prints what it would change and writes nothing. The real run:
 
 - symlinks `skills/*` into each skill dir that already exists: `~/.claude/skills`, `~/.agents/skills`,
-  `~/.codex/skills`, `~/.cursor/skills`, `~/.pi/agent/skills`;
+  `~/.codex/skills`, `~/.cursor/skills`, `~/.pi/agent/skills` (on Windows without symlink privilege,
+  uses a junction, then a copy if needed);
 - adds one marked line pointing at the `sstack` skill to `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`
   and `~/.pi/agent/AGENTS.md`;
 - creates your profile `~/.sstack/` from the template (`sstack-config sync`); it never overwrites a
@@ -48,8 +49,8 @@ create <home>/.sstack/
 ```
 
 A skill already installed under the same name is renamed to `<name>.bak`, never deleted.
-`sstack-install --uninstall` removes only sstack's own symlinks and the marked line. Restart your
-agent afterwards so it loads the skills.
+`sstack-install --uninstall` removes only sstack's own symlinks, junctions, copies and the marked
+line. Restart your agent afterwards so it loads the skills.
 
 On Windows, put `<sstack>\bin` on PATH and run the commands through the `bin\*.cmd` shims, or as
 `python bin\sstack-…`; Windows ignores the shebang. Gate `verify` commands, the post-edit `check`
