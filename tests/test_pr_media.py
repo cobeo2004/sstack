@@ -1,10 +1,10 @@
-import os, shutil, subprocess, sys, unittest
+import os, subprocess, sys, unittest
 from pathlib import Path
 
 from helpers import TempEnv, REPO
 
-# no ffmpeg on it; on POSIX `which git` can be a dir that holds ffmpeg too (Homebrew)
-BASE_PATH = str(Path(shutil.which("git")).parent) if os.name == "nt" else "/usr/bin:/bin"
+# Preserve Windows PATH for Git; POSIX uses system directories.
+BASE_PATH = os.environ["PATH"] if os.name == "nt" else "/usr/bin:/bin"
 
 
 def git(cwd, *args):
@@ -25,9 +25,15 @@ class PrMediaTests(TempEnv):
             (self.media / name).write_bytes(b"x")
 
     def publish(self, *args):
+        prelude = """import runpy, shutil, sys
+which = shutil.which
+shutil.which = lambda cmd, *args, **kwargs: None if cmd == 'ffmpeg' else which(cmd, *args, **kwargs)
+sys.argv = sys.argv[1:]
+runpy.run_path(sys.argv[0], run_name='__main__')
+"""
         env = dict(os.environ, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t",
-                   GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@t", PATH=os.environ.get("SSTACK_TEST_PATH", BASE_PATH))  # no ffmpeg
-        r = subprocess.run([sys.executable, str(REPO / "bin/sstack-pr-media"), *args],
+                   GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@t", PATH=os.environ.get("SSTACK_TEST_PATH", BASE_PATH))
+        r = subprocess.run([sys.executable, "-c", prelude, str(REPO / "bin/sstack-pr-media"), *args],
                            cwd=self.root, env=env, capture_output=True, text=True, encoding="utf-8")
         self.assertEqual(r.returncode, 0, r.stderr)
         return r.stdout
